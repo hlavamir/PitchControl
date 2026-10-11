@@ -6,13 +6,15 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.3.0 — 2026-10-11
+
 ### Added
 - **Enttec Open DMX USB** (the cheaper interface in the blue case) next to the Enttec DMX USB Pro and
   compatibles. The app detects the type from the USB device ("Detected: …"); an Advanced area under
   each interface lets you set the type and the way the break is made by hand. The app makes the DMX
   signal itself for it (break, mark, start code), about 26 frames per second. Worked out on a Mac
   with `tools/open_dmx_probe.py`: RTS and DTR low, the break as one byte at 90000 baud, a drain
-  between the steps. The app itself has still to be confirmed on the lights.
+  between the steps.
 - **Frame rate** dropdown on the Settings page (20 / 25 / 30 / 40 / 44 fps, default 40).
 - **Support** section on the Settings page with the Ko-fi link.
 
@@ -23,6 +25,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - **Channel values:** each cell is a passive mini fader, filling from the bottom with the value, with
   the text inverted where the fill is.
 - **Header:** the "enttec" indicators say "dmx" ("dmx 1", "dmx 2" …).
+- **Browser tab icon:** the app's pixel mark instead of Vite's bolt.
+- **Settings page:** the Engine and Support sections sit under Appearance, so the page fits again.
 
 ## 1.2.2 — 2026-10-11
 
