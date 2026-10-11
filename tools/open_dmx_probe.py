@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Find out how an Enttec Open DMX USB (bare FTDI chip) has to be driven on this computer.
 
-Close PitchControl first (the port must be free), connect the interface and a fixture, then:
+Close PitchControl and QLC first (the port must be free), connect the interface and a fixture, then:
 
     backend/.venv/bin/python tools/open_dmx_probe.py [--port /dev/cu.usbserial-XXXX]
                                                       [--channels 1-8] [--value 255]
 
-It tries a series of ways of writing to the port, each for 3 seconds, tells you which step fails
+It tries a series of ways of writing to the port, each for 3 seconds (then 1.5 s of zeros, so a
+fixture that receives DMX goes dark again before you answer), tells you which step fails
 (and the state of the port when it does), and asks whether the fixture reacted. Set the fixture to
 the DMX address in --channels first (a dimmer or colour fixture on channel 1 is the easiest).
 Variants S1 and S2 are only about whether the port accepts a 513 byte write at all; the fixture
@@ -54,6 +55,9 @@ VARIANTS = [
     Variant("O J, opened at 115200 8N1 then switched", "the custom rate set after opening", flush_before=True, flush_after_break=True, open_baud=115200, open_stop=1),
     Variant("P J with RTS and DTR low", "", flush_before=True, flush_after_break=True, rts=False, dtr=False),
     Variant("Q break line with flush", "TIOCSBRK", mode="break", flush_before=True, flush_after_break=True, settle=0.005),
+    # which of the two control lines matters (the app sets both low)
+    Variant("R J with RTS low only", "", flush_before=True, flush_after_break=True, rts=False),
+    Variant("S J with DTR low only", "", flush_before=True, flush_after_break=True, dtr=False),
 ]
 
 
@@ -104,8 +108,11 @@ def state(port):
     return " ".join(out)
 
 
-def run(port_path, v, frame, seconds):
+def run(port_path, v, frame, seconds, dark_seconds=1.5):
+    """Sends `frame` for `seconds`, then an all-zero frame for `dark_seconds`: a fixture that
+    receives DMX goes dark again, so the next answer cannot be mistaken for the previous state."""
     t0 = time.monotonic()
+    dark = bytes(512)
     try:
         port = serial.Serial(port_path, v.open_baud, bytesize=v.open_bits, parity="N", stopbits=v.open_stop, timeout=0, write_timeout=1)
     except Exception as exc:  # noqa: BLE001
@@ -129,8 +136,8 @@ def run(port_path, v, frame, seconds):
             port.baudrate = BAUD
         time.sleep(0.02)
         frames = 0
-        data = b"\x00" + frame
-        while time.monotonic() - t0 < seconds:
+        while time.monotonic() - t0 < seconds + dark_seconds:
+            data = b"\x00" + (frame if time.monotonic() - t0 < seconds else dark)
             if v.mode == "baud":
                 if v.flush_before:
                     step = "drain before the break"
@@ -171,7 +178,7 @@ def run(port_path, v, frame, seconds):
             else:
                 time.sleep(len(data) * BYTE_S + 0.002)
             frames += 1
-        return True, f"{frames} frames ({frames / seconds:.0f} per second); flow flags {'cleared: ' if v.clear_flow else ''}{flags}"
+        return True, f"{frames} frames ({frames / (seconds + dark_seconds):.0f} per second); flow flags {'cleared: ' if v.clear_flow else ''}{flags}"
     except Exception as exc:  # noqa: BLE001
         try:
             extra = state(port)
@@ -225,7 +232,7 @@ def main():
             print("       then run this again. Stop with Ctrl+C if you want to.")
         reacted = None
         if ok and v.ask:
-            answer = input("    did the fixture react? [y/n/q] ").strip().lower()
+            answer = input("    did the fixture light up and go dark again? [y/n/q] ").strip().lower()
             if answer == "q":
                 break
             reacted = answer == "y"
