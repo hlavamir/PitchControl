@@ -105,6 +105,31 @@ class SerialWorker(LatestFrameWorker):
         self.connected = False
 
 
+def clear_modem_flow_control(port) -> str:
+    """Switch off every hardware flow-control flag of a POSIX tty and say what was set.
+
+    On macOS the tty can hold back output until a modem line is up (CTS, DSR, carrier); pyserial
+    only clears RTS/CTS. A bare FTDI dongle has none of these lines wired, so a flag left on makes
+    every write time out ("out_waiting" never goes down). Returns e.g. "CDSR_OFLOW CCAR_OFLOW"."""
+    try:
+        import termios
+    except ImportError:  # Windows
+        return ""
+    fd = getattr(port, "fd", None)
+    if fd is None:
+        return ""
+    names = ("CRTSCTS", "CCTS_OFLOW", "CRTS_IFLOW", "CDTR_IFLOW", "CDSR_OFLOW", "CCAR_OFLOW", "MDMBUF")
+    attrs = termios.tcgetattr(fd)
+    was = [n for n in names if getattr(termios, n, 0) and attrs[2] & getattr(termios, n)]
+    mask = 0
+    for n in names:
+        mask |= getattr(termios, n, 0)
+    if attrs[2] & mask:
+        attrs[2] &= ~mask
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+    return " ".join(was)
+
+
 DMX_BAUD = 250000
 DMX_BREAK_BAUD = 90000  # one 0x00 byte (start + 8 zero bits, 9 x 11.1 us) is a 100 us break, the 2 stop bits a 22 us mark
 DMX_BYTE_S = 11 / DMX_BAUD  # a slot is 1 start + 8 data + 2 stop bits = 44 us
@@ -137,8 +162,11 @@ class OpenDmxWorker(SerialWorker):
             path, DMX_BAUD, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_TWO,
             timeout=0, write_timeout=1,
         )
-        # RTS / DTR / the output buffer are left as the system opened the port: forcing the lines low
-        # made every write time out on macOS (2026-10-11); tools/open_dmx_probe.py tries the variants
+        # RTS / DTR / the output buffer are left as the system opened the port (forcing the lines low
+        # made every write time out on macOS); the hardware flow-control flags are switched off
+        flags = clear_modem_flow_control(self.port)
+        if flags:
+            log.info("%s: switched off the flow-control flags %s", self.name, flags)
         time.sleep(0.02)
         self._busy_until = 0.0
         self.connected = True
