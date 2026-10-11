@@ -12,6 +12,10 @@ the DMX address in --channels first (a dimmer or colour fixture on channel 1 is 
 Variants S1 and S2 are only about whether the port accepts a 513 byte write at all; the fixture
 cannot react to them (no break), just press Enter.
 At the end it prints which variants worked; send that to the developer.
+
+Result on the developer's Mac (FT232R, macOS, 2026-10-11), after unplugging the interface once: every
+variant transmits; only P (RTS and DTR low) made the fixture react. A break line left on by
+variant Q or by QLC can hold all output until the interface is unplugged.
 """
 import argparse
 import sys

@@ -180,37 +180,26 @@ def _open_dmx(monkeypatch, method):
 def test_open_dmx_port_setup(monkeypatch):
     w, port = _open_dmx(monkeypatch, "baud")
     assert port.baudrate == 250000 and port.kw["stopbits"] == 2 and port.kw["bytesize"] == 8 and port.kw["parity"] == "N"
-    assert port.rts is True and port.dtr is True     # left as the system opened it
-    assert ("reset",) not in port.events
+    # RTS and DTR low: the RS-485 driver of the dongle follows them (the fixture saw nothing with them high)
+    assert port.rts is False and port.dtr is False
+    assert ("break", False) in port.events   # a break left on by an earlier run is cleared
 
 
-def test_open_dmx_break_by_baud_rate_waits_for_every_step(monkeypatch):
+def test_open_dmx_break_by_baud_rate_drains_between_steps(monkeypatch):
     w, port = _open_dmx(monkeypatch, "baud")
     port.events.clear()
     w.write(bytes([7] * 512))
-    # the baud rate change, the break byte and the change back are separate USB transfers: each
-    # one is followed by a wait, so none overtakes the other
+    # the sequence that made a fixture react on macOS: drain, break byte at 90000 baud, drain, back to
+    # 250000 baud, start code + 512 channels
     assert port.events == [
         ("flush",),
         ("baud", 90000),
-        ("write", 90000, b"\x00"),                       # 9 bits at 90000 baud = a 100 us break
-        ("flush",),                                      # drained before the rate changes back
+        ("write", 90000, b"\x00"),
+        ("flush",),
         ("baud", 250000),
-        ("write", 250000, b"\x00" + bytes([7] * 512)),   # start code 0 + 512 channels
+        ("write", 250000, b"\x00" + bytes([7] * 512)),
     ]
-    settle = w.SETTLE_S
-    assert w.sleeps[-3:] == [settle, settle, settle]
     assert not any(e[0] == "break" for e in port.events)
-
-
-def test_open_dmx_waits_for_the_previous_frame_by_its_length(monkeypatch):
-    w, port = _open_dmx(monkeypatch, "baud")
-    w.write(bytes(512))
-    before = w.clock["t"]
-    w.sleeps.clear()
-    w.write(bytes(512))   # straight away: the first frame (513 slots x 44 us) is still on its way out
-    assert w.sleeps[0] >= 513 * 44e-6 - 1e-6
-    assert w.clock["t"] - before >= 513 * 44e-6
 
 
 def test_open_dmx_break_line_method(monkeypatch):
@@ -221,7 +210,7 @@ def test_open_dmx_break_line_method(monkeypatch):
     ev = [e for e in port.events if e[0] != "flush"]
     assert ev[0] == ("break", True) and ev[1] == ("break", False)      # the break, then the mark
     assert ev[2] == ("write", 250000, b"\x00" + frame)
-    assert w.sleeps[-2:] == [w.BREAK_S, w.MARK_S] or w.sleeps[:2] == [w.BREAK_S, w.MARK_S]
+    assert w.sleeps[-2:] == [w.BREAK_S, w.MARK_S]
 
 
 def test_open_dmx_cuts_long_frames_and_pads_nothing(monkeypatch):

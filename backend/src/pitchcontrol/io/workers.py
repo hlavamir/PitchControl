@@ -105,37 +105,8 @@ class SerialWorker(LatestFrameWorker):
         self.connected = False
 
 
-def clear_modem_flow_control(port) -> str:
-    """Switch off every hardware flow-control flag of a POSIX tty and say what was set.
-
-    On macOS the tty can hold back output until a modem line is up (CTS, DSR, carrier); pyserial
-    only clears RTS/CTS. A bare FTDI dongle has none of these lines wired, so a flag left on makes
-    every write time out ("out_waiting" never goes down). Returns e.g. "CDSR_OFLOW CCAR_OFLOW"."""
-    try:
-        import termios
-    except ImportError:  # Windows
-        return ""
-    fd = getattr(port, "fd", None)
-    if fd is None:
-        return ""
-    names = ("CRTSCTS", "CCTS_OFLOW", "CRTS_IFLOW", "CDTR_IFLOW", "CDSR_OFLOW", "CCAR_OFLOW", "MDMBUF")
-    try:
-        attrs = termios.tcgetattr(fd)
-        was = [n for n in names if getattr(termios, n, 0) and attrs[2] & getattr(termios, n)]
-        mask = 0
-        for n in names:
-            mask |= getattr(termios, n, 0)
-        if attrs[2] & mask:
-            attrs[2] &= ~mask
-            termios.tcsetattr(fd, termios.TCSANOW, attrs)  # (EINVAL with a custom baud rate: then they stay)
-        return " ".join(was)
-    except (termios.error, OSError, ValueError):
-        return ""
-
-
 DMX_BAUD = 250000
 DMX_BREAK_BAUD = 90000  # one 0x00 byte (start + 8 zero bits, 9 x 11.1 us) is a 100 us break, the 2 stop bits a 22 us mark
-DMX_BYTE_S = 11 / DMX_BAUD  # a slot is 1 start + 8 data + 2 stop bits = 44 us
 
 
 class OpenDmxWorker(SerialWorker):
@@ -143,19 +114,18 @@ class OpenDmxWorker(SerialWorker):
     signal ourselves, 250 kbaud 8N2: a break, a mark after break, the start code 0 and up to 512
     channels. The frame is the universe (bytes).
 
-    The USB serial driver cannot be trusted to say when the chip has really sent something
-    (tcdrain returns early), and a baud rate change is a separate USB transfer that may overtake
-    data already queued. So the timing is ours: we wait for the previous frame by its length, and
-    after every step (baud rate, break byte) we wait for it to have taken effect."""
+    What works on macOS with the FTDI serial driver (tools/open_dmx_probe.py, 2026-10-11):
+    RTS and DTR low (the RS-485 driver follows them: with the system default, high, the port
+    transmits and the fixture sees nothing), and a drain (tcdrain) between the steps. The break is
+    one 0x00 byte at 90000 baud. Left as it is, a break set by the "break" method can stay on
+    until the interface is unplugged and holds all output."""
 
     BREAK_S = 0.002  # the break line method: at least 88 us; USB moves in 1 ms steps, up to 1 s is allowed
     MARK_S = 0.002
-    SETTLE_S = 0.002  # baud rate method: time for one USB transfer to take effect
 
     def __init__(self, ref: DeviceRef, name: str, break_method: str = "baud") -> None:
         super().__init__(ref, DMX_BAUD, name)
         self.break_method = break_method
-        self._busy_until = 0.0
 
     def open(self) -> None:
         path = resolve_port(self.ref)
@@ -165,43 +135,29 @@ class OpenDmxWorker(SerialWorker):
             path, DMX_BAUD, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_TWO,
             timeout=0, write_timeout=1,
         )
-        # RTS / DTR / the output buffer are left as the system opened the port (forcing the lines low
-        # made every write time out on macOS); the hardware flow-control flags are switched off
-        flags = clear_modem_flow_control(self.port)
-        if flags:
-            log.info("%s: switched off the flow-control flags %s", self.name, flags)
         try:
             self.port.break_condition = False  # a break left on by an earlier run holds all output
         except (OSError, serial.SerialException):
             pass
+        self.port.rts = False
+        self.port.dtr = False
         time.sleep(0.02)
-        self._busy_until = 0.0
         self.connected = True
         self.last_error = None
-        log.info("%s: opened %s as Open DMX (%d baud, 8N2, break by %s)", self.name, path, DMX_BAUD, self.break_method)
+        log.info("%s: opened %s as Open DMX (%d baud, 8N2, RTS / DTR low, break by %s)", self.name, path, DMX_BAUD, self.break_method)
 
     def write(self, frame: object) -> None:
         assert self.port is not None and isinstance(frame, (bytes, bytearray))
         port = self.port
-        wait = self._busy_until - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)  # the previous frame is still on its way out
-        # tcdrain (flush) is what made the writes go through on macOS (probe, 2026-10-11): the
-        # driver seems to send nothing until it is asked to drain
-        port.flush()
+        port.flush()  # the previous frame has left (the driver sends nothing without a drain)
         if self.break_method == "baud":
             port.baudrate = DMX_BREAK_BAUD
-            time.sleep(self.SETTLE_S)
-            port.write(b"\x00")
+            port.write(b"\x00")  # start + 8 zero bits at 90000 baud: a 100 us break, then 2 stop bits
             port.flush()
-            time.sleep(self.SETTLE_S)  # the break byte must be out before the rate changes back
             port.baudrate = DMX_BAUD
-            time.sleep(self.SETTLE_S)
         else:
             port.break_condition = True
             time.sleep(self.BREAK_S)
             port.break_condition = False
             time.sleep(self.MARK_S)
-        data = b"\x00" + bytes(frame[:512])
-        port.write(data)
-        self._busy_until = time.monotonic() + len(data) * DMX_BYTE_S + 0.002
+        port.write(b"\x00" + bytes(frame[:512]))
