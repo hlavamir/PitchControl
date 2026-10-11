@@ -10,7 +10,7 @@ Website, documentation and downloads: **[pitchcontrol.eu](https://pitchcontrol.e
 
 ## Pages
 
-Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The screenshots were taken at the 1512 × 915 design size with amber ink, without hardware connected (so audio, MIDI and the Enttec show as off), with a synthetic techno loop feeding the audio analysis. The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with the values of scene 1.
+Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The screenshots were taken at the 1512 × 915 design size with amber ink, without hardware connected (so audio, MIDI and the DMX interface show as off), with a synthetic techno loop feeding the audio analysis. The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with the values of scene 1.
 
 ### 1 · General
 
@@ -62,7 +62,18 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 ![Outputs page](screenshots/outputs.png)
 
-Up to four Enttec DMX USB Pro interfaces (Add interface / Remove; each with its own device and universe), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), and the PitchPlease V2 serial output (device, baud rate, mirror mode). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
+Up to four USB DMX interfaces (Add interface / Remove; each with its own type, device and universe; see [USB DMX interfaces](#usb-dmx-interfaces)), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), and the PitchPlease V2 serial output (device, baud rate, mirror mode). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
+
+#### USB DMX interfaces
+
+The USB interfaces that PitchControl can drive, chosen per interface on the Outputs page:
+
+| Type | Devices | How it works |
+|---|---|---|
+| **Enttec DMX USB Pro / compatible** | Enttec DMX USB Pro and Pro Mk2 (one universe), DMXKing ultraDMX Micro / Pro and other interfaces that speak the Enttec Pro protocol | The interface has a processor: the app sends one packet per frame over the serial port and the interface makes the DMX signal. Tried on hardware (Enttec DMX USB Pro). |
+| **Enttec Open DMX USB** | Enttec Open DMX USB (the cheaper one) and other bare FTDI + RS-485 dongles | No processor: the app makes the DMX signal itself on the serial port (250 kbaud, 8N2, break, start code 0, 512 channels), at the engine's frame rate. **Not yet tried on hardware.** If the lights do not react, try "Break by: baud rate trick" (some serial drivers ignore the break line). |
+
+Not supported: interfaces that only work through their manufacturer's driver or software (Nicolaudie / Sunlite, ChamSys, Anyma uDMX and similar), and network nodes other than through Art-Net (sACN is not implemented). Art-Net covers every node that has an Art-Net input (DMXKing eDMX, Enttec ODE, …).
 
 ### 7 · Fog
 
@@ -185,7 +196,7 @@ Hue and saturation apply on mouse release, or once keys / the MIDI knob rest; un
 
 | Path | Content |
 |---|---|
-| `settings.json` | outputs (up to 4 Enttec interfaces, Art-Net, v2 serial), audio input, fog machines, Auto Color palette, engine options |
+| `settings.json` | frame rate (`fps`), outputs (up to 4 USB DMX interfaces, Art-Net, v2 serial), audio input, fog machines, Auto Color palette, engine options |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); all files are loaded on startup, missing keys get defaults |
 | `rigs/<name>.json` | fixture instances for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
 | `controllers/*.json` | MIDI controller mappings (CC → macro) |
@@ -215,7 +226,7 @@ To re-import scenes and `macros.ini` from the original vvvv patch folder: `.venv
 Working and covered by tests:
 - config loading and typo reporting;
 - the v3 DMX frame (checked against the v3.2 firmware layout);
-- Enttec Pro, Art-Net and v2.2 serial packet formats;
+- Enttec Pro, Enttec Open DMX USB, Art-Net and v2.2 serial packet formats;
 - the 32-band analysis with octave-weighted strobo trigger;
 - the phase, strobo/idle and colour logic;
 - the mask generators and noise port, crossfade and symmetry;

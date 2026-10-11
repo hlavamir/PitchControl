@@ -6,6 +6,21 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Enttec Open DMX USB** (the cheaper interface in the blue case) as a second interface type next to
+  the Enttec DMX USB Pro and compatibles; per interface on the Outputs page. The app makes the DMX
+  signal itself for it (break, mark, start code). Not tried on real hardware yet.
+- **Frame rate** dropdown on the Settings page (20 / 25 / 30 / 40 / 44 fps, default 40).
+- **Support** section on the Settings page with the Ko-fi link.
+
+### Changed
+- **Hue / saturation faders** show their colour scale only while in use: under the mouse, dragged,
+  selected with the keys, or for a few seconds after the value changed (MIDI, scenes); otherwise
+  the usual ruler.
+- **Channel values:** each cell is a passive mini fader, filling from the bottom with the value, with
+  the text inverted where the fill is.
+- **Header:** the "enttec" indicators say "dmx" ("dmx 1", "dmx 2" …).
+
 ## 1.2.2 — 2026-10-11
 
 ### Changed
