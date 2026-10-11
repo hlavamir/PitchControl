@@ -241,10 +241,10 @@ export default function App() {
               {/* one dot per configured USB DMX interface */}
               {out?.enttec?.length ? (
                 out.enttec.map((e, i) => (
-                  <StatusDot key={i} ok={e ? e.connected : null} label={out.enttec.length > 1 ? `enttec ${i + 1}` : 'enttec'} error={e?.error} tip={`Enttec DMX USB interface ${i + 1}: filled = connected, hollow = off, crossed = error (see Outputs)`} />
+                  <StatusDot key={i} ok={e ? e.connected : null} label={out.enttec.length > 1 ? `dmx ${i + 1}` : 'dmx'} error={e?.error} tip={`USB DMX interface ${i + 1}: filled = connected, hollow = off, crossed = error (see Outputs)`} />
                 ))
               ) : (
-                <StatusDot ok={null} label="enttec" tip="No Enttec DMX USB interface configured (see Outputs)" />
+                <StatusDot ok={null} label="dmx" tip="No USB DMX interface configured (see Outputs)" />
               )}
               <StatusDot ok={out?.artnet ? out.artnet.connected : null} label="art-net" error={out?.artnet?.error} tip="Art-Net output: filled = sending, hollow = off (see Outputs)" />
               <StatusDot ok={out?.pitchpls_v2 ? out.pitchpls_v2.connected : null} label="v2" error={out?.pitchpls_v2?.error} tip="PitchPlease v2 serial output: filled = connected, hollow = off (see Outputs)" />

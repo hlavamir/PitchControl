@@ -136,7 +136,8 @@ export interface Settings {
     [key: string]: unknown
   }
   outputs: {
-    enttec: { enabled: boolean; device: DeviceRef; universe: number }[] // up to 4 USB DMX interfaces
+    // up to 4 USB DMX interfaces (the key is from before there were several types)
+    enttec: { enabled: boolean; device: DeviceRef; universe: number; type: 'pro' | 'open'; break_method: 'break' | 'baud' }[]
     artnet: { enabled: boolean; targets: { universe: number; ip: string; artnet_universe?: number | null }[] }
     pitchpls_v2: { enabled: boolean; device: DeviceRef; baudrate: number; mode: number; strips: number; pixels_per_strip: number }
   }

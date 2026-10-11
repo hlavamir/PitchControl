@@ -75,8 +75,8 @@ export function Output({ engine }: { engine: EngineConnection }) {
 
       <Section
         index="01"
-        title="Enttec DMX USB Pro"
-        tip="DMX over USB with Enttec DMX USB Pro interfaces: each sends one universe to the lights on its cable"
+        title="USB DMX interfaces"
+        tip="DMX over USB: each interface (Enttec DMX USB Pro and compatibles, or the Enttec Open DMX USB) sends one universe to the lights on its cable"
         right={
           <>
             <span>
@@ -84,11 +84,11 @@ export function Output({ engine }: { engine: EngineConnection }) {
             </span>
             <button
               disabled={o.enttec.length >= MAX_ENTTEC}
-              data-tip={o.enttec.length >= MAX_ENTTEC ? `Maximum of ${MAX_ENTTEC} interfaces reached` : 'Add another Enttec DMX USB Pro, with its own device and universe (up to 4)'}
+              data-tip={o.enttec.length >= MAX_ENTTEC ? `Maximum of ${MAX_ENTTEC} interfaces reached` : 'Add another USB DMX interface, with its own device and universe (up to 4)'}
               className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-40"
               onClick={() =>
                 update((s) =>
-                  s.outputs.enttec.push({ enabled: true, device: {}, universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
+                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'pro', break_method: 'break', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
                 )
               }
             >
@@ -98,7 +98,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
         }
       >
         <div className="flex flex-col gap-2.5">
-          {o.enttec.length === 0 && <p className="text-[13px] text-dim">No USB DMX interface. Add one for each Enttec you plug in; each sends its own universe.</p>}
+          {o.enttec.length === 0 && <p className="text-[13px] text-dim">No USB DMX interface. Add one for each interface you plug in; each sends its own universe.</p>}
           {o.enttec.map((e, i) => {
             const st = io?.enttec?.[i]
             return (
@@ -109,6 +109,15 @@ export function Output({ engine }: { engine: EngineConnection }) {
                     <span className="lbl text-[12px]" data-tip="Switch on to send this interface's universe; off keeps the settings but sends nothing">
                       Interface {i + 1}
                     </span>
+                    <select
+                      className="w-auto"
+                      value={e.type}
+                      data-tip="Enttec DMX USB Pro and compatibles (DMXKing ultraDMX …) make the DMX signal themselves; the cheaper Enttec Open DMX USB (blue case) does not: the app makes it"
+                      onChange={(ev) => update((s) => (s.outputs.enttec[i].type = ev.target.value as 'pro' | 'open'))}
+                    >
+                      <option value="pro">Enttec DMX USB Pro / compatible</option>
+                      <option value="open">Enttec Open DMX USB</option>
+                    </select>
                   </span>
                   <span className="flex items-center gap-3">
                     <StatusDot ok={st ? st.connected : null} label={st ? (st.connected ? 'connected' : 'not connected') : 'off'} error={st?.error} tip="Whether this interface is open and receiving frames (after Save)" />
@@ -125,6 +134,20 @@ export function Output({ engine }: { engine: EngineConnection }) {
                   <span className="text-dim">Universe</span>
                   <UniverseSelect value={e.universe} tip="The universe this interface sends: fixtures with this universe on the Rig page are on its cable" onChange={(v) => update((s) => (s.outputs.enttec[i].universe = v))} />
                 </div>
+                {e.type === 'open' && (
+                  <div className="flex items-center gap-2 text-[12px] text-dim">
+                    <span>The app makes the DMX signal itself. Break by</span>
+                    <select
+                      className="w-auto"
+                      value={e.break_method}
+                      data-tip="How the 88 µs break before each frame is made: the port's break line (default), or one byte at a lower baud rate for drivers that ignore the break line. Change it if the lights do not react"
+                      onChange={(ev) => update((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
+                    >
+                      <option value="break">break line</option>
+                      <option value="baud">baud rate trick</option>
+                    </select>
+                  </div>
+                )}
                 {sameAs[i] !== null && <p className="text-[12px] text-glow">Same device as interface {sameAs[i]! + 1}: this one is not started.</p>}
               </div>
             )

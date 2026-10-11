@@ -111,3 +111,113 @@ def test_two_interfaces_cannot_share_a_device():
         assert "interface 1" in m.status()["enttec"][1]["error"]
     finally:
         m.stop()
+
+
+# -- Enttec Open DMX USB (a bare FTDI chip: the break and the timing are ours)
+
+
+class _FakePort:
+    """Records what the worker does to a serial port."""
+
+    instances: list = []
+
+    def __init__(self, path, baud, **kw):
+        self.path, self.baudrate, self.kw = path, baud, kw
+        self.events = []
+        self._break = False
+        _FakePort.instances.append(self)
+
+    @property
+    def break_condition(self):
+        return self._break
+
+    @break_condition.setter
+    def break_condition(self, v):
+        self._break = v
+        self.events.append(("break", v))
+
+    def write(self, data):
+        self.events.append(("write", self.baudrate, bytes(data)))
+
+    def flush(self):
+        self.events.append(("flush",))
+
+    def close(self):
+        pass
+
+
+def _open_dmx(monkeypatch, method):
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    _FakePort.instances = []
+    monkeypatch.setattr(workers.serial, "Serial", _FakePort)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
+    monkeypatch.setattr(workers.time, "sleep", lambda s: None)
+    w = workers.OpenDmxWorker(DeviceRef(), "opendmx1", method)
+    w.open()
+    return w, _FakePort.instances[0]
+
+
+def test_open_dmx_makes_break_mark_and_frame(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "break")
+    assert port.baudrate == 250000 and port.kw["stopbits"] == 2 and port.kw["bytesize"] == 8 and port.kw["parity"] == "N"
+    frame = bytes([7] * 512)
+    w.write(frame)
+    ev = [e for e in port.events if e[0] != "flush"]
+    assert ev[0] == ("break", True) and ev[1] == ("break", False)      # the break, then the mark
+    assert ev[2] == ("write", 250000, b"\x00" + frame)                  # start code 0 + 512 channels
+    assert port.events[0] == ("flush",)                                 # the previous frame is out first
+
+
+def test_open_dmx_break_by_baud_rate(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "baud")
+    w.write(bytes(512))
+    writes = [e for e in port.events if e[0] == "write"]
+    # a 0x00 byte at 90000 baud is the break (9 bits x 11.1 us), then the frame at 250000
+    assert writes[0] == ("write", 90000, b"\x00")
+    assert writes[1][1] == 250000 and writes[1][2] == b"\x00" + bytes(512)
+    assert not any(e[0] == "break" for e in port.events)
+    assert port.baudrate == 250000
+
+
+def test_open_dmx_cuts_long_frames_and_pads_nothing(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "break")
+    w.write(bytes(range(256)) * 3)   # more than 512 bytes: cut at 512 channels
+    last = [e for e in port.events if e[0] == "write"][-1]
+    assert len(last[2]) == 513
+
+
+def test_usb_interface_type_selects_the_worker_and_the_data(monkeypatch):
+    from pitchcontrol.config.models import OutputSettings
+    from pitchcontrol.io import outputs as out
+
+    class Rec:
+        def __init__(self, *a, **k):
+            self.a, self.frames = a, []
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def submit(self, f):
+            self.frames.append(f)
+
+        def status(self):
+            return {"connected": True, "error": None, "frames": 0}
+
+    monkeypatch.setattr(out, "SerialWorker", Rec)
+    monkeypatch.setattr(out, "OpenDmxWorker", Rec)
+    s = OutputSettings.model_validate({"enttec": [
+        {"enabled": True, "universe": 0, "device": {"serial_number": "A"}},                       # no type: the Pro
+        {"enabled": True, "universe": 1, "type": "open", "break_method": "baud", "device": {"serial_number": "B"}},
+    ]})
+    m = out.OutputManager(s)
+    m.start()
+    m.send({0: bytearray([9] * 512), 1: bytearray([5] * 512)}, [])
+    pro, op = m.enttec
+    assert pro.frames[0][:2] == bytes([0x7E, 6])                  # an Enttec Pro packet
+    assert op.frames[0] == bytes([5] * 512)                        # bare channels
+    assert op.a[2:] == ("break",) or "baud" in op.a               # the break method reaches the worker

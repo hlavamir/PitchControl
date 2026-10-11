@@ -1,4 +1,4 @@
-"""Output manager: Enttec DMX USB Pro, Art-Net and PitchPlease v2.2 serial."""
+"""Output manager: USB DMX interfaces (Enttec DMX USB Pro and compatibles, Enttec Open DMX USB), Art-Net and PitchPlease v2.2 serial."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 
 from ..config.models import OutputSettings
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
-from .workers import LatestFrameWorker, SerialWorker
+from .workers import LatestFrameWorker, OpenDmxWorker, SerialWorker
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,10 @@ class OutputManager:
                 else:
                     if key:
                         taken[key] = i
-                    worker = SerialWorker(e.device, ENTTEC_BAUD, f"enttec{i + 1}")
+                    if e.type == "open":
+                        worker = OpenDmxWorker(e.device, f"opendmx{i + 1}", e.break_method)
+                    else:
+                        worker = SerialWorker(e.device, ENTTEC_BAUD, f"enttec{i + 1}")
                     worker.start()
             self.enttec.append(worker)
         if s.artnet.enabled:
@@ -93,8 +96,11 @@ class OutputManager:
     def send(self, universes: dict[int, bytearray], v2_strips: list[list[int]]) -> None:
         s = self.settings
         for worker, e in zip(self.enttec, s.enttec):
-            if worker is not None:
-                worker.submit(enttec_pro_packet(universes.get(e.universe, bytes(512))))
+            if worker is None:
+                continue
+            data = universes.get(e.universe, bytes(512))
+            # the Pro makes the DMX signal from a packet; the Open DMX needs the bare channels
+            worker.submit(bytes(data[:512]) if e.type == "open" else enttec_pro_packet(data))
         if self.artnet is not None and s.artnet.targets:
             self._sequence = self._sequence % 255 + 1
             packets = []

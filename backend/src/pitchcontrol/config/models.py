@@ -305,9 +305,18 @@ class AudioSettings(Model):
 
 
 class EnttecSettings(Model):
+    """One USB DMX interface (the settings key is still ``enttec``, from before there were more types)."""
+
     enabled: bool = False
     device: DeviceRef = Field(default_factory=DeviceRef)
     universe: int = 0
+    # pro: Enttec DMX USB Pro and compatibles (DMXKing ultraDMX …): the interface makes the DMX
+    #      signal from our packets; open: Enttec Open DMX USB, a bare FTDI chip: we make the signal
+    type: Literal["pro", "open"] = "pro"
+    # open only, how the break (the 88 µs low before a frame) is made: "break" = the serial
+    # port's break condition; "baud" = one 0x00 byte at a lower baud rate (works with drivers that
+    # ignore the break condition)
+    break_method: Literal["break", "baud"] = "break"
 
 
 class ArtNetTarget(Model):
