@@ -119,15 +119,18 @@ def clear_modem_flow_control(port) -> str:
     if fd is None:
         return ""
     names = ("CRTSCTS", "CCTS_OFLOW", "CRTS_IFLOW", "CDTR_IFLOW", "CDSR_OFLOW", "CCAR_OFLOW", "MDMBUF")
-    attrs = termios.tcgetattr(fd)
-    was = [n for n in names if getattr(termios, n, 0) and attrs[2] & getattr(termios, n)]
-    mask = 0
-    for n in names:
-        mask |= getattr(termios, n, 0)
-    if attrs[2] & mask:
-        attrs[2] &= ~mask
-        termios.tcsetattr(fd, termios.TCSANOW, attrs)
-    return " ".join(was)
+    try:
+        attrs = termios.tcgetattr(fd)
+        was = [n for n in names if getattr(termios, n, 0) and attrs[2] & getattr(termios, n)]
+        mask = 0
+        for n in names:
+            mask |= getattr(termios, n, 0)
+        if attrs[2] & mask:
+            attrs[2] &= ~mask
+            termios.tcsetattr(fd, termios.TCSANOW, attrs)  # (EINVAL with a custom baud rate: then they stay)
+        return " ".join(was)
+    except (termios.error, OSError, ValueError):
+        return ""
 
 
 DMX_BAUD = 250000
@@ -167,6 +170,10 @@ class OpenDmxWorker(SerialWorker):
         flags = clear_modem_flow_control(self.port)
         if flags:
             log.info("%s: switched off the flow-control flags %s", self.name, flags)
+        try:
+            self.port.break_condition = False  # a break left on by an earlier run holds all output
+        except (OSError, serial.SerialException):
+            pass
         time.sleep(0.02)
         self._busy_until = 0.0
         self.connected = True

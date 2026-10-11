@@ -27,18 +27,16 @@ BYTE_S = 11 / BAUD
 class Variant:
     def __init__(self, name, why="", *, mode="baud", settle=0.0, flush_before=False, flush_after_break=False,
                  flush_after_frame=False, poll_outq=False, chunk=0, open_baud=BAUD, open_stop=2, open_bits=8,
-                 rts=None, dtr=None, ask=True, clear_flow=False):
+                 rts=None, dtr=None, ask=True, clear_flow=False, clear_break=False):
         self.name, self.why, self.mode, self.settle = name, why, mode, settle
         self.flush_before, self.flush_after_break, self.flush_after_frame = flush_before, flush_after_break, flush_after_frame
         self.poll_outq, self.chunk, self.open_baud, self.open_stop, self.open_bits = poll_outq, chunk, open_baud, open_stop, open_bits
-        self.rts, self.dtr, self.ask, self.clear_flow = rts, dtr, ask, clear_flow
+        self.rts, self.dtr, self.ask, self.clear_flow, self.clear_break = rts, dtr, ask, clear_flow, clear_break
 
 
 VARIANTS = [
-    # the flow-control flags of the tty switched off (the suspected reason for output never leaving)
-    Variant("T1 flow flags cleared, plain write 115200 8N1", "basic transmit sanity", mode="plain", open_baud=115200, open_stop=1, flush_after_frame=True, ask=False, clear_flow=True),
-    Variant("T2 flow flags cleared, plain write 250000 8N2", "", mode="plain", flush_after_frame=True, ask=False, clear_flow=True),
-    Variant("T3 flow flags cleared, baud trick with flush and 2 ms waits", "the app's sequence", flush_before=True, flush_after_break=True, settle=0.002, clear_flow=True),
+    # a break left on by an earlier run (or by QLC) holds all output: clear it first
+    Variant("U1 break cleared, plain write 115200 8N1", "basic transmit sanity after clearing a stuck break", mode="plain", open_baud=115200, open_stop=1, flush_after_frame=True, ask=False, clear_break=True),
     # does the port accept a 513 byte write at all?
     Variant("S1 plain write, 115200 8N1, no break", "basic transmit sanity", mode="plain", open_baud=115200, open_stop=1, flush_after_frame=True, ask=False),
     Variant("S2 plain write, 250000 8N2, no break", "does the DMX line format work?", mode="plain", flush_after_frame=True, ask=False),
@@ -111,7 +109,12 @@ def run(port_path, v, frame, seconds):
     step = "setup"
     flags = "?"
     try:
-        flags = flow_flags(port, clear=v.clear_flow)
+        try:
+            flags = flow_flags(port, clear=v.clear_flow)
+        except Exception as exc:  # noqa: BLE001  (a custom baud rate cannot be re-applied with tcsetattr)
+            flags = f"unreadable ({type(exc).__name__})"
+        if v.clear_break:
+            port.break_condition = False
         if v.rts is not None:
             port.rts = v.rts
         if v.dtr is not None:
@@ -213,6 +216,9 @@ def main():
         print(f"--- {v.name}" + (f"   ({v.why})" if v.why else ""))
         ok, detail = run(port_path, v, frame, args.seconds)
         print(f"    port: {'OK' if ok else 'FAILED'}: {detail}")
+        if not ok and "out_waiting=" in detail and not any(r[1] for r in results):
+            print("    -> nothing leaves the port at all. Unplug and re-plug the interface, quit QLC (it holds the device),")
+            print("       then run this again. Stop with Ctrl+C if you want to.")
         reacted = None
         if ok and v.ask:
             answer = input("    did the fixture react? [y/n/q] ").strip().lower()
