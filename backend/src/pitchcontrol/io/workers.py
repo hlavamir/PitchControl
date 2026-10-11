@@ -151,10 +151,14 @@ class OpenDmxWorker(SerialWorker):
         wait = self._busy_until - time.monotonic()
         if wait > 0:
             time.sleep(wait)  # the previous frame is still on its way out
+        # tcdrain (flush) is what made the writes go through on macOS (probe, 2026-10-11): the
+        # driver seems to send nothing until it is asked to drain
+        port.flush()
         if self.break_method == "baud":
             port.baudrate = DMX_BREAK_BAUD
             time.sleep(self.SETTLE_S)
             port.write(b"\x00")
+            port.flush()
             time.sleep(self.SETTLE_S)  # the break byte must be out before the rate changes back
             port.baudrate = DMX_BAUD
             time.sleep(self.SETTLE_S)

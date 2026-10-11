@@ -191,8 +191,10 @@ def test_open_dmx_break_by_baud_rate_waits_for_every_step(monkeypatch):
     # the baud rate change, the break byte and the change back are separate USB transfers: each
     # one is followed by a wait, so none overtakes the other
     assert port.events == [
+        ("flush",),
         ("baud", 90000),
         ("write", 90000, b"\x00"),                       # 9 bits at 90000 baud = a 100 us break
+        ("flush",),                                      # drained before the rate changes back
         ("baud", 250000),
         ("write", 250000, b"\x00" + bytes([7] * 512)),   # start code 0 + 512 channels
     ]
@@ -216,7 +218,7 @@ def test_open_dmx_break_line_method(monkeypatch):
     port.events.clear()
     frame = bytes([7] * 512)
     w.write(frame)
-    ev = port.events
+    ev = [e for e in port.events if e[0] != "flush"]
     assert ev[0] == ("break", True) and ev[1] == ("break", False)      # the break, then the mark
     assert ev[2] == ("write", 250000, b"\x00" + frame)
     assert w.sleeps[-2:] == [w.BREAK_S, w.MARK_S] or w.sleeps[:2] == [w.BREAK_S, w.MARK_S]

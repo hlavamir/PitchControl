@@ -6,9 +6,11 @@ Close PitchControl first (the port must be free), connect the interface and a fi
     backend/.venv/bin/python tools/open_dmx_probe.py [--port /dev/cu.usbserial-XXXX]
                                                       [--channels 1-8] [--value 255]
 
-It tries a series of ways of setting up the port and making the DMX break, each for 3 seconds of
-frames, tells you where a write fails, and asks whether the fixture reacted. Set the fixture to
+It tries a series of ways of writing to the port, each for 3 seconds, tells you which step fails
+(and the state of the port when it does), and asks whether the fixture reacted. Set the fixture to
 the DMX address in --channels first (a dimmer or colour fixture on channel 1 is the easiest).
+Variants S1 and S2 are only about whether the port accepts a 513 byte write at all; the fixture
+cannot react to them (no break), just press Enter.
 At the end it prints which variants worked; send that to the developer.
 """
 import argparse
@@ -23,21 +25,29 @@ BYTE_S = 11 / BAUD
 
 
 class Variant:
-    def __init__(self, name, why, rts=None, dtr=None, flush_out=False, method="baud", settle=0.002, close_first=False, stopbits=2):
-        self.name, self.why, self.rts, self.dtr, self.flush_out = name, why, rts, dtr, flush_out
-        self.method, self.settle, self.close_first, self.stopbits = method, settle, close_first, stopbits
+    def __init__(self, name, why="", *, mode="baud", settle=0.0, flush_before=False, flush_after_break=False,
+                 flush_after_frame=False, poll_outq=False, chunk=0, open_baud=BAUD, open_stop=2, open_bits=8,
+                 rts=None, dtr=None, ask=True):
+        self.name, self.why, self.mode, self.settle = name, why, mode, settle
+        self.flush_before, self.flush_after_break, self.flush_after_frame = flush_before, flush_after_break, flush_after_frame
+        self.poll_outq, self.chunk, self.open_baud, self.open_stop, self.open_bits = poll_outq, chunk, open_baud, open_stop, open_bits
+        self.rts, self.dtr, self.ask = rts, dtr, ask
 
 
 VARIANTS = [
-    Variant("A baud trick, port left as the system opens it", "no RTS / DTR change, 2 ms between steps"),
-    Variant("B baud trick, RTS and DTR low", "as the app did in its last test (it timed out there)", rts=False, dtr=False),
-    Variant("C baud trick, RTS low only", "the RS-485 driver of some dongles follows RTS", rts=False),
-    Variant("D baud trick, DTR low only", "", dtr=False),
-    Variant("E baud trick, RTS and DTR high", "explicit, the macOS default", rts=True, dtr=True),
-    Variant("F baud trick, output buffer flushed after opening", "", flush_out=True),
-    Variant("G baud trick, slow steps (10 ms)", "in case the driver needs longer for a rate change", settle=0.010),
-    Variant("H break line, long break (5 ms)", "TIOCSBRK; failed with write timeouts on macOS before", method="break", settle=0.005),
-    Variant("I baud trick, 1 stop bit", "in case the driver mishandles two stop bits", stopbits=1),
+    # does the port accept a 513 byte write at all?
+    Variant("S1 plain write, 115200 8N1, no break", "basic transmit sanity", mode="plain", open_baud=115200, open_stop=1, flush_after_frame=True, ask=False),
+    Variant("S2 plain write, 250000 8N2, no break", "does the DMX line format work?", mode="plain", flush_after_frame=True, ask=False),
+    Variant("S3 plain write, 250000 8N2, no flush", "as S2 without tcdrain", mode="plain", ask=False),
+    # the sequence of the first app version that did not time out: tcdrain between the steps
+    Variant("J baud trick with flush (tcdrain) between steps", "the first version of the app", flush_before=True, flush_after_break=True),
+    Variant("K J plus 2 ms waits", "", flush_before=True, flush_after_break=True, settle=0.002),
+    Variant("L J, flush also after the frame", "", flush_before=True, flush_after_break=True, flush_after_frame=True),
+    Variant("M waits until the output queue is empty instead of tcdrain", "TIOCOUTQ polling", poll_outq=True, settle=0.002),
+    Variant("N J, frame in chunks of 64 bytes", "", flush_before=True, flush_after_break=True, chunk=64),
+    Variant("O J, opened at 115200 8N1 then switched", "the custom rate set after opening", flush_before=True, flush_after_break=True, open_baud=115200, open_stop=1),
+    Variant("P J with RTS and DTR low", "", flush_before=True, flush_after_break=True, rts=False, dtr=False),
+    Variant("Q break line with flush", "TIOCSBRK", mode="break", flush_before=True, flush_after_break=True, settle=0.005),
 ]
 
 
@@ -48,10 +58,29 @@ def frame_for(channels, value):
     return bytes(data)
 
 
+def drain(port, poll):
+    if poll:
+        t0 = time.monotonic()
+        while port.out_waiting and time.monotonic() - t0 < 1.0:
+            time.sleep(0.0005)
+    else:
+        port.flush()
+
+
+def state(port):
+    out = []
+    for name in ("out_waiting", "cts", "dsr", "cd", "ri"):
+        try:
+            out.append(f"{name}={getattr(port, name)}")
+        except Exception as exc:  # noqa: BLE001
+            out.append(f"{name}=?({type(exc).__name__})")
+    return " ".join(out)
+
+
 def run(port_path, v, frame, seconds):
     t0 = time.monotonic()
     try:
-        port = serial.Serial(port_path, BAUD, bytesize=8, parity="N", stopbits=v.stopbits, timeout=0, write_timeout=1)
+        port = serial.Serial(port_path, v.open_baud, bytesize=v.open_bits, parity="N", stopbits=v.open_stop, timeout=0, write_timeout=1)
     except Exception as exc:  # noqa: BLE001
         return False, f"open failed: {exc!r}"
     step = "setup"
@@ -60,25 +89,34 @@ def run(port_path, v, frame, seconds):
             port.rts = v.rts
         if v.dtr is not None:
             port.dtr = v.dtr
-        if v.flush_out:
-            port.reset_output_buffer()
+        if v.open_baud != BAUD or v.open_stop != 2:
+            step = "switch to 250000 8N2"
+            port.stopbits = 2
+            port.baudrate = BAUD
         time.sleep(0.02)
-        frames, busy_until = 0, 0.0
+        frames = 0
+        data = b"\x00" + frame
         while time.monotonic() - t0 < seconds:
-            wait = busy_until - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-            if v.method == "baud":
+            if v.mode == "baud":
+                if v.flush_before:
+                    step = "drain before the break"
+                    drain(port, v.poll_outq)
                 step = "set 90000 baud"
                 port.baudrate = BREAK_BAUD
                 time.sleep(v.settle)
                 step = "write break byte"
                 port.write(b"\x00")
+                if v.flush_after_break or v.poll_outq:
+                    step = "drain after the break byte"
+                    drain(port, v.poll_outq)
                 time.sleep(v.settle)
                 step = "set 250000 baud"
                 port.baudrate = BAUD
                 time.sleep(v.settle)
-            else:
+            elif v.mode == "break":
+                if v.flush_before:
+                    step = "drain before the break"
+                    drain(port, v.poll_outq)
                 step = "break on"
                 port.break_condition = True
                 time.sleep(v.settle)
@@ -86,13 +124,26 @@ def run(port_path, v, frame, seconds):
                 port.break_condition = False
                 time.sleep(v.settle)
             step = "write frame"
-            data = b"\x00" + frame
-            port.write(data)
-            busy_until = time.monotonic() + len(data) * BYTE_S + 0.002
+            if v.chunk:
+                for i in range(0, len(data), v.chunk):
+                    port.write(data[i:i + v.chunk])
+            else:
+                port.write(data)
+            if v.flush_after_frame:
+                step = "drain after the frame"
+                drain(port, v.poll_outq)
+            elif v.mode == "plain":
+                time.sleep(len(data) * BYTE_S + 0.002)
+            else:
+                time.sleep(len(data) * BYTE_S + 0.002)
             frames += 1
         return True, f"{frames} frames ({frames / seconds:.0f} per second)"
     except Exception as exc:  # noqa: BLE001
-        return False, f"failed at '{step}': {exc!r}"
+        try:
+            extra = state(port)
+        except Exception:  # noqa: BLE001
+            extra = "?"
+        return False, f"failed at '{step}': {exc!r}; port state: {extra}"
     finally:
         try:
             port.close()
@@ -136,7 +187,7 @@ def main():
         ok, detail = run(port_path, v, frame, args.seconds)
         print(f"    port: {'OK' if ok else 'FAILED'}: {detail}")
         reacted = None
-        if ok:
+        if ok and v.ask:
             answer = input("    did the fixture react? [y/n/q] ").strip().lower()
             if answer == "q":
                 break
