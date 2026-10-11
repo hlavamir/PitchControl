@@ -11,6 +11,45 @@ from ..config.models import DeviceRef
 log = logging.getLogger(__name__)
 
 
+# What an FTDI-based DMX interface calls itself. Both the Enttec DMX USB Pro (FT245R) and the Open DMX
+# USB / bare RS-485 dongles (FT232R) have the same VID:PID 0403:6001, the product string tells them apart.
+_PRO_WORDS = ("dmx usb pro", "ultradmx", "dmxking", "ft245r", "usb fifo", "enttec")
+_OPEN_WORDS = ("ft232r", "ft232", "usb uart", "open dmx", "rs485", "rs-485", "485")
+
+
+def guess_dmx_type(*texts: str | None) -> str | None:
+    """"pro" (the interface makes the DMX signal from our packets), "open" (a bare FTDI chip: we make
+    the signal) or None (unknown) from the USB description / product / manufacturer strings."""
+    text = " ".join(t for t in texts if t).lower()
+    if not text:
+        return None
+    if any(w in text for w in _PRO_WORDS):
+        return "pro"
+    if any(w in text for w in _OPEN_WORDS):
+        return "open"
+    return None
+
+
+def device_info(ref: DeviceRef) -> dict | None:
+    """The currently connected device of a configured reference (serial number, VID:PID or port)."""
+    for d in list_serial_devices():
+        if ref.serial_number and d["serial_number"] == ref.serial_number:
+            return d
+    for d in list_serial_devices():
+        if ref.port and d["port"] == ref.port:
+            return d
+    return None
+
+
+def detect_dmx_type(ref: DeviceRef) -> str:
+    """The type of a configured USB DMX interface: from the connected device, else from what was
+    stored when it was chosen; the Enttec Pro protocol when nothing tells."""
+    info = device_info(ref)
+    if info is not None and info.get("dmx_type"):
+        return info["dmx_type"]
+    return guess_dmx_type(ref.description) or "pro"
+
+
 def list_serial_devices() -> list[dict]:
     devices = []
     # USB devices first; built-in ports (Bluetooth, debug consoles) have no VID and are listed last
@@ -29,6 +68,7 @@ def list_serial_devices() -> list[dict]:
                 "vid": p.vid,
                 "pid": p.pid,
                 "label": label,
+                "dmx_type": guess_dmx_type(p.product, p.description if p.description != "n/a" else None, p.manufacturer),
             }
         )
     return devices

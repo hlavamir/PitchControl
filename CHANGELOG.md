@@ -7,8 +7,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
-- **Enttec Open DMX USB** (the cheaper interface in the blue case) as a second interface type next to
-  the Enttec DMX USB Pro and compatibles; per interface on the Outputs page. The app makes the DMX
+- **Enttec Open DMX USB** (the cheaper interface in the blue case) next to the Enttec DMX USB Pro and
+  compatibles. The app detects the type from the USB device ("Detected: …"); an Advanced area under
+  each interface lets you set the type and the way the break is made by hand. The app makes the DMX
   signal itself for it (break, mark, start code), about 26 frames per second. Worked out on a Mac
   with `tools/open_dmx_probe.py`: RTS and DTR low, the break as one byte at 90000 baud, a drain
   between the steps. The app itself has still to be confirmed on the lights.

@@ -7,6 +7,7 @@ import socket
 import time
 
 from ..config.models import OutputSettings
+from .devices import detect_dmx_type
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
 from .workers import LatestFrameWorker, OpenDmxWorker, SerialWorker
 
@@ -47,6 +48,7 @@ class OutputManager:
         # parallel to settings.enttec; None = disabled
         self.enttec: list[SerialWorker | None] = []
         self._enttec_errors: dict[int, str] = {}  # interfaces that were not started, and why
+        self._enttec_kinds: list[str] = []  # "pro" / "open" per interface, parallel to enttec
         self.artnet: ArtNetWorker | None = None
         self.v2: SerialWorker | None = None
         self._sequence = 0
@@ -55,10 +57,12 @@ class OutputManager:
 
     def start(self) -> None:
         s = self.settings
-        self.enttec, self._enttec_errors = [], {}
+        self.enttec, self._enttec_errors, self._enttec_kinds = [], {}, []
         taken: dict[str, int] = {}  # device -> interface that uses it
         for i, e in enumerate(s.enttec):
             worker = None
+            kind = e.type if e.type != "auto" else detect_dmx_type(e.device)
+            self._enttec_kinds.append(kind)
             if e.enabled:
                 key = e.device.serial_number or e.device.port
                 if key and key in taken:
@@ -68,7 +72,7 @@ class OutputManager:
                 else:
                     if key:
                         taken[key] = i
-                    if e.type == "open":
+                    if kind == "open":
                         worker = OpenDmxWorker(e.device, f"opendmx{i + 1}", e.break_method)
                     else:
                         worker = SerialWorker(e.device, ENTTEC_BAUD, f"enttec{i + 1}")
@@ -95,12 +99,13 @@ class OutputManager:
 
     def send(self, universes: dict[int, bytearray], v2_strips: list[list[int]]) -> None:
         s = self.settings
-        for worker, e in zip(self.enttec, s.enttec):
+        for i, (worker, e) in enumerate(zip(self.enttec, s.enttec)):
             if worker is None:
                 continue
             data = universes.get(e.universe, bytes(512))
             # the Pro makes the DMX signal from a packet; the Open DMX needs the bare channels
-            worker.submit(bytes(data[:512]) if e.type == "open" else enttec_pro_packet(data))
+            kind = self._enttec_kinds[i] if i < len(self._enttec_kinds) else "pro"
+            worker.submit(bytes(data[:512]) if kind == "open" else enttec_pro_packet(data))
         if self.artnet is not None and s.artnet.targets:
             self._sequence = self._sequence % 255 + 1
             packets = []
@@ -127,7 +132,7 @@ class OutputManager:
 
     def _enttec_status(self, i: int, worker: SerialWorker | None) -> dict | None:
         if worker is not None:
-            return worker.status()
+            return {**worker.status(), "kind": self._enttec_kinds[i] if i < len(self._enttec_kinds) else "pro"}
         if i in self._enttec_errors:
             return {"connected": False, "error": self._enttec_errors[i], "frames": 0}
         return None

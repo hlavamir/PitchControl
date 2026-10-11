@@ -42,9 +42,12 @@ function DevicePicker({ value, devices, onChange }: { value: DeviceRef; devices:
 
 const MAX_ENTTEC = 4 // as in the backend (config/models.py)
 
+const KIND_NAMES = { pro: 'Enttec DMX USB Pro or compatible', open: 'Enttec Open DMX USB (bare FTDI)' } as const
+
 export function Output({ engine }: { engine: EngineConnection }) {
   const { settings, update, save, dirty, reload, message } = useSettings()
   const [devices, setDevices] = useState<SerialDevice[]>([])
+  const [advanced, setAdvanced] = useState<Record<number, boolean>>({}) // interface index -> the unusual settings are open
   const refresh = () => api.get<SerialDevice[]>('/api/devices/serial').then(setDevices)
   useEffect(() => {
     refresh()
@@ -88,7 +91,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
               className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-40"
               onClick={() =>
                 update((s) =>
-                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'pro', break_method: 'baud', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
+                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'auto', break_method: 'baud', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
                 )
               }
             >
@@ -109,15 +112,6 @@ export function Output({ engine }: { engine: EngineConnection }) {
                     <span className="lbl text-[12px]" data-tip="Switch on to send this interface's universe; off keeps the settings but sends nothing">
                       Interface {i + 1}
                     </span>
-                    <select
-                      className="w-auto"
-                      value={e.type}
-                      data-tip="Enttec DMX USB Pro and compatibles (DMXKing ultraDMX …) make the DMX signal themselves; the cheaper Enttec Open DMX USB (blue case) does not: the app makes it"
-                      onChange={(ev) => update((s) => (s.outputs.enttec[i].type = ev.target.value as 'pro' | 'open'))}
-                    >
-                      <option value="pro">Enttec DMX USB Pro / compatible</option>
-                      <option value="open">Enttec Open DMX USB</option>
-                    </select>
                   </span>
                   <span className="flex items-center gap-3">
                     <StatusDot ok={st ? st.connected : null} label={st ? (st.connected ? 'connected' : 'not connected') : 'off'} error={st?.error} tip="Whether this interface is open and receiving frames (after Save)" />
@@ -134,20 +128,62 @@ export function Output({ engine }: { engine: EngineConnection }) {
                   <span className="text-dim">Universe</span>
                   <UniverseSelect value={e.universe} tip="The universe this interface sends: fixtures with this universe on the Rig page are on its cable" onChange={(v) => update((s) => (s.outputs.enttec[i].universe = v))} />
                 </div>
-                {e.type === 'open' && (
-                  <div className="flex items-center gap-2 text-[12px] text-dim">
-                    <span>The app makes the DMX signal itself. Break by</span>
-                    <select
-                      className="w-auto"
-                      value={e.break_method}
-                      data-tip="How the 88 µs break before each frame is made: one byte at a lower baud rate (default, works with the macOS driver), or the port's break line (the macOS driver stops sending after it)"
-                      onChange={(ev) => update((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
-                    >
-                      <option value="baud">baud rate trick</option>
-                      <option value="break">break line</option>
-                    </select>
-                  </div>
-                )}
+                {/* what the app found out about the device, and the way in to the unusual settings */}
+                {(() => {
+                  const found = devices.find((d) => deviceKey(d) === deviceKey(e.device))?.dmx_type ?? null
+                  const kind = st?.kind ?? (e.type === 'auto' ? found ?? 'pro' : e.type)
+                  const custom = e.type !== 'auto' || e.break_method !== 'baud'
+                  return (
+                    <>
+                      <div className="flex items-center justify-between gap-2 text-[12px] text-dim">
+                        <span data-tip="How the app talks to this interface, found out from the USB device. The Enttec DMX USB Pro and compatible ones (DMXKing ultraDMX …) take packets; a bare FTDI interface such as the Enttec Open DMX USB needs the app to make the DMX signal itself">
+                          {e.type === 'auto' ? 'Detected: ' : 'Set to: '}
+                          <span className="text-ink">{KIND_NAMES[kind]}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="lbl border border-edge px-2 py-0.5 text-[10px] text-ink hover:border-dim"
+                          data-tip="Unusual interfaces: choose the interface type by hand, and how the break is made"
+                          onClick={() => setAdvanced((a) => ({ ...a, [i]: !a[i] }))}
+                        >
+                          Advanced {advanced[i] ? '▾' : '▸'}
+                          {custom && <span className="ml-1 text-glow">·</span>}
+                        </button>
+                      </div>
+                      {advanced[i] && (
+                        <div className="flex flex-col gap-1.5 border-t border-seam pt-1.5 text-[12px]">
+                          <div className="flex items-center gap-2">
+                            <span className="w-28 text-dim">Interface type</span>
+                            <select
+                              className="w-auto"
+                              value={e.type}
+                              data-tip="Detect automatically (recommended), or force one: the Enttec DMX USB Pro protocol (also DMXKing ultraDMX …), or a bare FTDI interface such as the Enttec Open DMX USB, where the app makes the DMX signal"
+                              onChange={(ev) => update((s) => (s.outputs.enttec[i].type = ev.target.value as 'auto' | 'pro' | 'open'))}
+                            >
+                              <option value="auto">Detect automatically</option>
+                              <option value="pro">Enttec DMX USB Pro or compatible</option>
+                              <option value="open">Enttec Open DMX USB (bare FTDI)</option>
+                            </select>
+                          </div>
+                          {kind === 'open' && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-28 text-dim">Break made by</span>
+                              <select
+                                className="w-auto"
+                                value={e.break_method}
+                                data-tip="How the 88 µs break before each frame is made: one byte at a lower baud rate (default, works with the macOS driver), or the port's break line (the macOS driver can get stuck after it until the interface is unplugged)"
+                                onChange={(ev) => update((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
+                              >
+                                <option value="baud">one byte at a lower baud rate (default)</option>
+                                <option value="break">the port's break line</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
                 {sameAs[i] !== null && <p className="text-[12px] text-glow">Same device as interface {sameAs[i]! + 1}: this one is not started.</p>}
               </div>
             )

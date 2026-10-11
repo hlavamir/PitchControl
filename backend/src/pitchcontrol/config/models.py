@@ -310,9 +310,10 @@ class EnttecSettings(Model):
     enabled: bool = False
     device: DeviceRef = Field(default_factory=DeviceRef)
     universe: int = 0
+    # auto: found out from the USB device (Enttec Pro protocol when nothing tells);
     # pro: Enttec DMX USB Pro and compatibles (DMXKing ultraDMX …): the interface makes the DMX
     #      signal from our packets; open: Enttec Open DMX USB, a bare FTDI chip: we make the signal
-    type: Literal["pro", "open"] = "pro"
+    type: Literal["auto", "pro", "open"] = "auto"
     # open only, how the break (the 88 µs low before a frame) is made: "baud" = one 0x00 byte at a
     # lower baud rate; "break" = the serial port's break condition (the macOS FTDI driver stops
     # sending data after it, 2026-10-11)

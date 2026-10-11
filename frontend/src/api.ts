@@ -44,6 +44,7 @@ export interface IoStatus {
   error: string | null
   frames?: number
   level?: number
+  kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   port?: string | null
   controller?: string | null
   channel?: number | null
@@ -100,6 +101,7 @@ export interface SerialDevice {
   vid: number | null
   pid: number | null
   label: string
+  dmx_type?: 'pro' | 'open' | null // what the USB descriptor looks like, for a USB DMX interface
 }
 
 export interface AudioDevice {
@@ -137,7 +139,7 @@ export interface Settings {
   }
   outputs: {
     // up to 4 USB DMX interfaces (the key is from before there were several types)
-    enttec: { enabled: boolean; device: DeviceRef; universe: number; type: 'pro' | 'open'; break_method: 'break' | 'baud' }[]
+    enttec: { enabled: boolean; device: DeviceRef; universe: number; type: 'auto' | 'pro' | 'open'; break_method: 'break' | 'baud' }[]
     artnet: { enabled: boolean; targets: { universe: number; ip: string; artnet_universe?: number | null }[] }
     pitchpls_v2: { enabled: boolean; device: DeviceRef; baudrate: number; mode: number; strips: number; pixels_per_strip: number }
   }

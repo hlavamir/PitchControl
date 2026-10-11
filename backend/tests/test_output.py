@@ -253,3 +253,60 @@ def test_usb_interface_type_selects_the_worker_and_the_data(monkeypatch):
     assert pro.frames[0][:2] == bytes([0x7E, 6])                  # an Enttec Pro packet
     assert op.frames[0] == bytes([5] * 512)                        # bare channels
     assert "break" in op.a                                          # the break method reaches the worker
+
+
+# -- the interface type is found out from the USB device
+
+
+def test_guess_dmx_type_from_the_usb_strings():
+    from pitchcontrol.io.devices import guess_dmx_type
+
+    assert guess_dmx_type("FT245R USB FIFO") == "pro"           # the Enttec DMX USB Pro
+    assert guess_dmx_type("DMX USB PRO", "ENTTEC") == "pro"
+    assert guess_dmx_type("ultraDMX Micro", "DMXking.com") == "pro"
+    assert guess_dmx_type("FT232R USB UART") == "open"          # the Enttec Open DMX USB / bare dongles
+    assert guess_dmx_type(None, "FTDI", "USB-RS485") == "open"
+    assert guess_dmx_type("Midihub MH-3Z6HN83") is None
+    assert guess_dmx_type(None, None) is None
+
+
+def test_auto_type_uses_the_detected_device(monkeypatch):
+    from pitchcontrol.config.models import DeviceRef, OutputSettings
+    from pitchcontrol.io import devices, outputs as out
+
+    class Rec:
+        def __init__(self, *a, **k):
+            self.a, self.frames = a, []
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def submit(self, f):
+            self.frames.append(f)
+
+        def status(self):
+            return {"connected": True, "error": None, "frames": 0}
+
+    # a stored description is enough when the device is not plugged in
+    assert devices.detect_dmx_type(DeviceRef(description="FT232R USB UART")) == "open"
+    assert devices.detect_dmx_type(DeviceRef(description="FT245R USB FIFO")) == "pro"
+    assert devices.detect_dmx_type(DeviceRef()) == "pro"        # nothing tells: the Enttec Pro protocol
+
+    monkeypatch.setattr(out, "SerialWorker", Rec)
+    monkeypatch.setattr(out, "OpenDmxWorker", Rec)
+    s = OutputSettings.model_validate({"enttec": [
+        {"enabled": True, "universe": 0, "device": {"serial_number": "A", "description": "FT245R USB FIFO"}},   # auto -> pro
+        {"enabled": True, "universe": 1, "device": {"serial_number": "B", "description": "FT232R USB UART"}},   # auto -> open
+        {"enabled": True, "universe": 2, "type": "pro", "device": {"serial_number": "C", "description": "FT232R USB UART"}},  # forced
+    ]})
+    m = out.OutputManager(s)
+    m.start()
+    m.send({0: bytearray([9] * 512), 1: bytearray([5] * 512), 2: bytearray([6] * 512)}, [])
+    pro, op, forced = m.enttec
+    assert pro.frames[0][:2] == bytes([0x7E, 6])
+    assert op.frames[0] == bytes([5] * 512)
+    assert forced.frames[0][:2] == bytes([0x7E, 6])
+    assert [x["kind"] for x in m.status()["enttec"]] == ["pro", "open", "pro"]

@@ -62,18 +62,20 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 ![Outputs page](screenshots/outputs.png)
 
-Up to four USB DMX interfaces (Add interface / Remove; each with its own type, device and universe; see [USB DMX interfaces](#usb-dmx-interfaces)), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), and the PitchPlease V2 serial output (device, baud rate, mirror mode). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
+Up to four USB DMX interfaces (Add interface / Remove; each with its own device and universe; the type is detected, see [USB DMX interfaces](#usb-dmx-interfaces)), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), and the PitchPlease V2 serial output (device, baud rate, mirror mode). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
 
 #### USB DMX interfaces
 
-The USB interfaces that PitchControl can drive, chosen per interface on the Outputs page:
+Pick the device and its universe; the app finds out how to talk to it from the USB device ("Detected: …" under it). Two kinds are supported:
 
-| Type | Devices | How it works |
+| Detected as | Devices | How it works |
 |---|---|---|
-| **Enttec DMX USB Pro / compatible** | Enttec DMX USB Pro and Pro Mk2 (one universe), DMXKing ultraDMX Micro / Pro and other interfaces that speak the Enttec Pro protocol | The interface has a processor: the app sends one packet per frame over the serial port and the interface makes the DMX signal. Tried on hardware (Enttec DMX USB Pro). |
-| **Enttec Open DMX USB** | Enttec Open DMX USB (the cheaper one) and other bare FTDI + RS-485 dongles | No processor: the app makes the DMX signal itself on the serial port (250 kbaud, 8N2, break, start code 0, 512 channels). RTS and DTR must be low (the dongle's RS-485 driver follows them), and every step is drained; the break is one byte at 90000 baud. About 26 frames per second. Found with `tools/open_dmx_probe.py` on macOS (2026-10-11). Do not use the "break line" method on macOS: it can leave the dongle in a break that only unplugging clears. |
+| **Enttec DMX USB Pro or compatible** | Enttec DMX USB Pro and Pro Mk2 (one universe), DMXKing ultraDMX Micro / Pro and other interfaces that speak the Enttec Pro protocol | The interface has a processor: the app sends one packet per frame over the serial port and the interface makes the DMX signal. Tried on hardware (Enttec DMX USB Pro). Also what the app assumes when it cannot tell. |
+| **Enttec Open DMX USB (bare FTDI)** | Enttec Open DMX USB (the cheaper one in the blue case) and other bare FTDI + RS-485 dongles | No processor: the app makes the DMX signal itself on the serial port (250 kbaud, 8N2, break, start code 0, 512 channels), about 26 frames per second. Tried on hardware on macOS; the lines RTS and DTR have to be low, which the app does. |
 
-Not supported: interfaces that only work through their manufacturer's driver or software (Nicolaudie / Sunlite, ChamSys, Anyma uDMX and similar), and network nodes other than through Art-Net (sACN is not implemented). Art-Net covers every node that has an Art-Net input (DMXKing eDMX, Enttec ODE, …).
+**Advanced** (under each interface, closed by default; a dot means something is set by hand): the interface type, if the detection is wrong or the interface is unusual, and for the bare FTDI type how the break is made. "One byte at a lower baud rate" is the default and the only one that works with the macOS driver; "the port's break line" can leave the dongle in a break that only unplugging clears. `tools/open_dmx_probe.py` tries the ways of driving such a dongle one by one, for a new computer or interface.
+
+Not supported: interfaces that only work through their manufacturer's driver or software (Nicolaudie / Sunlite, ChamSys, Anyma uDMX and similar), and sACN. Art-Net covers every network node with an Art-Net input (DMXKing eDMX, Enttec ODE, …).
 
 ### 7 · Fog
 
