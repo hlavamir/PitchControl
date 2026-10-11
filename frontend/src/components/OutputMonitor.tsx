@@ -12,25 +12,49 @@ function channelRange(fx: FixtureState): string {
 const pad3 = (n: number) => String(n).padStart(3, '0')
 
 /**
- * The channels one fixture writes: DMX channel number over its value, both 3 digits so nothing
- * shifts while values change, and a level bar under each cell. v2 serial strips have no DMX
- * channels: their cells are numbered by byte position.
+ * The channels one fixture writes: every cell is a small passive fader. The cell fills from the
+ * bottom with the value (0..255) in ink; where the fill is, the text is inverted (dark on ink), so
+ * it stays readable at every level: the same two-layer trick as a slider with its label on it.
+ * Both layers have the same fixed height, so the inverted text sits exactly on the plain one.
+ * Channels are numbered with 3 digits over the value with 3 digits, so nothing shifts while values
+ * change. v2 serial strips have no DMX channels: their cells are numbered by byte position.
  */
+const CELL_H = 34 // px
+
+function ChannelCell({ number, value, tip }: { number: number; value: number; tip: string }) {
+  const label = (
+    <>
+      <span className="text-[9px] leading-none">{pad3(number)}</span>
+      <span className="text-[11px] leading-none">{pad3(value)}</span>
+    </>
+  )
+  return (
+    <div className="relative overflow-hidden bg-panel font-mono" style={{ height: CELL_H }} data-hint="info" data-tip={tip}>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-[3px]">
+        <div className={`flex flex-col items-center gap-[3px] ${value ? 'text-ink' : 'text-dim'}`}>{label}</div>
+      </div>
+      {value > 0 && (
+        <div className="absolute inset-x-0 bottom-0 overflow-hidden bg-ink/90" style={{ height: `${(value / 255) * 100}%` }}>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-center gap-[3px] text-ground" style={{ height: CELL_H }}>
+            {label}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ChannelTable({ fx }: { fx: FixtureState }) {
   const serial = fx.transport === 'pitchpls_v2'
   return (
     <div className="mt-1.5 grid grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] gap-px border border-edge bg-edge">
       {fx.output.map((v, i) => (
-        <div
+        <ChannelCell
           key={i}
-          className="flex flex-col items-center bg-panel pt-0.5 pb-1 font-mono leading-tight"
-          style={{ boxShadow: `inset 0 -2px 0 rgb(var(--ink-rgb) / ${(v / 255).toFixed(3)})` }}
-          data-hint="info"
-          data-tip={serial ? `Serial byte ${i + 1}: ${v}` : `Universe ${fx.universe}, DMX channel ${fx.address + i} (fixture channel ${i + 1}): value ${v}`}
-        >
-          <span className="text-[9px] text-dim">{pad3(serial ? i + 1 : fx.address + i)}</span>
-          <span className={`text-[11px] ${v ? 'text-ink' : 'text-dim'}`}>{pad3(v)}</span>
-        </div>
+          number={serial ? i + 1 : fx.address + i}
+          value={v}
+          tip={serial ? `Serial byte ${i + 1}: ${v}` : `Universe ${fx.universe}, DMX channel ${fx.address + i} (fixture channel ${i + 1}): value ${v}`}
+        />
       ))}
     </div>
   )
