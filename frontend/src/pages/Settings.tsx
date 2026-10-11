@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { api, type Settings as SettingsData } from '../api'
-import { Button, Section } from '../components/forms'
+import { Button, Row, Section } from '../components/forms'
 import { DESIGN_SIZE, INKS, clampScale, fitScale, type InkName, type UiSettings } from '../theme'
 import { useGridNav, type NavItem } from '../useGridNav'
 
@@ -84,6 +84,24 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
     }, 300)
   }
   useEffect(() => () => window.clearTimeout(saveTimer.current), [])
+
+  // engine frame rate: stored in settings.json next to the UI settings, applied by the engine at once
+  const [fps, setFpsState] = useState<number | null>(null)
+  useEffect(() => {
+    api.get<SettingsData>('/api/settings').then((s) => setFpsState(s.fps))
+  }, [])
+  const setFps = async (value: number) => {
+    setFpsState(value)
+    const current = await api.get<SettingsData>('/api/settings')
+    await api.put('/api/settings', { ...current, fps: value })
+  }
+
+  // links of the project: the desktop app opens them in the default browser through the backend
+  const openLink = (e: MouseEvent, url: string) => {
+    if (!desktop) return // a browser follows the link itself
+    e.preventDefault()
+    api.post('/api/open-url', { url }).catch(() => window.open(url, '_blank'))
+  }
 
   const pct = (v: number) => `${Math.round(v * 100)}%`
 
@@ -211,7 +229,27 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
       </Section>
 
       <div className="flex min-w-0 flex-col gap-1.5">
-      <Section index="02" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. The pages with a grid (General, Dimmers, Control Desk, Settings) can be played with the keys alone">
+      <Section
+        index="02"
+        title="Engine"
+        right="applied at once"
+        tip="How often the engine computes the show and sends it to the lights"
+      >
+        <Row
+          label="Frame rate"
+          hint="Frames per second sent to the lights. 40 is what the PitchPlease v3 firmware is built for; DMX512 itself allows about 44 with all 512 channels; slower interfaces or nodes may need less"
+        >
+          <select value={fps ?? 40} disabled={fps === null} onChange={(e) => setFps(Number(e.target.value))}>
+            {[20, 25, 30, 40, 44].map((f) => (
+              <option key={f} value={f}>
+                {f} fps{f === 40 ? ' (default)' : f === 44 ? ' (DMX maximum)' : ''}
+              </option>
+            ))}
+            {fps !== null && ![20, 25, 30, 40, 44].includes(fps) && <option value={fps}>{fps} fps (from the file)</option>}
+          </select>
+        </Row>
+      </Section>
+      <Section index="03" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. The pages with a grid (General, Dimmers, Control Desk, Settings) can be played with the keys alone">
         {KEYMAP.map(([cap, what]) => (
           <div key={cap} className="flex h-[34px] items-center gap-3.5 border-b border-[#1d1f21]">
             <span className="min-w-16 border border-ink px-1.5 py-0.5 text-center font-mono text-[12px]">{cap}</span>
@@ -220,7 +258,7 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
         ))}
       </Section>
       {desktop && (
-        <Section index="03" title="App" right="desktop app" tip="Desktop app only: the app is a window around the same UI that a browser can show">
+        <Section index="04" title="App" right="desktop app" tip="Desktop app only: the app is a window around the same UI that a browser can show">
           <div className="flex gap-1.5">
             <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Open this UI in the default browser, e.g. for a second screen" onClick={() => api.post('/api/open-browser')}>
               Open in browser
@@ -246,7 +284,7 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
           <span className="lbl mt-3 text-[10px] text-dim">The browser view can also be used on a second screen or a phone (start with --host 0.0.0.0)</span>
         </Section>
       )}
-      <Section index={desktop ? '04' : '03'} title="About" right="version" tip="Which PitchControl this is, and where its source and releases are">
+      <Section index={desktop ? '05' : '04'} title="About" right="version" tip="Which PitchControl this is, and where its source and releases are">
         <div className="flex items-baseline justify-between gap-3">
           <span className="lbl text-[12px]">PitchControl</span>
           <span className="text-glow font-mono text-[16px]" data-hint="info" data-tip="Version; +N = commits after that release, (abc1234) = the commit, modified = unsaved changes in the source">
@@ -254,13 +292,37 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
           </span>
         </div>
         <span className="lbl mt-3 flex gap-4 text-[10px] text-dim">
-          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl" target="_blank" rel="noreferrer" data-hint="button" data-tip="Open the project page on GitHub in the browser">
+          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl')} data-hint="button" data-tip="Open the project page on GitHub in the browser">
             Project on GitHub ›
           </a>
-          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl/releases" target="_blank" rel="noreferrer" data-hint="button" data-tip="Open the list of releases (downloads for macOS and Windows) on GitHub">
+          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl/releases" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl/releases')} data-hint="button" data-tip="Open the list of releases (downloads for macOS and Windows) on GitHub">
             Releases ›
           </a>
         </span>
+      </Section>
+      <Section
+        index={desktop ? '06' : '05'}
+        title="Support"
+        right="free and open source"
+        tip="PitchControl is free (MIT licence). If it helps your shows, you can support its development with a donation"
+      >
+        <p className="text-[12px] leading-snug text-dim">
+          PitchControl is free and open source. If it is useful to you, you can support the work on it and on the PitchPlease lights with a
+          donation.
+        </p>
+        <div className="mt-3">
+          <a
+            href="https://ko-fi.com/zeys_hlvmr"
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => openLink(e, 'https://ko-fi.com/zeys_hlvmr')}
+            data-hint="button"
+            data-tip="Open the Ko-fi page of the project in the browser: one-off or monthly donations"
+            className="lbl glow-hover inline-flex h-8 items-center border border-edge bg-panel px-3 text-[11px] font-medium text-ink"
+          >
+            Donate on Ko-fi ›
+          </a>
+        </div>
       </Section>
       </div>
     </div>

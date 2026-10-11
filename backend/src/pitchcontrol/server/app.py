@@ -93,6 +93,24 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         webbrowser.open(desktop["url"])
         return {"ok": True}
 
+    # the project's own pages: the only addresses the UI may ask the desktop app to open
+    allowed_links = ("https://github.com/hlavamir", "https://ko-fi.com/zeys_hlvmr")
+
+    def is_allowed_link(url: str) -> bool:
+        # the address itself or something below it ("…/zeys_hlvmr.evil.example" is neither)
+        return any(url == base or url.startswith((base + "/", base + "?", base + "#")) for base in allowed_links)
+
+    @app.post("/api/open-url")
+    def open_url(data: dict):
+        """Open one of the project's pages in the default browser (desktop app; see allowed_links)."""
+        if desktop is None:
+            raise HTTPException(404)
+        url = str(data.get("url", ""))
+        if not is_allowed_link(url):
+            raise HTTPException(400, "this address is not one of the project's pages")
+        webbrowser.open(url)
+        return {"ok": True}
+
     @app.post("/api/open-data-folder")
     def open_data_folder():
         if desktop is None:

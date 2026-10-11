@@ -228,3 +228,32 @@ def test_first_start_without_scenes_uses_the_defaults(store):
     engine = Engine(store, enable_hardware=False)
     assert engine.macros.control("Strobo Brightness") == 0.0
     assert engine.macros.control("Dimmer 01") == 1.0
+
+
+def test_open_url_only_for_the_projects_pages(store, monkeypatch):
+    import webbrowser
+
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    engine = Engine(store, enable_hardware=False)
+
+    # not the desktop app: the endpoint does not exist
+    assert TestClient(create_app(engine)).post("/api/open-url", json={"url": "https://ko-fi.com/zeys_hlvmr"}).status_code == 404
+
+    client = TestClient(create_app(engine, desktop={"url": "http://127.0.0.1:1", "data_dir": "x"}))
+    assert client.post("/api/open-url", json={"url": "https://ko-fi.com/zeys_hlvmr"}).status_code == 200
+    assert client.post("/api/open-url", json={"url": "https://github.com/hlavamir/PitchControl/releases"}).status_code == 200
+    assert opened == ["https://ko-fi.com/zeys_hlvmr", "https://github.com/hlavamir/PitchControl/releases"]
+    for bad in ("https://evil.example/", "file:///etc/passwd", "https://ko-fi.com/zeys_hlvmr.evil.example", ""):
+        assert client.post("/api/open-url", json={"url": bad}).status_code == 400, bad
+    assert len(opened) == 2
+
+
+def test_frame_rate_is_a_setting_the_engine_follows(store):
+    engine = Engine(store, enable_hardware=False)
+    client = TestClient(create_app(engine))
+    settings = client.get("/api/settings").json()
+    settings["fps"] = 25.0
+    assert client.put("/api/settings", json=settings).json() == {"ok": True}
+    assert client.get("/api/settings").json()["fps"] == 25.0
+    assert store.settings.fps == 25.0
