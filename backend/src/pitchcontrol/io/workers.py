@@ -137,14 +137,8 @@ class OpenDmxWorker(SerialWorker):
             path, DMX_BAUD, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_TWO,
             timeout=0, write_timeout=1,
         )
-        # no flow control; both control lines low, as the Open DMX software of other programs does
-        # (the RS-485 driver of some of these dongles follows RTS)
-        for line in ("rts", "dtr"):
-            try:
-                setattr(self.port, line, False)
-            except (OSError, serial.SerialException, ValueError):
-                pass
-        self.port.reset_output_buffer()
+        # RTS / DTR / the output buffer are left as the system opened the port: forcing the lines low
+        # made every write time out on macOS (2026-10-11); tools/open_dmx_probe.py tries the variants
         time.sleep(0.02)
         self._busy_until = 0.0
         self.connected = True

@@ -180,8 +180,8 @@ def _open_dmx(monkeypatch, method):
 def test_open_dmx_port_setup(monkeypatch):
     w, port = _open_dmx(monkeypatch, "baud")
     assert port.baudrate == 250000 and port.kw["stopbits"] == 2 and port.kw["bytesize"] == 8 and port.kw["parity"] == "N"
-    assert port.rts is False and port.dtr is False   # the control lines are down
-    assert ("reset",) in port.events
+    assert port.rts is True and port.dtr is True     # left as the system opened it
+    assert ("reset",) not in port.events
 
 
 def test_open_dmx_break_by_baud_rate_waits_for_every_step(monkeypatch):
