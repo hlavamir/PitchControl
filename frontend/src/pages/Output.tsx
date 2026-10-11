@@ -88,7 +88,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
               className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-40"
               onClick={() =>
                 update((s) =>
-                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'pro', break_method: 'break', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
+                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'pro', break_method: 'baud', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
                 )
               }
             >
@@ -140,11 +140,11 @@ export function Output({ engine }: { engine: EngineConnection }) {
                     <select
                       className="w-auto"
                       value={e.break_method}
-                      data-tip="How the 88 µs break before each frame is made: the port's break line (default), or one byte at a lower baud rate for drivers that ignore the break line. Change it if the lights do not react"
+                      data-tip="How the 88 µs break before each frame is made: one byte at a lower baud rate (default, works with the macOS driver), or the port's break line (the macOS driver stops sending after it)"
                       onChange={(ev) => update((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
                     >
-                      <option value="break">break line</option>
                       <option value="baud">baud rate trick</option>
+                      <option value="break">break line</option>
                     </select>
                   </div>
                 )}

@@ -313,10 +313,10 @@ class EnttecSettings(Model):
     # pro: Enttec DMX USB Pro and compatibles (DMXKing ultraDMX …): the interface makes the DMX
     #      signal from our packets; open: Enttec Open DMX USB, a bare FTDI chip: we make the signal
     type: Literal["pro", "open"] = "pro"
-    # open only, how the break (the 88 µs low before a frame) is made: "break" = the serial
-    # port's break condition; "baud" = one 0x00 byte at a lower baud rate (works with drivers that
-    # ignore the break condition)
-    break_method: Literal["break", "baud"] = "break"
+    # open only, how the break (the 88 µs low before a frame) is made: "baud" = one 0x00 byte at a
+    # lower baud rate; "break" = the serial port's break condition (the macOS FTDI driver stops
+    # sending data after it, 2026-10-11)
+    break_method: Literal["break", "baud"] = "baud"
 
 
 class ArtNetTarget(Model):

@@ -117,15 +117,26 @@ def test_two_interfaces_cannot_share_a_device():
 
 
 class _FakePort:
-    """Records what the worker does to a serial port."""
+    """Records what the worker does to a serial port, in order."""
 
     instances: list = []
 
     def __init__(self, path, baud, **kw):
-        self.path, self.baudrate, self.kw = path, baud, kw
-        self.events = []
+        self.path, self.kw = path, kw
+        self.events = [("open", baud)]
+        self._baud = baud
         self._break = False
+        self.rts = self.dtr = True   # a port starts with the lines up
         _FakePort.instances.append(self)
+
+    @property
+    def baudrate(self):
+        return self._baud
+
+    @baudrate.setter
+    def baudrate(self, v):
+        self._baud = v
+        self.events.append(("baud", v))
 
     @property
     def break_condition(self):
@@ -137,7 +148,10 @@ class _FakePort:
         self.events.append(("break", v))
 
     def write(self, data):
-        self.events.append(("write", self.baudrate, bytes(data)))
+        self.events.append(("write", self._baud, bytes(data)))
+
+    def reset_output_buffer(self):
+        self.events.append(("reset",))
 
     def flush(self):
         self.events.append(("flush",))
@@ -151,38 +165,65 @@ def _open_dmx(monkeypatch, method):
     from pitchcontrol.io import workers
 
     _FakePort.instances = []
+    clock = {"t": 0.0}
+    sleeps = []
     monkeypatch.setattr(workers.serial, "Serial", _FakePort)
     monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
-    monkeypatch.setattr(workers.time, "sleep", lambda s: None)
+    monkeypatch.setattr(workers.time, "sleep", lambda s: (sleeps.append(s), clock.__setitem__("t", clock["t"] + s)))
+    monkeypatch.setattr(workers.time, "monotonic", lambda: clock["t"])
     w = workers.OpenDmxWorker(DeviceRef(), "opendmx1", method)
     w.open()
+    w.sleeps, w.clock = sleeps, clock
     return w, _FakePort.instances[0]
 
 
-def test_open_dmx_makes_break_mark_and_frame(monkeypatch):
-    w, port = _open_dmx(monkeypatch, "break")
+def test_open_dmx_port_setup(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "baud")
     assert port.baudrate == 250000 and port.kw["stopbits"] == 2 and port.kw["bytesize"] == 8 and port.kw["parity"] == "N"
-    frame = bytes([7] * 512)
-    w.write(frame)
-    ev = [e for e in port.events if e[0] != "flush"]
-    assert ev[0] == ("break", True) and ev[1] == ("break", False)      # the break, then the mark
-    assert ev[2] == ("write", 250000, b"\x00" + frame)                  # start code 0 + 512 channels
-    assert port.events[0] == ("flush",)                                 # the previous frame is out first
+    assert port.rts is False and port.dtr is False   # the control lines are down
+    assert ("reset",) in port.events
 
 
-def test_open_dmx_break_by_baud_rate(monkeypatch):
+def test_open_dmx_break_by_baud_rate_waits_for_every_step(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "baud")
+    port.events.clear()
+    w.write(bytes([7] * 512))
+    # the baud rate change, the break byte and the change back are separate USB transfers: each
+    # one is followed by a wait, so none overtakes the other
+    assert port.events == [
+        ("baud", 90000),
+        ("write", 90000, b"\x00"),                       # 9 bits at 90000 baud = a 100 us break
+        ("baud", 250000),
+        ("write", 250000, b"\x00" + bytes([7] * 512)),   # start code 0 + 512 channels
+    ]
+    settle = w.SETTLE_S
+    assert w.sleeps[-3:] == [settle, settle, settle]
+    assert not any(e[0] == "break" for e in port.events)
+
+
+def test_open_dmx_waits_for_the_previous_frame_by_its_length(monkeypatch):
     w, port = _open_dmx(monkeypatch, "baud")
     w.write(bytes(512))
-    writes = [e for e in port.events if e[0] == "write"]
-    # a 0x00 byte at 90000 baud is the break (9 bits x 11.1 us), then the frame at 250000
-    assert writes[0] == ("write", 90000, b"\x00")
-    assert writes[1][1] == 250000 and writes[1][2] == b"\x00" + bytes(512)
-    assert not any(e[0] == "break" for e in port.events)
-    assert port.baudrate == 250000
+    before = w.clock["t"]
+    w.sleeps.clear()
+    w.write(bytes(512))   # straight away: the first frame (513 slots x 44 us) is still on its way out
+    assert w.sleeps[0] >= 513 * 44e-6 - 1e-6
+    assert w.clock["t"] - before >= 513 * 44e-6
+
+
+def test_open_dmx_break_line_method(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "break")
+    port.events.clear()
+    frame = bytes([7] * 512)
+    w.write(frame)
+    ev = port.events
+    assert ev[0] == ("break", True) and ev[1] == ("break", False)      # the break, then the mark
+    assert ev[2] == ("write", 250000, b"\x00" + frame)
+    assert w.sleeps[-2:] == [w.BREAK_S, w.MARK_S] or w.sleeps[:2] == [w.BREAK_S, w.MARK_S]
 
 
 def test_open_dmx_cuts_long_frames_and_pads_nothing(monkeypatch):
-    w, port = _open_dmx(monkeypatch, "break")
+    w, port = _open_dmx(monkeypatch, "baud")
     w.write(bytes(range(256)) * 3)   # more than 512 bytes: cut at 512 channels
     last = [e for e in port.events if e[0] == "write"][-1]
     assert len(last[2]) == 513
@@ -212,7 +253,7 @@ def test_usb_interface_type_selects_the_worker_and_the_data(monkeypatch):
     monkeypatch.setattr(out, "OpenDmxWorker", Rec)
     s = OutputSettings.model_validate({"enttec": [
         {"enabled": True, "universe": 0, "device": {"serial_number": "A"}},                       # no type: the Pro
-        {"enabled": True, "universe": 1, "type": "open", "break_method": "baud", "device": {"serial_number": "B"}},
+        {"enabled": True, "universe": 1, "type": "open", "break_method": "break", "device": {"serial_number": "B"}},
     ]})
     m = out.OutputManager(s)
     m.start()
@@ -220,4 +261,4 @@ def test_usb_interface_type_selects_the_worker_and_the_data(monkeypatch):
     pro, op = m.enttec
     assert pro.frames[0][:2] == bytes([0x7E, 6])                  # an Enttec Pro packet
     assert op.frames[0] == bytes([5] * 512)                        # bare channels
-    assert op.a[2:] == ("break",) or "baud" in op.a               # the break method reaches the worker
+    assert "break" in op.a                                          # the break method reaches the worker

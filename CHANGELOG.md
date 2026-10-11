@@ -9,7 +9,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Added
 - **Enttec Open DMX USB** (the cheaper interface in the blue case) as a second interface type next to
   the Enttec DMX USB Pro and compatibles; per interface on the Outputs page. The app makes the DMX
-  signal itself for it (break, mark, start code). Not tried on real hardware yet.
+  signal itself for it (break, mark, start code), about 33 frames per second. First hardware test
+  on 2026-10-11 failed on macOS (break line method: write timeouts; baud rate method: no signal);
+  timing and port setup reworked, not yet confirmed.
 - **Frame rate** dropdown on the Settings page (20 / 25 / 30 / 40 / 44 fps, default 40).
 - **Support** section on the Settings page with the Ko-fi link.
 

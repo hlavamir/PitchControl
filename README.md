@@ -71,7 +71,7 @@ The USB interfaces that PitchControl can drive, chosen per interface on the Outp
 | Type | Devices | How it works |
 |---|---|---|
 | **Enttec DMX USB Pro / compatible** | Enttec DMX USB Pro and Pro Mk2 (one universe), DMXKing ultraDMX Micro / Pro and other interfaces that speak the Enttec Pro protocol | The interface has a processor: the app sends one packet per frame over the serial port and the interface makes the DMX signal. Tried on hardware (Enttec DMX USB Pro). |
-| **Enttec Open DMX USB** | Enttec Open DMX USB (the cheaper one) and other bare FTDI + RS-485 dongles | No processor: the app makes the DMX signal itself on the serial port (250 kbaud, 8N2, break, start code 0, 512 channels), at the engine's frame rate. **Not yet tried on hardware.** If the lights do not react, try "Break by: baud rate trick" (some serial drivers ignore the break line). |
+| **Enttec Open DMX USB** | Enttec Open DMX USB (the cheaper one) and other bare FTDI + RS-485 dongles | No processor: the app makes the DMX signal itself on the serial port (250 kbaud, 8N2, break, start code 0, 512 channels), at the engine's frame rate. **Not yet tried on hardware.** The break is made with one 0x00 byte at 90000 baud ("baud rate trick", the default; the macOS FTDI driver stops sending after the port's break line is used, so that method is not recommended there). Every step waits for the USB transfer to take effect, which limits the rate to about 33 frames per second. |
 
 Not supported: interfaces that only work through their manufacturer's driver or software (Nicolaudie / Sunlite, ChamSys, Anyma uDMX and similar), and network nodes other than through Art-Net (sACN is not implemented). Art-Net covers every node that has an Art-Net input (DMXKing eDMX, Enttec ODE, …).
 
