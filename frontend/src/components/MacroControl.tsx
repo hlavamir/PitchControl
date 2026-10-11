@@ -5,6 +5,7 @@ import { macroHint, macroTip } from '../hints'
 const MIN_LABEL_PX = 8 // below this a label is cut off with an ellipsis instead of shrinking further
 const COLOR_TRACK_MS = 3500 // a hue / saturation fader shows its colour scale this long after its value changed
 const COLOR_TRACK_QUIET_MS = 1500 // ... but not for the first values arriving after it appeared
+const COLOR_TRACK_SLIDE_MS = 250 // the scale slides in from the left, the ruler fades out
 
 /**
  * A label that always stays on one line: when the text is wider than the room it gets tighter letter
@@ -352,23 +353,32 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
       </div>
       <div className="flex min-h-0 flex-1 gap-1.5 py-2 pr-2.5 pl-2">
         {/* the same 10 px column for both, so nothing shifts when the colour scale appears */}
-        <div className="relative w-2.5 flex-none">
-          {showTrack && colorTrack ? (
-            <div className="absolute inset-y-0 left-0 flex w-[5px] flex-col-reverse">
+        <div className="relative w-2.5 flex-none overflow-hidden">
+          {colorTrack && (
+            // slides in from the left while the fader is in use, and back out afterwards
+            <div
+              className="absolute inset-y-0 left-0 flex w-[5px] flex-col-reverse"
+              style={{
+                transform: showTrack ? 'translateX(0)' : 'translateX(-120%)',
+                opacity: showTrack ? 1 : 0,
+                transition: `transform ${COLOR_TRACK_SLIDE_MS}ms ease-out, opacity ${COLOR_TRACK_SLIDE_MS}ms ease-out`,
+              }}
+            >
               {colorTrack.steps.map((c, i) => (
                 <div key={i} className="flex-1" style={{ background: c, boxShadow: 'inset 0 1px 0 rgba(15,16,17,.35)' }} />
               ))}
             </div>
-          ) : (
-            TICKS.map((p) => (
+          )}
+          <div style={{ opacity: showTrack ? 0 : 1, transition: `opacity ${COLOR_TRACK_SLIDE_MS}ms ease-out` }} className="absolute inset-0">
+            {TICKS.map((p) => (
               <div
                 key={p}
                 className={`absolute right-0 h-px ${p % 25 === 0 ? 'w-2.5' : 'w-1.5'}`}
                 // 0 % on the bottom edge, 100 % on the top edge of the segment column
                 style={{ bottom: `calc(${p}% - ${p / 100}px)`, background: `rgb(var(--ink-rgb) / ${p % 25 === 0 ? (disabled ? 0.25 : 0.75) : 0.3})` }}
               />
-            ))
-          )}
+            ))}
+          </div>
         </div>
         <div className={`flex flex-1 flex-col-reverse ${disabled ? 'hatch opacity-60' : ''}`}>
           {!disabled && segments.map((st, i) => <div key={i} className="flex-1" style={st} />)}

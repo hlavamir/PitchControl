@@ -18,7 +18,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Changed
 - **Hue / saturation faders** show their colour scale only while in use: under the mouse, dragged,
   selected with the keys, or for a few seconds after the value changed (MIDI, scenes); otherwise
-  the usual ruler.
+  the usual ruler. The scale slides in from the left in a quarter of a second.
 - **Channel values:** each cell is a passive mini fader, filling from the bottom with the value, with
   the text inverted where the fill is.
 - **Header:** the "enttec" indicators say "dmx" ("dmx 1", "dmx 2" …).
