@@ -4,7 +4,7 @@ tools/shipped_config_history.py; don't edit by hand). Path relative to the confi
 _HASHES: dict[str, list[str]] = {
     'controllers/lcxl3.json': ['5f5c44138ca71943', 'cae529030a3c0601'],
     'fixtures/types/Cameo Q-Spot 15.json': ['c6921b0f700eed6f'],
-    'fixtures/types/Generic 1xRGB Fixture.json': ['7081ee0979c3abc0'],
+    'fixtures/types/Generic 1xRGB Fixture.json': ['7081ee0979c3abc0', 'db4ff6367f87d914'],
     'fixtures/types/PitchPls v2.json': ['a44023fb1934b671'],
     'fixtures/types/PitchPls v3.json': ['fabc0c73fc7ce9ca'],
     'fixtures/types/cameo_qspot15_rgbw.json': ['fca6984c9a13ec90'],
@@ -12,7 +12,7 @@ _HASHES: dict[str, list[str]] = {
     'fixtures/types/pitchpls_v3.json': ['633a97cad102f76a', '8e89f2cae692e347'],
     'fixtures/types/rgb_panel.json': ['836340bb78a486fe', 'bd9cce6622addf0f'],
     'rigs/261003 Dekomp.json': ['0b78c383a423a848', '5841e062d358006c', 'faa0d62da4039ff0'],
-    'rigs/Default.json': ['e3356526e9b53330'],
+    'rigs/Default.json': ['7a8943d66dbccfcd', 'e3356526e9b53330'],
     'rigs/default.json': ['2e0cbf0167e6e07a', 'e86e40a0ac52f902'],
     'scenes/scene_1.json': ['8eaa4f6c7e13f624'],
     'scenes/scene_2.json': ['79a4054e12aca51a'],
@@ -22,7 +22,7 @@ _HASHES: dict[str, list[str]] = {
     'scenes/scene_6.json': ['c1ca97fa26e9c0c5'],
     'scenes/scene_7.json': ['0b0c68205b3c8822'],
     'scenes/scene_8.json': ['cc632a75695d7cf8'],
-    'settings.json': ['00e985dec1e636ed', '1ee671e0b87851c8', '2068e0ff5f4325f4', '3f3be820913293eb', '71ac31af11d424ad', '7cde1f9a0e2f6a66', 'ae2a343bba5e79a5', 'e11654256adf10fe'],
+    'settings.json': ['00e985dec1e636ed', '1ee671e0b87851c8', '2068e0ff5f4325f4', '3f3be820913293eb', '71ac31af11d424ad', '7b258b7ae4e894f2', '7cde1f9a0e2f6a66', 'ae2a343bba5e79a5', 'e11654256adf10fe'],
 }
 
 SHIPPED: dict[str, frozenset[str]] = {k: frozenset(v) for k, v in _HASHES.items()}

@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.4.0 — 2026-10-12
+
 ### Changed
 - **Folders:** the app's defaults (fixture types, MIDI mapping, the Default rig, settings) are now
   read-only inside the app; your data folder (`Documents/PitchControl`) keeps only what you made or
