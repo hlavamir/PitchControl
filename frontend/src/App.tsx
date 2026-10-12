@@ -69,6 +69,8 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false })
   const [ui, setUi] = useState<UiSettings>(DEFAULT_UI)
   const [footer, setFooter] = useState<FooterSelection | null>(null)
+  // problems found while loading the configuration (broken files, missing items, the 1.4 migration)
+  const [notices, setNotices] = useState<string[]>([])
   // footer context: the control under the mouse, or the keyboard selection, whichever was used last
   const [hover, setHover] = useState<{ kind: HintKind; tip?: string } | null>(null)
   const [inputMode, setInputMode] = useState<'mouse' | 'keys'>('mouse')
@@ -86,6 +88,7 @@ export default function App() {
       })
       .catch(() => undefined)
     api.get<SettingsData>('/api/settings').then((s) => s.ui && setUi({ ...DEFAULT_UI, ...s.ui }))
+    api.get<string[]>('/api/notices').then(setNotices).catch(() => undefined)
     const onHash = () => setPage(initialPage())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -277,6 +280,19 @@ export default function App() {
             )}
           </nav>
         </header>
+
+        {notices.length > 0 && (
+          <div className="mx-1.5 mt-1.5 flex flex-none items-start gap-3 border border-ink px-3 py-2 text-[12px]" data-hint="info" data-tip="Found while loading your configuration; details are in the log (Settings → App → Open logs folder)">
+            <ul className="flex min-w-0 flex-1 flex-col gap-1 leading-snug">
+              {notices.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+            <button className="lbl glow-hover h-[18px] flex-none border border-edge px-2 text-[10px]" onClick={() => api.delete('/api/notices').then(() => setNotices([]))}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* side margins instead of padding: the scrollbar ends 6 px from the window edge, like the header */}
         <main className="page-scroll mx-1.5 min-h-0 flex-1 overflow-auto py-1.5">

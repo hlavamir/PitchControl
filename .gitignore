@@ -1,4 +1,6 @@
-# runtime
+# runtime: a source run keeps the user data (and its .machine/ folder) in data/
+/data/
+# folders of versions before 1.4
 logs/
 config/state/
 

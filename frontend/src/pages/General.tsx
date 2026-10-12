@@ -51,6 +51,9 @@ interface SceneInfo {
 }
 
 /** Output colour as shown next to the group swatch: hue in degrees (−180…180), saturation in %. */
+const sceneTip = (s: SceneInfo) =>
+  s.exists ? `Scene ${s.index + 1}: ${s.name ?? ''}` : `Scene ${s.index + 1} is empty: loading it sets every macro to its default; Shift + ⏎ saves the current macros into it`
+
 function hsText(hsb: number[] | undefined): string {
   if (!hsb) return ''
   const deg = Math.round(((((hsb[0] + 0.5) % 1) + 1) % 1 - 0.5) * 360)
@@ -64,6 +67,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
   const shown = { ...macros, ...pending } // hue/sat still moving: show where they are heading
   const [scenes, setScenes] = useState<SceneInfo[]>([])
   const [saveMode, setSaveMode] = useState(false)
+  const [deleteMode, setDeleteMode] = useState(false)
   const [lastScene, setLastScene] = useState<number | null>(null)
   const { item } = useMacroNav(engine, defs)
 
@@ -73,7 +77,11 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
   }, [])
 
   const sceneAction = async (i: number, save: boolean) => {
-    if (save) {
+    if (deleteMode) {
+      await api.delete(`/api/scenes/${i}`)
+      setDeleteMode(false)
+      loadScenes()
+    } else if (save) {
       await api.post(`/api/scenes/${i}/save`)
       setSaveMode(false)
       loadScenes()
@@ -85,9 +93,9 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
   const sceneItems: NavItem[] = scenes.map((s) => ({
     id: `scene-${s.index}`,
     label: `Scene ${s.index + 1}`,
-    value: s.name ?? 'empty',
+    value: s.name ?? 'defaults',
     hint: 'scene',
-    tip: s.exists ? `Scene ${s.index + 1}: ${s.name ?? ''}` : `Scene ${s.index + 1} is empty: Shift + ⏎ saves the current macros into it`,
+    tip: sceneTip(s),
     press: (down, shift) => down && sceneAction(s.index, shift || saveMode),
   }))
 
@@ -185,16 +193,29 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
           index="03"
           title="Scenes"
           bodyClassName="p-0"
-          tip="Eight stored sets of macro values: load one to recall a look, or save the current macros into a slot"
+          tip="Eight stored sets of macro values: load one to recall a look, or save the current macros into a slot. An empty slot gives the default values"
           right={
             <>
-              <span>{saveMode ? 'click a scene to save' : '⏎ load · shift + ⏎ save'}</span>
+              <span>{saveMode ? 'click a scene to save' : deleteMode ? 'click a scene to empty it' : '⏎ load · shift + ⏎ save'}</span>
               <button
                 className={`lbl h-[18px] px-2 text-[10px] ${saveMode ? 'glow-on bg-ink text-ground' : 'border border-edge text-ink'}`}
                 data-tip={saveMode ? 'Save mode is on: the next click on a scene saves the current macros into it. Click again to leave it' : 'Switch on, then click a scene to save the current macros into it (Shift + ⏎ does it from the keyboard)'}
-                onClick={() => setSaveMode(!saveMode)}
+                onClick={() => {
+                  setSaveMode(!saveMode)
+                  setDeleteMode(false)
+                }}
               >
                 Save mode
+              </button>
+              <button
+                className={`lbl h-[18px] px-2 text-[10px] ${deleteMode ? 'glow-on bg-ink text-ground' : 'border border-edge text-ink'}`}
+                data-tip={deleteMode ? 'Delete mode is on: the next click on a scene empties it (it then gives the default values). Click again to leave it' : 'Switch on, then click a scene to delete it: the slot becomes empty and loads the default values'}
+                onClick={() => {
+                  setDeleteMode(!deleteMode)
+                  setSaveMode(false)
+                }}
+              >
+                Delete mode
               </button>
             </>
           }
@@ -206,19 +227,19 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
                 <button
                   key={s.index}
                   data-hint="scene"
-                  data-tip={s.exists ? `Scene ${s.index + 1}: ${s.name ?? ''}` : `Scene ${s.index + 1} is empty: Shift + ⏎ saves the current macros into it`}
+                  data-tip={sceneTip(s)}
                   onClick={() => {
                     select(id)
                     sceneAction(s.index, saveMode)
                   }}
                   className={`flex h-12 flex-col justify-center gap-0.5 px-2.5 text-left ${
-                    saveMode ? 'glow-hover bg-panel-2' : 'glow-hover bg-panel'
+                    saveMode || deleteMode ? 'glow-hover bg-panel-2' : 'glow-hover bg-panel'
                   } ${lastScene === s.index ? 'shadow-[inset_0_-2px_0_var(--color-ink)]' : ''} ${selectedId === id ? 'glow-sel' : ''} ${
                     s.exists ? 'text-ink' : 'text-dim'
                   }`}
                 >
                   <span className="font-mono text-[18px] leading-none">{String(s.index + 1).padStart(2, '0')}</span>
-                  <span className="lbl truncate text-[10px] opacity-70">{s.name ?? 'empty'}</span>
+                  <span className="lbl truncate text-[10px] opacity-70">{s.name ?? 'defaults'}</span>
                 </button>
               )
             })}

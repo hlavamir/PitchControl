@@ -109,7 +109,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         }
         tip="The hardware controller (e.g. Launch Control XL 3) that drives the macros: faders, knobs and buttons"
       >
-        <Row label="Controller mapping" hint="Which controller file maps MIDI controls to macros (config/controllers); none = no controller">
+        <Row label="Controller mapping" hint="Which controller file maps MIDI controls to macros (shipped with the app, or controllers/ in your data folder); none = no controller">
           <select value={settings.active_controller ?? ''} onChange={(e) => update((s) => (s.active_controller = e.target.value || null))}>
             <option value="">none</option>
             {controllers.map((c) => (

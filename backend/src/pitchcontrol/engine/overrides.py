@@ -12,6 +12,8 @@ import logging
 import threading
 from pathlib import Path
 
+from ..config.loader import write_json
+
 log = logging.getLogger(__name__)
 
 
@@ -62,7 +64,9 @@ class Overrides:
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            for u, chans in data.items():
+            # since 1.4: {"app_version": …, "universes": {…}}; before: the universes at the top level
+            universes = data.get("universes", {}) if "app_version" in data else data
+            for u, chans in universes.items():
                 for ch, v in chans.items():
                     self.set(int(u), int(ch), int(v))
         except (OSError, ValueError, AttributeError) as exc:
@@ -72,7 +76,4 @@ class Overrides:
             log.warning("restored %d DMX channel override(s) from %s", len(self._values), path)
 
     def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self.snapshot(), indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
+        write_json(path, {"universes": self.snapshot()})

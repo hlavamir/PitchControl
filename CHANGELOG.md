@@ -6,6 +6,33 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Folders:** the app's defaults (fixture types, MIDI mapping, the Default rig, settings) are now
+  read-only inside the app; your data folder (`Documents/PitchControl`) keeps only what you made or
+  changed, and this computer's files (`machine.json`, macro autosave, Control Desk overrides, logs)
+  live in the app-data folder (`~/Library/Application Support/PitchControl`,
+  `%LOCALAPPDATA%\PitchControl`), never in a synced Documents folder. A source run uses the repo's
+  `data/` and never writes into `config/`.
+- **Settings are sparse and split:** `settings.json` holds only what differs from the defaults (new
+  defaults reach everyone); the audio input, MIDI port, outputs and appearance are saved per computer
+  in `machine.json`.
+- **No scenes ship:** an empty scene slot means the macro defaults, and a first start begins with
+  them — a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, preset
+  Back & Forth, all dimmers 100 %).
+- **Default rig:** four generic RGB lights instead of the PitchPlease rig; no fog machines by default.
+- The data folder of 1.3 is moved into the new layout on the first start (untouched copies of the
+  old defaults are dropped, your own files are kept).
+
+### Added
+- **Shipped vs your own:** rigs and fixture types that come with the app are marked; saving one keeps
+  your copy, **Reset to default** removes it, shipped ones can't be deleted.
+- **Delete mode** for scenes (empties a slot).
+- **Self-healing:** a file that can't be read is set aside (`….json.broken-<time>`) instead of
+  being overwritten, and the app's own version is used; a missing rig or controller mapping falls
+  back; problems are shown in a notice at the top of the UI. Every saved file records the
+  `app_version` that wrote it.
+- **Open logs folder** (Settings → App); Settings → About shows the data and computer folders.
+
 ## 1.3.0 — 2026-10-11
 
 ### Added

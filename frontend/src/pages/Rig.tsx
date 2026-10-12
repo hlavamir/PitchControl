@@ -47,7 +47,7 @@ const WHITE: HSB = { h: 0, s: 0, b: 1 }
  */
 export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<string, MacroDef> }) {
   const [rig, setRig] = useState<Rig | null>(null)
-  const [rigs, setRigs] = useState<RigList>({ active: '', available: [] })
+  const [rigs, setRigs] = useState<RigList>({ active: '', available: [], origins: {} })
   const [types, setTypes] = useState<Record<string, FixtureType>>({})
   // indices into rig.fixtures; click selects one, Shift + click adds / removes one (multi-edit)
   const [selection, setSelection] = useState<number[]>([0])

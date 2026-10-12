@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, channelCount, slotKind, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
+import type { Origin } from '../components/RigPanel'
 import { OPEN_TYPE_KEY } from './Rig'
 
 type Kind = ReturnType<typeof slotKind>
@@ -12,9 +13,10 @@ const FORMATS: PixelFormat[] = ['R', 'RGB', 'RGBW']
 interface Status {
   unsaved: string[]
   usage: Record<string, string[]>
+  origins: Record<string, Origin>
 }
 
-type Prompt = { kind: 'name'; action: 'new' | 'duplicate' | 'rename' } | { kind: 'delete' }
+type Prompt = { kind: 'name'; action: 'new' | 'duplicate' | 'rename' } | { kind: 'delete' } | { kind: 'reset' }
 
 /** A slot of another kind, keeping its name. */
 function slotOfKind(slot: ChannelSlot, kind: Kind, firstMacro: string): ChannelSlot {
@@ -50,7 +52,7 @@ function channelMap(t: FixtureType): { from: number; to: number; text: string }[
  */
 export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const [types, setTypes] = useState<Record<string, FixtureType>>({})
-  const [status, setStatus] = useState<Status>({ unsaved: [], usage: {} })
+  const [status, setStatus] = useState<Status>({ unsaved: [], usage: {}, origins: {} })
   const [selected, setSelected] = useState<string>('')
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [name, setName] = useState('')
@@ -84,6 +86,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const t = types[selected]
   const unsaved = status.unsaved.includes(selected)
   const usedIn = status.usage[selected] ?? []
+  const origin: Origin = status.origins[selected] ?? 'user'
   // macros a channel can follow: the faders (dimmers first, they're what fixtures usually bind)
   const macroNames = Object.values(defs)
     .filter((d) => d.kind === 'fader')
@@ -112,6 +115,13 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
     setMessage(res.problems.length ? `Saved · rig: ${res.problems.join('; ')}` : 'Saved')
     loadStatus()
   }
+  const reset = () =>
+    run(async () => {
+      const fresh = await api.post<FixtureType>(`/api/fixture-types/${encodeURIComponent(selected)}/reset`)
+      setTypes((all) => ({ ...all, [selected]: { ...fresh, name: selected } }))
+      setMessage('Reset to the version that comes with the app')
+      return selected
+    })
   const revert = async () => {
     await live.current
     const fresh = await api.post<FixtureType>(`/api/fixture-types/${encodeURIComponent(selected)}/reload`)
@@ -173,7 +183,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         title="Fixture types"
         right={`${Object.keys(types).length} types`}
         bodyClassName="p-2.5 min-h-0 gap-2"
-        tip="Fixture types: what a kind of light is (pixels, channels, defaults). One file each in config/fixtures; rigs place them"
+        tip="Fixture types: what a kind of light is (pixels, channels, defaults). Some come with the app, your own are files in your data folder (fixtures/types); rigs place them"
       >
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
           {Object.values(types).map((x) => (
@@ -189,6 +199,11 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
               >
                 <span className="flex-1 truncate">{x.name}</span>
                 {status.unsaved.includes(x.name) && <span className={`size-[6px] flex-none ${x.name === selected ? 'bg-ground' : 'dot-on'}`} data-hint="info" data-tip="Unsaved edits: live in the engine, Save writes the type file" />}
+                {status.origins[x.name] && status.origins[x.name] !== 'user' && (
+                  <span className="lbl text-[9px] opacity-60" data-hint="info" data-tip={status.origins[x.name] === 'default' ? 'Comes with the app' : 'Comes with the app, changed by you (your copy is in your data folder)'}>
+                    {status.origins[x.name] === 'default' ? 'app' : 'mod'}
+                  </span>
+                )}
                 <span className="font-mono text-[11px] opacity-70">{x.transport === 'pitchpls_v2' ? 'serial' : `${channelCount(x)} ch`}</span>
               </button>
             </li>
@@ -206,11 +221,17 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
             <Button onClick={() => askName('rename')} disabled={!t} tip="Rename the type file; every rig that uses it is updated">
               Rename
             </Button>
-            <span data-tip={usedIn.length ? `Cannot delete: used in ${usedIn.join(', ')}` : undefined}>
-              <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={!t || usedIn.length > 0} tip="Delete the type file (asks first); refused while a rig uses it">
-                Delete
+            {origin === 'modified' ? (
+              <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={!t} tip="Back to the version that comes with the app: your changes to this type are deleted (asks first)">
+                Reset
               </Button>
-            </span>
+            ) : (
+              <span data-tip={origin === 'default' ? 'Comes with the app: it cannot be deleted' : usedIn.length ? `Cannot delete: used in ${usedIn.join(', ')}` : undefined}>
+                <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={!t || usedIn.length > 0 || origin !== 'user'} tip="Delete the type file (asks first); refused while a rig uses it">
+                  Delete
+                </Button>
+              </span>
+            )}
           </div>
         )}
         {prompt?.kind === 'name' && (
@@ -241,10 +262,21 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         )}
         {prompt?.kind === 'delete' && (
           <div className="flex flex-col gap-1.5 border border-ink p-2">
-            <span className="text-[11px]">Delete the fixture type file “{selected}”? A committed file can be restored from git.</span>
+            <span className="text-[11px]">Delete the fixture type file “{selected}”?</span>
             <div className="flex gap-1.5">
               <Button primary onClick={() => run(async () => (await api.delete(`/api/fixture-types/${encodeURIComponent(selected)}`), ''))}>
                 Delete
+              </Button>
+              <Button onClick={() => setPrompt(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+        {prompt?.kind === 'reset' && (
+          <div className="flex flex-col gap-1.5 border border-ink p-2">
+            <span className="text-[11px]">Reset “{selected}” to the version that comes with the app? Your changes to it are lost.</span>
+            <div className="flex gap-1.5">
+              <Button primary onClick={reset}>
+                Reset
               </Button>
               <Button onClick={() => setPrompt(null)}>Cancel</Button>
             </div>
@@ -270,7 +302,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
               <button className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-35" disabled={!unsaved} onClick={revert} data-tip="Throw away the unsaved edits and reload the type from its file">
                 Revert
               </button>
-              <button className="lbl glow-on h-[18px] bg-ink px-2 text-[10px] text-ground disabled:opacity-35" disabled={!unsaved} onClick={save} data-tip="Write the type to its file in config/fixtures">
+              <button className="lbl glow-on h-[18px] bg-ink px-2 text-[10px] text-ground disabled:opacity-35" disabled={!unsaved} onClick={save} data-tip="Write the type to its file in your data folder (fixtures/types); a type that comes with the app gets your own copy">
                 Save
               </button>
             </>

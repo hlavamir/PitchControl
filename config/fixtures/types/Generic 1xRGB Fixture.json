@@ -1,5 +1,5 @@
 {
-  "description": "Generic single-pixel RGB fixture, 3 channels (Stairville panels behind the DJ, back panel, chillout zone). The front panels sit 4 channels apart only to keep addresses in steps of 4, like the pinspots.",
+  "description": "Generic single-pixel RGB fixture: 3 DMX channels (red, green, blue), e.g. an LED par or panel in 3-channel mode.",
   "transport": "dmx",
   "pixels": 1,
   "channels": [
@@ -7,10 +7,10 @@
       "pixels": "RGB"
     }
   ],
-  "gamma": 1.0,
+  "gamma": 1,
   "strobo_color": {
-    "h": 0.0,
-    "s": 0.0,
-    "b": 1.0
+    "h": 0,
+    "s": 0,
+    "b": 1
   }
 }

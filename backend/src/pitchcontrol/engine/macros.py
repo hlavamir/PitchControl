@@ -47,28 +47,35 @@ class MacroDef:
         return self.display_name or self.name
 
 
+def _step(i: int) -> float:
+    """Control value of step ``i`` of a 128-step fader, so a default lies exactly on the grid."""
+    return i / 127
+
+
 def _defs() -> list[MacroDef]:
+    # The defaults are what a first start (and an empty scene slot) shows: a calm test pattern for
+    # setting up the DMX output — the music changes nothing until Strobo or Audio Reactivity is raised.
     d: list[MacroDef] = [
-        MacroDef("Strobo Decay", 0.1, 3.0, legacy_index=0),
-        MacroDef("Strobo Brightness", legacy_index=1),
-        MacroDef("Idle Attack", 0.1, 20.0, legacy_index=2),
-        MacroDef("Idle Brightness", legacy_index=3),
-        MacroDef("Hue A", -0.5, 0.5, legacy_index=4, deferred=True, display_scale=360, unit="°", decimals=0),
+        MacroDef("Strobo Decay", 0.1, 3.0, legacy_index=0, default=_step(61)),  # 1.49 s
+        MacroDef("Strobo Brightness", legacy_index=1, default=1.0),
+        MacroDef("Idle Attack", 0.1, 20.0, legacy_index=2, default=_step(15)),  # 2.45 s
+        MacroDef("Idle Brightness", legacy_index=3, default=1.0),
+        MacroDef("Hue A", -0.5, 0.5, legacy_index=4, deferred=True, display_scale=360, unit="°", decimals=0, default=_step(67)),  # +10°
         # renamed from "Glitches": it sets how much the audio drives the mask (see vvvv-patch-logic)
         MacroDef("Audio Reactivity", legacy_index=5),
-        MacroDef("Hue B", -0.5, 0.5, legacy_index=6, deferred=True, display_scale=360, unit="°", decimals=0),
+        MacroDef("Hue B", -0.5, 0.5, legacy_index=6, deferred=True, display_scale=360, unit="°", decimals=0, default=_step(29)),  # −98°
         MacroDef("Strobo", 0.0, 0.95, legacy_index=7),
         MacroDef("Saturation A", default=1.0, deferred=True, display_scale=100, unit="%", decimals=0),
         MacroDef("Saturation B", default=1.0, deferred=True, display_scale=100, unit="%", decimals=0),
         MacroDef("Swap Colors", steps=2, kind="toggle", legacy_index=8),
         MacroDef("Auto Color Change", steps=2, kind="toggle", legacy_index=9),
-        MacroDef("Vertical Symmetry", steps=2, kind="toggle", legacy_index=10),
-        MacroDef("Strobo Bright. A", legacy_index=16),
-        MacroDef("Idle Bright. A", legacy_index=17),
-        MacroDef("Strobo Bright. B", legacy_index=18),
-        MacroDef("Idle Bright. B", legacy_index=19),
-        MacroDef("Shader Speed", -2.0, 2.0, legacy_index=20),
-        MacroDef("Shader Param", legacy_index=21),
+        MacroDef("Vertical Symmetry", steps=2, kind="toggle", legacy_index=10, default=1.0),
+        MacroDef("Strobo Bright. A", legacy_index=16, default=1.0),
+        MacroDef("Idle Bright. A", legacy_index=17, default=1.0),
+        MacroDef("Strobo Bright. B", legacy_index=18, default=1.0),
+        MacroDef("Idle Bright. B", legacy_index=19, default=1.0),
+        MacroDef("Shader Speed", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
+        MacroDef("Shader Param", legacy_index=21, default=_step(64)),
         MacroDef("Invert Discoball", steps=2, kind="toggle", legacy_index=29),
         MacroDef("Fog Machine", steps=2, kind="momentary", legacy_index=30),
         MacroDef("Manual Strobo", steps=2, kind="momentary", legacy_index=31),
@@ -80,7 +87,7 @@ def _defs() -> list[MacroDef]:
                 steps=2,
                 kind="radio",
                 radio_group="preset",
-                default=1.0 if i == 0 else 0.0,
+                default=1.0 if i == 1 else 0.0,  # B, Back & Forth
                 legacy_index=12 + i,
             )
         )
@@ -209,6 +216,15 @@ class MacroBank:
                 if m is None or m.kind == "button":
                     continue
                 self._values[name] = min(max(float(control), 0.0), 1.0)
+            self.version += 1
+
+    def reset_to_defaults(self) -> None:
+        """Every macro a scene stores (General and Dimmers) back to its default: an empty scene slot."""
+        with self._lock:
+            for m in self.defs.values():
+                if m.kind != "button" and m.page in ("general", "dimmers"):
+                    self._values[m.name] = m.default
+            self._deferred.clear()
             self.version += 1
 
     @property

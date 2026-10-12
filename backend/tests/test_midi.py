@@ -39,7 +39,7 @@ def test_colour_knob_applies_once_it_rests():
     midi = MidiInput(ctrl, None, macros)
     for v in (10, 40, 90):  # turning the knob
         midi.handle(mido.Message("control_change", channel=11, control=33, value=v))
-    assert macros.control("Hue A") == 0.0  # nothing applied while turning
+    assert macros.control("Hue A") == macros.defs["Hue A"].default  # nothing applied while turning
     assert macros.pending()["Hue A"] == 90 / 127
     import time
 

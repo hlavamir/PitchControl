@@ -1,44 +1,99 @@
-"""Loading and saving of the JSON configuration folder.
+"""Loading and saving of the configuration, in two layers plus this computer's files.
 
-Layout (relative to the config directory)::
+- **Defaults** (read-only, shipped with the app: the repo's ``config/``)
+- **User data** (``~/Documents/PitchControl``): only what the user made or changed; every write goes
+  here. A user file wins over a default of the same name (ignoring case); lists are the union.
+- **This computer** (the OS app-data folder): ``machine.json`` and ``state/``.
 
-    settings.json             outputs, inputs, fog, palette, engine options
-    fixtures/types/*.json     one file per fixture model, all autoloaded
+Layout of the defaults and the user folder::
+
+    settings.json             the show's settings (the user's file holds only what differs)
+    fixtures/types/*.json     one file per fixture model
     rigs/<name>.json          fixture instances for one event / venue
     controllers/<name>.json   MIDI controller mappings
-    scenes/scene_<n>.json     saved macro snapshots
-    state/macros.json         auto-saved macro values (crash recovery)
+    scenes/scene_<n>.json     saved macro snapshots (an empty slot = the macro defaults)
 
-Missing keys are filled with defaults. Unknown keys (usually typos) and invalid
-files are reported to the log and never stop the engine.
+and of this computer's folder::
+
+    machine.json              per-computer settings (audio input, MIDI port, outputs, UI)
+    state/macros.json         auto-saved macro values (crash recovery)
+    state/overrides.json      Control Desk overrides
+
+Missing keys are filled with defaults. Unknown keys (usually typos) are reported to the log and never
+stop the engine. A broken file in the user folder is renamed (``*.json.broken-<time>``, never
+overwritten) and the default of the same name takes its place. Every saved file records the
+``app_version`` that wrote it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from .. import __version__
+from .layers import diff, has_machine_keys, merge, split_machine
 from .models import Controller, FixtureType, Rig, Scene, Settings
 
 log = logging.getLogger(__name__)
 
 M = TypeVar("M", bound=BaseModel)
+Origin = Literal["default", "user", "modified"]
+
+VERSION_KEY = "app_version"
+TYPES, RIGS, CONTROLLERS, SCENES = "fixtures/types", "rigs", "controllers", "scenes"
+DEFAULT_RIG = "Default"
 
 # rig names are file names: keep them portable (macOS / Windows) and free of path separators
 RIG_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.\-]{0,63}")
+
+
+# --------------------------------------------------------------------------- files
+
+
+def write_json(path: Path, data: dict) -> None:
+    """Write atomically (temporary file, then rename), with the app version as the first key."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    body = {VERSION_KEY: __version__, **{k: v for k, v in data.items() if k != VERSION_KEY}}
+    tmp.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def canonical(data: Any) -> str:
+    """The content of a JSON file independent of whitespace, key order and the app version."""
+    if isinstance(data, dict):
+        data = {k: v for k, v in data.items() if k != VERSION_KEY}
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def content_hash(data: Any) -> str:
+    return hashlib.sha256(canonical(data).encode("utf-8")).hexdigest()[:16]
+
+
+def quarantine(path: Path) -> Path | None:
+    """Rename a broken file out of the way (kept for the user to repair, never overwritten)."""
+    target = path.with_name(f"{path.name}.broken-{datetime.now():%y%m%d-%H%M%S}")
+    try:
+        path.replace(target)
+    except OSError as exc:
+        log.error("%s: cannot rename the broken file: %s", path, exc)
+        return None
+    return target
 
 
 def report_unknown_keys(model: BaseModel, source: str, path: str = "") -> list[str]:
     """Log (and return) every key that the model did not recognise, recursively."""
     found: list[str] = []
     for key in (model.model_extra or {}):
-        if key.startswith("_"):  # "_comment", "_note" etc. are allowed annotations
+        if key.startswith("_") or (not path and key == VERSION_KEY):  # "_note" etc. are annotations
             continue
         found.append(f"{path}{key}")
     for name in type(model).model_fields:
@@ -54,93 +109,394 @@ def report_unknown_keys(model: BaseModel, source: str, path: str = "") -> list[s
     return found
 
 
-def load_model(path: Path, model: type[M], **defaults) -> M | None:
+def load_model(
+    path: Path,
+    model: type[M],
+    *,
+    broken: Callable[[Path, str], None] | None = None,
+    **defaults,
+) -> M | None:
+    """Read and validate one file. A missing file gives the defaults; a broken one ``None``, and with
+    ``broken`` (user files) it is renamed out of the way and reported there."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         log.warning("%s: not found, using defaults", path)
         return model(**defaults)
-    except json.JSONDecodeError as exc:
-        log.error("%s: invalid JSON (%s), skipped", path, exc)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        log.error("%s: invalid JSON (%s)", path, exc)
+        if broken:
+            broken(path, "invalid JSON")
+        return None
+    except OSError as exc:
+        log.error("%s: cannot be read (%s)", path, exc)
         return None
     if isinstance(data, dict):
+        data.pop(VERSION_KEY, None)  # the version that wrote the file (for future format upgrades)
         for key, value in defaults.items():
             data.setdefault(key, value)
     try:
         obj = model.model_validate(data)
     except ValidationError as exc:
-        log.error("%s: invalid content, skipped:\n%s", path, exc)
+        log.error("%s: invalid content:\n%s", path, exc)
+        if broken:
+            broken(path, "invalid content")
         return None
     report_unknown_keys(obj, str(path))
     return obj
 
 
 def save_model(path: Path, obj: BaseModel) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(obj.model_dump(mode="json", exclude_none=True), indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_json(path, obj.model_dump(mode="json", exclude_none=True))
+
+
+def _normalised(path: Path, model: type[BaseModel]) -> dict | None:
+    """A file's content as the model sees it (defaults filled in), without its name and version."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            data.pop(VERSION_KEY, None)
+            data.pop("name", None)
+        out = model.model_validate(data).model_dump(mode="json", exclude_none=True)
+    except (OSError, ValueError, ValidationError):
+        return None
+    out.pop("name", None)
+    return out
+
+
+# --------------------------------------------------------------------------- the store
 
 
 @dataclass
 class ConfigStore:
-    root: Path
+    root: Path  # the user's data folder: every write goes here
+    defaults: Path | None = None  # shipped with the app, read-only
+    machine: Path | None = None  # this computer: machine.json and state/ (None: the data folder itself)
     settings: Settings = field(default_factory=Settings)
     fixture_types: dict[str, FixtureType] = field(default_factory=dict)
     rig: Rig = field(default_factory=Rig)
     controller: Controller | None = None
+    # problems the user should see in the UI (broken files, missing items, an unwritable folder)
+    notices: list[str] = field(default_factory=list)
+
+    def notice(self, text: str) -> None:
+        if text not in self.notices:
+            self.notices.append(text)
+
+    def broken_file(self, path: Path, why: str) -> None:
+        moved = quarantine(path)
+        kept = f" and was set aside as {moved.name}" if moved else ""
+        self.notice(
+            f"{path.name} in {path.parent} could not be read ({why}){kept}. "
+            "Where the app has its own version of it, that one is used now."
+        )
 
     # -- paths
+    @property
+    def machine_root(self) -> Path:
+        return self.machine or self.root
+
     @property
     def settings_path(self) -> Path:
         return self.root / "settings.json"
 
     @property
+    def machine_path(self) -> Path:
+        return self.machine_root / "machine.json"
+
+    @property
     def types_dir(self) -> Path:
-        return self.root / "fixtures" / "types"
+        return self.root / TYPES
 
     @property
     def rigs_dir(self) -> Path:
-        return self.root / "rigs"
+        return self.root / RIGS
 
     @property
     def controllers_dir(self) -> Path:
-        return self.root / "controllers"
+        return self.root / CONTROLLERS
 
     @property
     def scenes_dir(self) -> Path:
-        return self.root / "scenes"
+        return self.root / SCENES
 
     @property
     def state_dir(self) -> Path:
-        return self.root / "state"
+        return self.machine_root / "state"
+
+    # -- layers
+    def _layer(self, rel: str) -> dict[str, tuple[str, Path | None, Path | None]]:
+        """lower-case name -> (name, default file, user file); the user's spelling wins."""
+        out: dict[str, tuple[str, Path | None, Path | None]] = {}
+        for base, is_user in ((self.defaults, False), (self.root, True)):
+            if base is None:
+                continue
+            for p in sorted((base / rel).glob("*.json")):
+                key = p.stem.lower()
+                name, d, u = out.get(key, (p.stem, None, None))
+                if (u if is_user else d) is not None:
+                    log.error("%s: another file has the same name ignoring case, skipped", p)
+                    continue
+                out[key] = (p.stem, d, p) if is_user else (name, p, u)
+        return out
+
+    def names(self, rel: str) -> list[str]:
+        return sorted((name for name, _, _ in self._layer(rel).values()), key=str.lower)
+
+    def default_file(self, rel: str, name: str) -> Path | None:
+        return self._layer(rel).get(name.lower(), (name, None, None))[1]
+
+    def user_file(self, rel: str, name: str) -> Path | None:
+        return self._layer(rel).get(name.lower(), (name, None, None))[2]
+
+    def find(self, rel: str, name: str) -> Path | None:
+        """The file that counts for ``name``: the user's, else the shipped one."""
+        _, d, u = self._layer(rel).get(name.lower(), (name, None, None))
+        return u or d
+
+    def write_path(self, rel: str, name: str) -> Path:
+        """Where saving ``name`` writes: the user's existing file (any case), else a new one."""
+        return self.user_file(rel, name) or self.root / rel / f"{name}.json"
+
+    def origin(self, rel: str, name: str, model: type[BaseModel]) -> Origin:
+        """``default``: shipped and not changed (a user copy with the same content counts as unchanged);
+        ``user``: the user's own; ``modified``: a shipped item the user changed."""
+        _, d, u = self._layer(rel).get(name.lower(), (name, None, None))
+        if u is None:
+            return "default"
+        if d is None:
+            return "user"
+        same = _normalised(u, model)
+        return "default" if same is not None and same == _normalised(d, model) else "modified"
+
+    def origins(self, rel: str, model: type[BaseModel]) -> dict[str, Origin]:
+        return {name: self.origin(rel, name, model) for name in self.names(rel)}
+
+    def _load_layered(self, rel: str, item: str, model: type[M], **defaults) -> M | None:
+        """The user's file (a broken one is set aside), else the shipped one, else None."""
+        _, d, u = self._layer(rel).get(item.lower(), (item, None, None))
+        if u is not None:
+            obj = load_model(u, model, broken=self.broken_file, **defaults)
+            if obj is not None:
+                return obj
+        if d is not None:
+            return load_model(d, model, **defaults)
+        return None
 
     # -- loading
     def load_all(self) -> None:
-        self.settings = load_model(self.settings_path, Settings) or Settings()
+        self.load_settings()
         self.load_fixture_types()
         self.load_rig(self.settings.active_rig)
         self.load_controller(self.settings.active_controller)
 
+    # -- settings: model defaults <- shipped settings.json <- user settings.json <- machine.json
+    def _read_json(self, path: Path, user: bool) -> dict:
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a JSON object")
+        except (OSError, ValueError) as exc:
+            log.error("%s: cannot be read (%s)", path, exc)
+            if user:
+                self.broken_file(path, "invalid JSON")
+            return {}
+        data.pop(VERSION_KEY, None)
+        return data
+
+    def settings_base(self) -> dict:
+        """The settings before the user changed anything: the model's defaults and the shipped file."""
+        base = Settings().model_dump(mode="json")
+        if self.defaults is not None:
+            shipped = merge(base, self._read_json(self.defaults / "settings.json", user=False))
+            try:  # as the model sees it, so keys it fills in don't count as changes
+                base = Settings.model_validate(shipped).model_dump(mode="json")
+            except ValidationError as exc:
+                log.error("shipped settings.json: invalid content, ignored:\n%s", exc)
+        return base
+
+    def load_settings(self) -> None:
+        merged = self.settings_base()
+        user = self._read_json(self.settings_path, user=True)
+        machine = self._read_json(self.machine_path, user=True)
+        for data, path in ((user, self.settings_path), (machine, self.machine_path)):
+            candidate = merge(merged, data)
+            try:
+                Settings.model_validate(candidate)
+            except ValidationError as exc:
+                log.error("%s: invalid content:\n%s", path, exc)
+                self.broken_file(path, "invalid content")
+                continue
+            merged = candidate
+        self.settings = Settings.model_validate(merged)
+        report_unknown_keys(self.settings, "settings")
+        # self-healing: per-computer values in the user's settings.json (written before 1.4, or by hand)
+        # move to machine.json, which makes the user's file sparse at the same time
+        if has_machine_keys(user):
+            try:
+                self.save_settings()
+                log.info("per-computer settings moved from %s to %s", self.settings_path, self.machine_path)
+            except OSError as exc:
+                log.warning("cannot rewrite the settings: %s", exc)
+
+    def save_settings(self) -> None:
+        """Only what differs from the shipped settings: the show to the data folder, the rest to machine.json."""
+        show, machine = split_machine(self.settings.model_dump(mode="json"))
+        base_show, base_machine = split_machine(self.settings_base())
+        write_json(self.settings_path, diff(base_show, show))
+        write_json(self.machine_path, diff(base_machine, machine))
+
+    # -- fixture types
     def load_fixture_types(self) -> None:
         self.fixture_types = {}
-        for path in sorted(self.types_dir.glob("*.json")):
-            ftype = load_model(path, FixtureType, name=path.stem)
-            if ftype is None:
-                continue
-            ftype.name = path.stem  # the file name is the type name
-            if ftype.name in self.fixture_types:
-                log.error("%s: duplicate fixture type name '%s', skipped", path, ftype.name)
-                continue
-            self.fixture_types[ftype.name] = ftype
+        for name, d, u in sorted(self._layer(TYPES).values(), key=lambda x: x[0].lower()):
+            ftype = load_model(u, FixtureType, broken=self.broken_file, name=name) if u else None
+            if ftype is None and d is not None:  # no user file, or a broken one (moved away)
+                ftype, name = load_model(d, FixtureType, name=d.stem), d.stem
+            if ftype is not None:
+                ftype.name = name  # the file name is the type name
+                self.fixture_types[name] = ftype
         log.info("loaded %d fixture types: %s", len(self.fixture_types), ", ".join(self.fixture_types))
 
+    def names_map(self, rel: str) -> dict[str, str]:
+        """lower-case name -> name as listed (a broken user file moved away gives the shipped spelling)."""
+        return {k: v[0] for k, v in self._layer(rel).items()}
+
+    def type_origins(self) -> dict[str, Origin]:
+        return self.origins(TYPES, FixtureType)
+
+    def type_path(self, name: str) -> Path:
+        return self.write_path(TYPES, name)
+
+    def save_fixture_type(self, ftype: FixtureType) -> None:
+        # the file name is the type name, so it isn't repeated inside the file
+        write_json(self.type_path(ftype.name), ftype.model_dump(mode="json", exclude_none=True, exclude={"name"}))
+
+    def load_fixture_type(self, name: str) -> FixtureType | None:
+        ftype = self._load_layered(TYPES, name, FixtureType, name=name)
+        if ftype is not None:
+            ftype.name = name
+        return ftype
+
+    def type_name_problem(self, name: str) -> str | None:
+        """Why ``name`` can't be used for a new fixture type, or None."""
+        if not RIG_NAME.fullmatch(name):
+            return "use letters, digits, space, - _ . (max 64, starting with a letter or digit)"
+        taken = next((n for n in [*self.fixture_types, *self.names(TYPES)] if n.lower() == name.lower()), None)
+        if taken is not None:
+            return f"the fixture type '{taken}' already exists"
+        return None
+
+    def type_usage(self) -> dict[str, list[str]]:
+        """Fixture type -> the rigs using it: every rig file, the active rig as it is live."""
+        usage: dict[str, set[str]] = {}
+        names = self.rig_names()
+        for name in names:
+            rig = self.rig if name.lower() == self.rig.name.lower() else self.load_rig_file(name)
+            for fx in rig.fixtures if rig else []:
+                usage.setdefault(fx.type, set()).add(name)
+        if self.rig.name.lower() not in {n.lower() for n in names}:  # active rig without a file yet
+            for fx in self.rig.fixtures:
+                usage.setdefault(fx.type, set()).add(self.rig.name)
+        return {t: sorted(r) for t, r in usage.items()}
+
+    def rename_fixture_type(self, old: str, new: str) -> list[str]:
+        """Rename a type and update every rig that uses it (rigs are saved to the user folder, the live
+        rig keeps its unsaved changes unsaved). A shipped type stays: renaming it makes a user copy.
+        Returns the rigs that were changed."""
+        saved = self.load_fixture_type(old) or self.fixture_types[old].model_copy(deep=True)
+        saved.name = new
+        user_old = self.user_file(TYPES, old)
+        # delete before writing: on case-insensitive file systems (macOS, Windows) a rename that only
+        # changes letter case would otherwise delete the file it just wrote
+        if user_old is not None:
+            user_old.unlink()
+        self.save_fixture_type(saved)
+        live = self.fixture_types.pop(old)
+        live.name = new
+        self.fixture_types[new] = live
+        if new.lower() != old.lower() and self.default_file(TYPES, old) is not None:
+            shipped = self.load_fixture_type(old)
+            if shipped is not None:
+                self.fixture_types[old] = shipped
+        changed: list[str] = []
+        for name in self.rig_names():
+            rig = self.load_rig_file(name)
+            if rig is not None and any(fx.type == old for fx in rig.fixtures):
+                for fx in rig.fixtures:
+                    if fx.type == old:
+                        fx.type = new
+                rig.name = name
+                save_model(self.rig_path(name), rig)
+                changed.append(name)
+        for fx in self.rig.fixtures:
+            if fx.type == old:
+                fx.type = new
+                if self.rig.name not in changed:
+                    changed.append(self.rig.name)
+        log.info("renamed fixture type '%s' to '%s' (rigs updated: %s)", old, new, ", ".join(changed) or "none")
+        return changed
+
+    def delete_fixture_type(self, name: str) -> None:
+        """Delete the user's type file (a shipped type can't be deleted, see ``reset_fixture_type``)."""
+        path = self.user_file(TYPES, name)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        self.fixture_types.pop(name, None)
+        log.info("deleted fixture type '%s'", name)
+
+    def reset_fixture_type(self, name: str) -> FixtureType | None:
+        """Back to the shipped version: delete the user's copy. None if the type isn't shipped."""
+        if self.default_file(TYPES, name) is None:
+            return None
+        path = self.user_file(TYPES, name)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        ftype = self.load_fixture_type(name)
+        if ftype is not None:
+            self.fixture_types[name] = ftype
+        log.info("fixture type '%s' reset to the shipped version", name)
+        return ftype
+
+    # -- rigs
+    def rig_names(self) -> list[str]:
+        return self.names(RIGS)
+
+    def rig_origins(self) -> dict[str, Origin]:
+        return self.origins(RIGS, Rig)
+
+    def rig_path(self, name: str) -> Path:
+        return self.write_path(RIGS, name)
+
+    def load_rig_file(self, name: str) -> Rig | None:
+        rig = self._load_layered(RIGS, name, Rig, name=name)
+        if rig is not None:
+            rig.name = self.names_map(RIGS).get(name.lower(), name)
+        return rig
+
     def load_rig(self, name: str) -> None:
-        rig = load_model(self.rigs_dir / f"{name}.json", Rig, name=name)
-        self.rig = rig or Rig(name=name)
-        self.rig.name = name  # the file name is the rig name
+        rig = self.load_rig_file(name) if name else None
+        if rig is None:
+            # self-healing: a missing (or unreadable) active rig falls back to the Default rig, else
+            # to the first one, else an empty rig
+            fallback = next((n for n in [DEFAULT_RIG, *self.rig_names()] if self.find(RIGS, n)), None)
+            rig = self.load_rig_file(fallback) if fallback else None
+            rig = rig or Rig(name=fallback or name or DEFAULT_RIG)
+            if name and name.lower() != rig.name.lower():
+                self.notice(f"The rig “{name}” was not found; “{rig.name}” is loaded instead.")
+                self.settings.active_rig = rig.name
+                try:
+                    self.save_settings()
+                except OSError as exc:
+                    log.warning("cannot save the settings: %s", exc)
+        self.rig = rig
         self.fill_legacy_react_to_strobo(self.rig)
-        self.validate_rig()
+        problems = self.validate_rig()
+        for p in problems:
+            if "unknown type" in p:
+                self.notice(f"Rig “{self.rig.name}”: {p}.")
         log.info("loaded rig '%s' with %d fixtures", self.rig.name, len(self.rig.fixtures))
 
     def fill_legacy_react_to_strobo(self, rig: Rig) -> None:
@@ -178,141 +534,89 @@ class ConfigStore:
             log.warning("rig '%s': %s", self.rig.name, p)
         return problems
 
-    def load_controller(self, name: str | None) -> None:
-        self.controller = None
-        if name:
-            self.controller = load_model(self.controllers_dir / f"{name}.json", Controller, name=name)
-
-    def list_names(self, folder: Path) -> list[str]:
-        return sorted(p.stem for p in folder.glob("*.json"))
-
-    # -- scenes
-    def scene_path(self, index: int) -> Path:
-        return self.scenes_dir / f"scene_{index + 1}.json"
-
-    def load_scene(self, index: int) -> Scene | None:
-        path = self.scene_path(index)
-        if not path.exists():
-            return None
-        return load_model(path, Scene)
-
-    def save_scene(self, index: int, scene: Scene) -> None:
-        save_model(self.scene_path(index), scene)
-
-    # -- saving
-    def save_settings(self) -> None:
-        save_model(self.settings_path, self.settings)
-
     def save_rig(self) -> None:
-        save_model(self.rigs_dir / f"{self.rig.name}.json", self.rig)
+        save_model(self.rig_path(self.rig.name), self.rig)
 
     def dimmer_unassigned(self, macro: str) -> bool:
         """A dimmer macro no fixture of the active rig uses (enabled or not): disabled in the UI,
         ignored by MIDI."""
         return macro.startswith("Dimmer ") and not any(f.dimmer_macro == macro for f in self.rig.fixtures)
 
-    # -- rig files
-    def rig_path(self, name: str) -> Path:
-        return self.rigs_dir / f"{name}.json"
-
     def rig_name_problem(self, name: str) -> str | None:
         """Why ``name`` can't be used for a new rig file, or None."""
         if not RIG_NAME.fullmatch(name):
             return "use letters, digits, space, - _ . (max 64, starting with a letter or digit)"
-        taken = next((n for n in self.list_names(self.rigs_dir) if n.lower() == name.lower()), None)
+        taken = next((n for n in self.rig_names() if n.lower() == name.lower()), None)
         if taken is not None:  # case-insensitive: macOS and Windows file names are
             return f"the rig '{taken}' already exists"
         return None
 
     def rename_rig(self, new: str) -> None:
-        """Rename the active rig's file. Unsaved live changes stay unsaved."""
+        """Rename the active rig. Unsaved live changes stay unsaved. A shipped rig stays listed:
+        renaming it makes a user copy under the new name."""
         old = self.rig.name
-        path = self.rig_path(old)
         # the file keeps its saved content; a missing or broken file takes the live rig
-        saved = (load_model(path, Rig, name=old) if path.exists() else None) or self.rig.model_copy(deep=True)
+        saved = self.load_rig_file(old) or self.rig.model_copy(deep=True)
         saved.name = new
-        save_model(self.rig_path(new), saved)
-        path.unlink(missing_ok=True)
+        user_old = self.user_file(RIGS, old)
+        if user_old is not None:
+            user_old.unlink()  # before writing: a case-only rename on macOS / Windows
+        save_model(self.root / RIGS / f"{new}.json", saved)
         self.rig.name = new
         self.settings.active_rig = new
         self.save_settings()
         log.info("renamed rig '%s' to '%s'", old, new)
 
     def delete_rig(self, name: str) -> None:
-        self.rig_path(name).unlink()
+        """Delete the user's rig file (a shipped rig can't be deleted, see ``reset_rig``)."""
+        path = self.user_file(RIGS, name)
+        if path is not None:
+            path.unlink()
         log.info("deleted rig '%s'", name)
 
-    # -- fixture type files
-    def type_path(self, name: str) -> Path:
-        return self.types_dir / f"{name}.json"
+    def reset_rig(self) -> bool:
+        """Back to the shipped version of the active rig: delete the user's copy and reload it."""
+        name = self.rig.name
+        if self.default_file(RIGS, name) is None:
+            return False
+        path = self.user_file(RIGS, name)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        self.load_rig(name)
+        log.info("rig '%s' reset to the shipped version", name)
+        return True
 
-    def save_fixture_type(self, ftype: FixtureType) -> None:
-        # the file name is the type name, so it isn't repeated inside the file
-        path = self.type_path(ftype.name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data = ftype.model_dump(mode="json", exclude_none=True, exclude={"name"})
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
+    # -- controllers
+    def controller_names(self) -> list[str]:
+        return self.names(CONTROLLERS)
 
-    def load_fixture_type(self, name: str) -> FixtureType | None:
-        ftype = load_model(self.type_path(name), FixtureType, name=name)
-        if ftype is not None:
-            ftype.name = name
-        return ftype
+    def load_controller(self, name: str | None) -> None:
+        self.controller = None
+        if name:
+            self.controller = self._load_layered(CONTROLLERS, name, Controller, name=name)
+            if self.controller is None:
+                self.notice(f"The MIDI controller mapping “{name}” was not found; no controller is used.")
 
-    def type_name_problem(self, name: str) -> str | None:
-        """Why ``name`` can't be used for a new fixture type, or None."""
-        if not RIG_NAME.fullmatch(name):
-            return "use letters, digits, space, - _ . (max 64, starting with a letter or digit)"
-        taken = next((n for n in self.fixture_types if n.lower() == name.lower()), None)
-        if taken is not None:
-            return f"the fixture type '{taken}' already exists"
-        return None
+    def load_controller_file(self, name: str) -> Controller | None:
+        return self._load_layered(CONTROLLERS, name, Controller, name=name)
 
-    def type_usage(self) -> dict[str, list[str]]:
-        """Fixture type -> the rigs using it: every rig file, the active rig as it is live."""
-        usage: dict[str, set[str]] = {}
-        for name in self.list_names(self.rigs_dir):
-            rig = self.rig if name == self.rig.name else load_model(self.rig_path(name), Rig, name=name)
-            for fx in rig.fixtures if rig else []:
-                usage.setdefault(fx.type, set()).add(name)
-        if self.rig.name not in self.list_names(self.rigs_dir):  # active rig without a file yet
-            for fx in self.rig.fixtures:
-                usage.setdefault(fx.type, set()).add(self.rig.name)
-        return {t: sorted(r) for t, r in usage.items()}
+    # -- scenes (none ship; an empty slot means the macro defaults)
+    def scene_name(self, index: int) -> str:
+        return f"scene_{index + 1}"
 
-    def rename_fixture_type(self, old: str, new: str) -> list[str]:
-        """Rename a type's file and update every rig that uses it (files and the live rig, whose
-        unsaved changes stay unsaved). Returns the rigs that were changed."""
-        saved = self.load_fixture_type(old) or self.fixture_types[old].model_copy(deep=True)
-        saved.name = new
-        # delete before writing: on case-insensitive file systems (macOS, Windows) a rename that only
-        # changes letter case would otherwise delete the file it just wrote
-        self.type_path(old).unlink(missing_ok=True)
-        self.save_fixture_type(saved)
-        live = self.fixture_types.pop(old)
-        live.name = new
-        self.fixture_types[new] = live
-        changed: list[str] = []
-        for name in self.list_names(self.rigs_dir):
-            rig = load_model(self.rig_path(name), Rig, name=name)
-            if rig is not None and any(fx.type == old for fx in rig.fixtures):
-                for fx in rig.fixtures:
-                    if fx.type == old:
-                        fx.type = new
-                rig.name = name
-                save_model(self.rig_path(name), rig)
-                changed.append(name)
-        for fx in self.rig.fixtures:
-            if fx.type == old:
-                fx.type = new
-                if self.rig.name not in changed:
-                    changed.append(self.rig.name)
-        log.info("renamed fixture type '%s' to '%s' (rigs updated: %s)", old, new, ", ".join(changed) or "none")
-        return changed
+    def scene_path(self, index: int) -> Path:
+        return self.write_path(SCENES, self.scene_name(index))
 
-    def delete_fixture_type(self, name: str) -> None:
-        self.type_path(name).unlink(missing_ok=True)
-        self.fixture_types.pop(name, None)
-        log.info("deleted fixture type '%s'", name)
+    def load_scene(self, index: int) -> Scene | None:
+        return self._load_layered(SCENES, self.scene_name(index), Scene)
+
+    def save_scene(self, index: int, scene: Scene) -> None:
+        save_model(self.scene_path(index), scene)
+
+    def delete_scene(self, index: int) -> bool:
+        path = self.user_file(SCENES, self.scene_name(index))
+        if path is None:
+            return False
+        path.unlink(missing_ok=True)
+        log.info("deleted scene %d", index + 1)
+        return True

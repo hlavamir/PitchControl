@@ -1,17 +1,8 @@
 """Standalone desktop app: engine + server in the background, UI in a native window.
 
-Data folder (``config/`` + ``logs/``), first match wins:
-
-1. ``--data <folder>``
-2. a path written in ``~/Documents/PitchControl/data_folder.txt``
-3. the repo folder: the source tree when run from source, or
-   the repo path recorded at build time (``build_info.json``) — so rigs and
-   fixtures edited in the app land in git
-4. ``~/Documents/PitchControl`` (fallback, e.g. for a build made on GitHub)
-
-Missing default files are copied in from the bundled config (never overwriting)
-only in the fallback folder or a folder without a config yet; a repo config is
-used as it is.
+Folders (see ``paths.py``): the shipped defaults are read-only inside the app, the user's data is
+``~/Documents/PitchControl`` (or ``--data`` / ``data_folder.txt``), and this computer's files
+(``machine.json``, the macro autosave, the logs) are in the OS app-data folder.
 
 Closing the window stops the engine.
 """
@@ -20,10 +11,8 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import json
 import logging
 import os
-import shutil
 import socket
 import sys
 import threading
@@ -34,13 +23,12 @@ from pathlib import Path
 
 import uvicorn
 
-from .config.loader import ConfigStore
 from .engine.engine import Engine
 from .logsetup import setup_logging
+from .paths import APP_NAME, open_store, resolve_paths
 from .server.app import create_app
 from .version import version_label
 
-APP_NAME = "PitchControl"
 DEFAULT_PORT = 8420
 log = logging.getLogger("pitchcontrol.desktop")
 
@@ -58,52 +46,6 @@ def bundled_config(res: Path) -> Path:
 
 def bundled_frontend(res: Path) -> Path:
     return res / "frontend_dist" if (res / "frontend_dist").exists() else res / "frontend" / "dist"
-
-
-def user_dir() -> Path:
-    return Path.home() / "Documents" / APP_NAME
-
-
-def repo_folder(res: Path) -> Path | None:
-    """The repo folder, if it exists on this machine."""
-    if not getattr(sys, "frozen", False):
-        candidate = res  # running from source: resource_dir() is the repo root
-    else:
-        try:
-            info = json.loads((res / "build_info.json").read_text(encoding="utf-8"))
-            candidate = Path(info["pitch_control_dir"])
-        except (OSError, ValueError, KeyError):
-            return None
-    return candidate if (candidate / "config").is_dir() else None
-
-
-def choose_data_dir(arg: Path | None, res: Path) -> tuple[Path, str]:
-    """Return (data folder, reason)."""
-    if arg is not None:
-        return arg, "--data"
-    pointer = user_dir() / "data_folder.txt"
-    if pointer.exists():
-        target = Path(pointer.read_text(encoding="utf-8").strip()).expanduser()
-        if (target / "config").is_dir():
-            return target, f"from {pointer}"
-    repo = repo_folder(res)
-    if repo is not None:
-        return repo, "repo"
-    return user_dir(), "fallback"
-
-
-def install_default_config(src: Path, dst: Path) -> list[Path]:
-    """Copy every default file that is missing in ``dst``; never overwrite."""
-    copied = []
-    for file in src.rglob("*"):
-        if not file.is_file() or "state" in file.relative_to(src).parts:
-            continue
-        target = dst / file.relative_to(src)
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(file, target)
-            copied.append(target)
-    return copied
 
 
 def free_port(preferred: int) -> int:
@@ -135,7 +77,8 @@ def main() -> None:
         sys.stderr = open(os.devnull, "w")
 
     parser = argparse.ArgumentParser(description="PitchControl desktop app")
-    parser.add_argument("--data", type=Path, default=None, help="folder with config/ and logs/ (default: the repo)")
+    parser.add_argument("--data", type=Path, default=None, help="folder with your rigs, scenes and settings (default: Documents/PitchControl)")
+    parser.add_argument("--machine", type=Path, default=None, help="folder for this computer's settings, autosave and logs")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to allow a phone on the LAN")
     parser.add_argument("--no-hardware", action="store_true", help="run without audio, MIDI and outputs")
@@ -144,23 +87,23 @@ def main() -> None:
     args, _ = parser.parse_known_args()  # macOS may add -psn_… arguments
 
     res = resource_dir()
-    data, reason = choose_data_dir(args.data, res)
-    config_dir = data / "config"
-    setup_logging(data / "logs")
-    copied = []
-    # defaults go only into the Documents fallback or a brand-new folder, never into an existing config
-    if reason == "fallback" or not (config_dir / "settings.json").exists():
-        copied = install_default_config(bundled_config(res), config_dir)
-    log.info("%s %s starting, data folder %s (%s, %d default files installed)", APP_NAME, version_label(), data, reason, len(copied))
+    paths = resolve_paths(
+        bundled_config(res),
+        data=args.data,
+        machine=args.machine,
+        source_repo=None if getattr(sys, "frozen", False) else res,
+    )
+    setup_logging(paths.logs)
+    log.info("%s %s starting", APP_NAME, version_label())
+    log.info("defaults %s, data folder %s (%s), this computer %s", paths.defaults, paths.user, paths.reason, paths.machine)
 
-    store = ConfigStore(config_dir)
-    store.load_all()
+    store = open_store(paths)
     engine = Engine(store, enable_hardware=not args.no_hardware)
     engine.start()
 
     port = free_port(args.port)
     url = f"http://127.0.0.1:{port}"
-    desktop_hooks: dict = {"url": url, "data_dir": str(data)}
+    desktop_hooks: dict = {"url": url, "data_dir": str(paths.user), "logs_dir": str(paths.logs)}
     app = create_app(engine, static_dir=bundled_frontend(res), desktop=desktop_hooks)
     server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=port, log_level="warning"))
     server_thread = threading.Thread(target=server.run, name="server", daemon=True)

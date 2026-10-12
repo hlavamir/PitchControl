@@ -66,7 +66,7 @@ def test_api_and_websocket(store):
 def test_rig_management(store):
     engine = Engine(store, enable_hardware=False)
     client = TestClient(create_app(engine))
-    rigs = lambda: client.get("/api/rigs").json()  # noqa: E731
+    rigs = lambda: {k: v for k, v in client.get("/api/rigs").json().items() if k != "origins"}  # noqa: E731
     # the shipped rig's name changes with the events; call it "default" here so the expected
     # (sorted) rig lists below stay fixed
     if store.rig.name != "default":
@@ -204,17 +204,17 @@ def test_fixture_type_management(store):
     assert client.delete("/api/fixture-types/Spot").json()["ok"] and "Spot" not in store.fixture_types
 
 
-def test_first_start_begins_with_scene_1(store):
-    # no state/macros.json yet (it is not in the repo): scene 1, not every fader at 0
-    engine = Engine(store, enable_hardware=False)
-    scene = store.load_scene(0)
-    assert scene is not None
-    assert engine.macros.control("Strobo Brightness") == scene.values["Strobo Brightness"] == 1.0
-    assert engine.macros.control("Strobo Decay") == scene.values["Strobo Decay"]
-    assert engine.macros.control("Saturation A") == 1.0  # not part of the scenes: its own default
+def test_first_start_uses_the_macro_defaults(store):
+    # no state/macros.json yet: the defaults in macros.py (no scenes ship), a calm test pattern
+    m = Engine(store, enable_hardware=False).macros
+    assert m.control("Strobo Brightness") == m.control("Idle Brightness") == m.control("Dimmer 01") == 1.0
+    assert m.control("Strobo") == m.control("Audio Reactivity") == 0.0
+    assert round(m.value("Strobo Decay"), 2) == 1.49 and round(m.value("Idle Attack"), 2) == 2.45
+    assert m.control("Shader Speed") == m.control("Shader Param") == 64 / 127
+    assert m.radio_index("preset") == 1 and m.on("Vertical Symmetry") and not m.on("Auto Color Change")
 
 
-def test_saved_macro_values_win_over_scene_1(store):
+def test_saved_macro_values_win_over_the_defaults(store):
     first = Engine(store, enable_hardware=False)
     first.macros.set("Strobo Brightness", 0.25)
     first._autosave_macros(force=True)
@@ -222,12 +222,16 @@ def test_saved_macro_values_win_over_scene_1(store):
     assert again.macros.control("Strobo Brightness") == 0.25
 
 
-def test_first_start_without_scenes_uses_the_defaults(store):
-    for f in store.scenes_dir.glob("scene_*.json"):
-        f.unlink()
+def test_empty_scene_slot_means_the_defaults(store):
     engine = Engine(store, enable_hardware=False)
-    assert engine.macros.control("Strobo Brightness") == 0.0
-    assert engine.macros.control("Dimmer 01") == 1.0
+    client = TestClient(create_app(engine))
+    engine.macros.set("Strobo Brightness", 0.25)
+    engine.save_scene(2)
+    assert client.delete("/api/scenes/2").json()["deleted"]
+    assert not (store.scenes_dir / "scene_3.json").exists()
+    assert client.get("/api/scenes").json()[2]["exists"] is False
+    assert client.post("/api/scenes/2/load").json()["ok"]  # an empty slot loads the defaults
+    assert engine.macros.control("Strobo Brightness") == 1.0
 
 
 def test_open_url_only_for_the_projects_pages(store, monkeypatch):

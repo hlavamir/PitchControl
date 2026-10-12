@@ -2,9 +2,13 @@ import { useState } from 'react'
 import { api } from '../api'
 import { Button, Section } from './forms'
 
+/** default: shipped with the app, unchanged; user: the user's own; modified: a shipped one the user changed */
+export type Origin = 'default' | 'user' | 'modified'
+
 export interface RigList {
   active: string
   available: string[]
+  origins?: Record<string, Origin>
 }
 
 type NameAction = 'rename' | 'duplicate' | 'new'
@@ -13,6 +17,7 @@ type Prompt =
   | { kind: 'name'; action: NameAction }
   | { kind: 'unsaved'; what: string; then: () => void | Promise<void> }
   | { kind: 'delete' }
+  | { kind: 'reset' }
 
 const NAME_TITLE: Record<NameAction, string> = {
   rename: 'Rename rig',
@@ -53,6 +58,7 @@ export function RigPanel({
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const active = rigs.active
+  const origin: Origin = rigs.origins?.[active] ?? 'user'
 
   const close = () => {
     setPrompt(null)
@@ -105,7 +111,7 @@ export function RigPanel({
         )
       }
       bodyClassName="p-2.5 gap-2"
-      tip="A rig is one file of lights (config/rigs). Only one rig is active; the others are kept for other venues or setups"
+      tip="A rig is one file of lights (rigs/ in your data folder). Only one rig is active; the others are kept for other venues or setups"
     >
       <select
         className="w-full"
@@ -115,9 +121,22 @@ export function RigPanel({
         data-tip="Active rig: choosing another loads it (asks first when this one has unsaved changes)"
       >
         {rigs.available.map((r) => (
-          <option key={r}>{r}</option>
+          <option key={r} value={r}>
+            {r}
+            {rigs.origins?.[r] === 'default' ? ' · shipped' : rigs.origins?.[r] === 'modified' ? ' · modified' : ''}
+          </option>
         ))}
       </select>
+      {origin !== 'user' && (
+        <div className="flex items-center justify-between gap-2 text-[11px] text-dim" data-hint="info" data-tip={origin === 'default' ? 'This rig comes with the app. Saving it keeps your copy in your data folder; the app’s version stays untouched' : 'A rig that comes with the app, changed by you: your copy is in your data folder. Reset to default deletes it'}>
+          <span className="lbl text-[10px]">{origin === 'default' ? 'shipped with the app' : 'shipped · modified by you'}</span>
+          {origin === 'modified' && prompt === null && (
+            <button className="lbl glow-hover h-[18px] border border-edge px-2 text-[10px] text-ink" onClick={() => setPrompt({ kind: 'reset' })}>
+              Reset to default
+            </button>
+          )}
+        </div>
+      )}
       <textarea
         rows={2}
         className="w-full resize-none text-[11px] leading-snug"
@@ -131,7 +150,7 @@ export function RigPanel({
       {prompt === null && (
         <>
           <div className="flex gap-1.5">
-            <Button onClick={save} primary disabled={!dirty} tip="Write the rig, with all edits, to its file in config/rigs">
+            <Button onClick={save} primary disabled={!dirty} tip="Write the rig, with all edits, to its file in your data folder (rigs/)">
               Save
             </Button>
             <Button onClick={revert} disabled={!dirty} tip="Throw away the unsaved edits and reload the rig from its file">
@@ -139,7 +158,11 @@ export function RigPanel({
             </Button>
             {/* destructive: kept apart at the right end */}
             <span className="ml-auto">
-              <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={rigs.available.length < 2} tip="Delete this rig's file (asks first); the last rig cannot be deleted">
+              <Button
+                onClick={() => setPrompt({ kind: 'delete' })}
+                disabled={rigs.available.length < 2 || origin !== 'user'}
+                tip={origin !== 'user' ? 'A rig that comes with the app cannot be deleted (Reset to default removes your changes to it)' : "Delete this rig's file (asks first); the last rig cannot be deleted"}
+              >
                 Delete
               </Button>
             </span>
@@ -219,12 +242,25 @@ export function RigPanel({
       {prompt?.kind === 'delete' && (
         <div className="flex flex-col gap-1.5 border border-ink p-2">
           <span className="text-[11px]">
-            Delete the rig file “{active}”{dirty ? ' and its unsaved changes' : ''}? The next rig is loaded. A committed file can be
-            restored from git.
+            Delete the rig file “{active}”{dirty ? ' and its unsaved changes' : ''}? The next rig is loaded.
           </span>
           <div className="flex gap-1.5">
             <Button primary onClick={() => run(() => api.delete('/api/rig'))}>
               Delete
+            </Button>
+            <Button onClick={close}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {prompt?.kind === 'reset' && (
+        <div className="flex flex-col gap-1.5 border border-ink p-2">
+          <span className="text-[11px]">
+            Reset “{active}” to the version that comes with the app? Your changes to it{dirty ? ', including the unsaved ones,' : ''} are lost.
+          </span>
+          <div className="flex gap-1.5">
+            <Button primary onClick={() => run(() => api.post('/api/rig/reset'))}>
+              Reset
             </Button>
             <Button onClick={close}>Cancel</Button>
           </div>

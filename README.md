@@ -6,11 +6,11 @@ Website, documentation and downloads: **[pitchcontrol.eu](https://pitchcontrol.e
 
 - **Backend** (`backend/`, Python): the engine, which runs at 40 FPS in its own thread and owns audio, MIDI and all outputs. It keeps running if the browser is closed.
 - **Frontend** (`frontend/`, Vite + React + TypeScript + Tailwind): the pages General, Dimmers, Fixtures, Rig, Inputs, Outputs, Fog, Settings and Control Desk. It talks to the backend over HTTP and a WebSocket.
-- **Config** (`config/`): plain JSON, edited from the UI or by hand.
+- **Config** (`config/`): the read-only defaults that ship with the app (fixture types, the MIDI mapping, the Default rig, settings). What you make or change is kept in your data folder, see [Folders](#folders).
 
 ## Pages
 
-Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The screenshots were taken at the 1512 × 915 design size with amber ink, without hardware connected (so audio, MIDI and the DMX interface show as off), with a synthetic techno loop feeding the audio analysis. The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with the values of scene 1.
+Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The screenshots were taken at the 1512 × 915 design size with amber ink, without hardware connected (so audio, MIDI and the DMX interface show as off), with a synthetic techno loop feeding the audio analysis. The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with their defaults: a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, so the music changes nothing until you raise them).
 
 ### 1 · General
 
@@ -19,7 +19,7 @@ Keys 1–9 switch between the pages. Everything can be operated from the keyboar
 The page for playing the show:
 - **Macros:** 16 faders for strobo decay, idle attack, shader speed and parameter, the two group colours (hue / saturation), audio reactivity and the strobo / idle brightness of each group. They map to the Launch Control XL's knob row 3 and faders.
 - **Functions and shader presets:** manual strobo, fog, invert discoball, vertical symmetry, auto colour, swap colours, and the four mask presets Gradient, Back & Forth, Rotating Line and Noise.
-- **Scenes:** the 8 scenes. ⏎ loads one, Shift + ⏎ (or save mode) stores the current macros into it.
+- **Scenes:** the 8 scenes. ⏎ loads one, Shift + ⏎ (or save mode) stores the current macros into it, delete mode empties a slot. An empty slot loads the default values; no scenes ship with the app.
 - **Scene:** a live preview of the mask with every fixture pixel in the colour it is sending. Below it, the phase bar: strobo drains it after each peak, idle fills it back. Then the final colours of groups A and B.
 - **Audio:** the 32 frequency bands with the peaks map that triggers the strobo.
 
@@ -100,7 +100,7 @@ Every DMX output channel as a slider: pick a universe (0–3) and a subpage of 6
 
 ## Download
 
-Ready-to-run builds for macOS (Apple Silicon) and Windows are on the [Releases page](https://github.com/hlavamir/PitchControl/releases/latest). Download the zip for your system and unpack it; no Python or Node needed. A downloaded app keeps its configuration in `Documents/PitchControl/` (created on first start with the default rig and fixture types). What changed between versions is in [CHANGELOG.md](CHANGELOG.md); the running version is shown in Settings → About.
+Ready-to-run builds for macOS (Apple Silicon) and Windows are on the [Releases page](https://github.com/hlavamir/PitchControl/releases/latest). Download the zip for your system and unpack it; no Python or Node needed. A downloaded app keeps what you make or change in `Documents/PitchControl/` and this computer's settings in the app-data folder; see [Folders](#folders). What changed between versions is in [CHANGELOG.md](CHANGELOG.md); the running version is shown in Settings → About.
 
 ## Run
 
@@ -122,7 +122,7 @@ Open http://127.0.0.1:8420.
 Options:
 - `--no-hardware` runs without audio, MIDI and outputs.
 - `--host 0.0.0.0` lets other devices (a phone) on the LAN reach the UI.
-- `--port`, `--config`, `--logs` change the defaults.
+- `--data <folder>` uses another data folder instead of the repo's `data/` (gitignored); `--machine <folder>` another folder for this computer's files (default: `.machine/` in the data folder); `--port`, `--logs` change the defaults.
 
 On Windows, use `.venv\Scripts\python -m pitchcontrol`. ASIO devices appear in the Inputs page device list.
 
@@ -138,14 +138,9 @@ Tests: `cd backend && .venv/bin/python -m pytest`.
 - **Windows:** double-click `packaging\build_windows.bat` (needs Node.js 20.19+ or 22.12+, and Python 3.11 or 3.12: `python-rtmidi` has no Windows wheels for newer Pythons, so the script picks 3.12 / 3.11 even when a newer one is installed too); it produces `dist\PitchControl\PitchControl.exe` and a zip. The window shows the steps and stays open at the end; everything the steps print goes to `build-windows.log` (gitignored), which is what to send when a build fails.
 - **Both, on GitHub:** Actions → "PitchControl app" → Run workflow (`.github/workflows/app.yml`), then download the zips from the run.
 
-The app shows the UI in its own window. "Open in browser" and "Open data folder" are in Settings → App. Closing the window stops the engine.
+The app shows the UI in its own window. "Open in browser", "Open data folder" and "Open logs folder" are in Settings → App; Settings → About shows the folders. Closing the window stops the engine.
 
-**Data folder:** the app works directly on the repo's `config/`, so rigs, fixture types, settings and scenes edited in the app can be committed. Logs go to `logs/` and the macro autosave to `config/state/`; both are gitignored. The build records where the repo is on the build machine. The folder is chosen in this order:
-
-1. the `--data <folder>` option;
-2. a folder path written in `~/Documents/PitchControl/data_folder.txt` (useful for an app built on GitHub, which doesn't know where your repo is);
-3. the repo folder (a source checkout);
-4. `~/Documents/PitchControl/` as a fallback. Missing default files are copied in there, and existing files are never overwritten.
+The app uses the folders described in [Folders](#folders); it never writes into its own bundle or into the repo's `config/`.
 
 The builds are unsigned. On first launch:
 - macOS: open the app once; when macOS refuses, go to System Settings → Privacy & Security and click "Open Anyway" (right-click → Open no longer bypasses this since macOS 15).
@@ -153,20 +148,21 @@ The builds are unsigned. On first launch:
 
 macOS asks once for microphone access.
 
-App options (for example from a terminal) are the same as for the backend, plus `--data <folder>` and `--no-window` (use the browser instead of a window). `--host 0.0.0.0` makes the UI reachable from a phone on the LAN.
+App options (for example from a terminal) are the same as for the backend (`--data`, `--machine`, `--port`, `--host`, `--no-hardware`), plus `--no-window` (use the browser instead of a window). `--host 0.0.0.0` makes the UI reachable from a phone on the LAN.
 
 ### Releasing a version
 
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
 1. Set `__version__`, and move the changelog's "Unreleased" notes under a `## X.Y.Z — date` heading.
-2. Commit, then tag and push: `git tag -a pitchcontrol-vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin pitchcontrol-vX.Y.Z`.
-3. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
+2. If a default in `config/` changed since the last release, commit it, then record it: `backend/.venv/bin/python tools/shipped_config_history.py` (it adds every committed version of the shipped files to `config/shipped_history.py`, so a later migration recognises untouched copies) and commit that too.
+3. Commit, then tag and push: `git tag -a vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin vX.Y.Z`.
+4. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
 
-Builds between releases show how far past the last tag they are, e.g. `1.1.0+3 (abc1234)`.
+Builds between releases show how far past the last tag they are, e.g. `1.1.0+3 (abc1234)`, or `1.4.0-dev (abc1234)` once the number is raised but not tagged yet.
 
 ## Using the UI
 
-The UI is monochrome (Settings → Appearance: grey, amber or phosphor ink, glow strength, UI brightness, UI scale, key hints; saved in `settings.json`).
+The UI is monochrome (Settings → Appearance: grey, amber or phosphor ink, glow strength, UI brightness, UI scale, key hints; saved per computer in `machine.json`).
 
 The layout is made for a 1512 × 915 px window (14" MacBook at its default display setting). On smaller screens, down to 1280 × 720, use Settings → Appearance → UI scale → **Fit window**: it picks the largest scale at which every page fits without scrolling (about 70 % on 1280 × 720). Pixel sizes are CSS pixels, which macOS and Windows scale with the display setting. Colour only appears where it carries information: the hue/saturation scales and the output colours.
 
@@ -186,27 +182,40 @@ Everything works without a mouse — one control is always selected. The footer 
 
 Number fields apply on Enter and keep the focus, so you can type the next value right away (Escape reverts). ↑ / ↓ or dragging up / down with the right mouse button changes the value in steps (Shift = fine steps): integers 1, floats 0.1 / 0.01, fixture rotation 15° / 1°.
 
-On the Rig page, the **Rig** panel manages the rig file: load another rig from the dropdown, edit the description, Save / Revert, Rename, Duplicate (saves the current state, unsaved edits included, as a new rig and switches to it; the original file keeps what was saved), New (empty rig) and Delete (the active rig; the next one is loaded, the last rig can't be deleted). Loading or creating a rig with unsaved changes asks: Save, Discard or Cancel. Edits are live in the engine right away; only Save writes the file. The **Fixtures** panel below it edits the lights in the rig: Add, Duplicate, Remove.
+On the Rig page, the **Rig** panel manages the rig file: load another rig from the dropdown, edit the description, Save / Revert, Rename, Duplicate (saves the current state, unsaved edits included, as a new rig and switches to it; the original file keeps what was saved), New (empty rig) and Delete (the active rig; the next one is loaded, the last rig can't be deleted). A rig that comes with the app is marked "shipped"; saving it keeps your copy in your data folder ("modified"), Reset to default deletes that copy, and it can't be deleted. Fixture types work the same way on the Fixtures page. Loading or creating a rig with unsaved changes asks: Save, Discard or Cancel. Edits are live in the engine right away; only Save writes the file. The **Fixtures** panel below it edits the lights in the rig: Add, Duplicate, Remove.
 
 In the fixture list, Shift + click adds fixtures to the selection (or removes them) to edit several at once. A field shows a value only if all selected fixtures share it, otherwise "multiple"; a value you enter applies to all of them.
 
-**Control Desk** (page 8) shows every DMX output channel as a slider: pick the universe (0–3) and one of 8 subpages of 64 channels. The faint bar is what the channel sends now (the footer names the fixture using it). Dragging a channel, or switching it on, overrides it: it then sends the slider value instead of what the fixtures compute; the switch releases it. Overrides are saved (`config/state/overrides.json`, not in git) and restored on start; while any are active the header shows "N overrides". "Reset all" (with a confirmation) releases every override in every universe.
+**Control Desk** (page 8) shows every DMX output channel as a slider: pick the universe (0–3) and one of 8 subpages of 64 channels. The faint bar is what the channel sends now (the footer names the fixture using it). Dragging a channel, or switching it on, overrides it: it then sends the slider value instead of what the fixtures compute; the switch releases it. Overrides are saved (`state/overrides.json` in this computer's folder) and restored on start; while any are active the header shows "N overrides". "Reset all" (with a confirmation) releases every override in every universe.
 
 Hue and saturation apply on mouse release, or once keys / the MIDI knob rest; until then the fader shows the target with a dashed outline.
 
-## Config folder
+## Folders
+
+| Folder | Where | What |
+|---|---|---|
+| Defaults | inside the app (the repo's `config/`) | what ships: fixture types, MIDI mappings, the Default rig, default settings. Read-only. |
+| Your data | `~/Documents/PitchControl/`; a source run: the repo's `data/` (gitignored) | only what you made or changed |
+| This computer | `~/Library/Application Support/PitchControl` (macOS), `%LOCALAPPDATA%\PitchControl` (Windows); with `--data` or a source run: `.machine/` in the data folder | `machine.json`, `state/`, `logs/` |
+
+Your data folder is chosen in this order: `--data <folder>`; a folder written in `~/Documents/PitchControl/data_folder.txt`; the repo's `data/` for a source run; `~/Documents/PitchControl`. A data folder that is (or contains) the app's own defaults is refused.
+
+A file in your data folder wins over a default of the same name (ignoring case); lists show both. Saving a shipped rig or fixture type writes your copy; Reset to default deletes it. Every saved file records the version that wrote it (`"app_version"`).
 
 | Path | Content |
 |---|---|
-| `settings.json` | frame rate (`fps`), outputs (up to 4 USB DMX interfaces, Art-Net, v2 serial), audio input, fog machines, Auto Color palette, engine options |
-| `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); all files are loaded on startup, missing keys get defaults |
+| `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, fog machines, Auto Color palette, masks, audio analysis |
+| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial), appearance (`ui`) |
+| `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
 | `rigs/<name>.json` | fixture instances for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
 | `controllers/*.json` | MIDI controller mappings (CC → macro) |
-| `scenes/scene_N.json` | the 8 scenes (macro name → control value) |
-| `state/macros.json` | auto-saved macro values, restored on start (not in git); without it (first start) the macros start with the values of scene 1 |
-| `state/overrides.json` | Control Desk channel overrides, restored on start (not in git) |
+| `scenes/scene_N.json` | the 8 scenes (macro name → control value); an empty slot means the macro defaults |
+| `state/macros.json` (this computer) | auto-saved macro values, restored on start; without it (first start) the macro defaults |
+| `state/overrides.json` (this computer) | Control Desk channel overrides, restored on start |
 
-Unknown keys (typos) and broken files are reported in `logs/YYMMDD_hhmmss.log` (one file per start) and never stop the engine. Keys starting with `_` (e.g. `_note`) are annotations and are ignored.
+Unknown keys (typos) are reported in `logs/YYMMDD_hhmmss.log` (one file per start) and never stop the engine. Keys starting with `_` (e.g. `_note`) are annotations and are ignored. A file that can't be read is renamed (`….json.broken-<time>`, never overwritten), the app's own version of it is used where there is one, and the UI shows a notice. A missing active rig falls back to the Default rig, a missing controller mapping to none.
+
+**From 1.3:** on the first start of 1.4 an old `Documents/PitchControl/config/` is moved into this layout once: `state/` and `logs/` go to this computer's folder, `settings.json` is split into the sparse show part and `machine.json`, and files identical to a version the app ever shipped are dropped (the current defaults apply). Your own files stay. A source checkout used the repo's `config/` as its data before; that setup is in git history (`git show v1.3.0:config/rigs/Default.json`) and can be copied into `data/` or `~/Documents/PitchControl/`.
 
 A fixture **profile** is the ordered `channels` list of a fixture type:
 
@@ -221,12 +230,12 @@ A fixture **profile** is the ordered `channels` list of a fixture type:
 
 `value` is a constant (a rig can override it by name with `channel_values`). `macro` sends a macro's value as 0–255. `shutter` sends `strobo` on a peak frame when the instance has `real_strobo` enabled. `pixels` expands to pixel count × `R` / `RGB` / `RGBW`.
 
-To re-import scenes and `macros.ini` from the original vvvv patch folder: `.venv/bin/python -m pitchcontrol.legacy --vl <folder>`.
+To re-import scenes and `macros.ini` from the original vvvv patch folder: `.venv/bin/python -m pitchcontrol.legacy --vl <folder>` (into the repo's `data/`; `--data` chooses another folder).
 
 ## Status
 
 Working and covered by tests:
-- config loading and typo reporting;
+- config loading and typo reporting; the layered folders (defaults, your data, this computer), copy on save and reset, sparse settings, the 1.3 migration, broken-file handling;
 - the v3 DMX frame (checked against the v3.2 firmware layout);
 - Enttec Pro, Enttec Open DMX USB, Art-Net and v2.2 serial packet formats;
 - the 32-band analysis with octave-weighted strobo trigger;

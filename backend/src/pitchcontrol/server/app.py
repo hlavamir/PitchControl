@@ -16,13 +16,13 @@ import webbrowser
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..config.loader import report_unknown_keys
-from ..config.models import Controller, FixtureType, Rig, Settings
+from ..config.loader import RIGS, report_unknown_keys
+from ..config.models import FixtureType, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices
@@ -58,11 +58,20 @@ class SceneName(BaseModel):
     name: str | None = None
 
 
-def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | None = None) -> FastAPI:
-    """``desktop``: set by the standalone app (``url``, ``data_dir``, later ``fullscreen``: a
-    ``Fullscreen`` controller once the window exists) to enable the app-only actions."""
+def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | None = None, folders: dict | None = None) -> FastAPI:
+    """``desktop``: set by the standalone app (``url``, ``data_dir``, ``logs_dir``, later ``fullscreen``: a
+    ``Fullscreen`` controller once the window exists) to enable the app-only actions. ``folders``: the
+    data and logs folders when running from source (shown in the UI)."""
     app = FastAPI(title="PitchControl", version="0.1.0")
     store = engine.store
+    folders = {**(folders or {}), **{k: v for k, v in (desktop or {}).items() if k in ("data_dir", "logs_dir")}}
+
+    @app.exception_handler(OSError)
+    async def file_error(_request: Request, exc: OSError):
+        # a full disk, a read-only or vanished data folder: say what failed instead of a bare 500
+        log.error("file operation failed: %s", exc)
+        where = f" ({exc.filename})" if getattr(exc, "filename", None) else ""
+        return JSONResponse(status_code=500, content={"detail": f"can't write the file{where}: {exc.strerror or exc}"})
 
     # ------------------------------------------------------------------ app info
     @app.get("/api/app-info")
@@ -72,7 +81,10 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             "desktop": desktop is not None,
             "config_dir": str(store.root),
             "url": (desktop or {}).get("url"),
-            "data_dir": (desktop or {}).get("data_dir"),
+            "data_dir": folders.get("data_dir", str(store.root)),
+            "logs_dir": folders.get("logs_dir"),
+            "machine_dir": str(store.machine_root),
+            "defaults_dir": str(store.defaults) if store.defaults else None,
             "fullscreen_supported": fs is not None,
             "fullscreen": bool(fs and fs.active),
             "version": version_label(),
@@ -111,15 +123,33 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         webbrowser.open(url)
         return {"ok": True}
 
-    @app.post("/api/open-data-folder")
-    def open_data_folder():
-        if desktop is None:
+    def reveal(folder: str) -> dict:
+        if desktop is None or not folder:
             raise HTTPException(404)
-        folder = desktop["data_dir"]
+        Path(folder).mkdir(parents=True, exist_ok=True)
         if sys.platform == "win32":
             os.startfile(folder)  # type: ignore[attr-defined]
         else:
             subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", folder])
+        return {"ok": True}
+
+    @app.post("/api/open-data-folder")
+    def open_data_folder():
+        return reveal((desktop or {}).get("data_dir", ""))
+
+    @app.post("/api/open-logs-folder")
+    def open_logs_folder():
+        return reveal((desktop or {}).get("logs_dir", ""))
+
+    # ------------------------------------------------------------------ notices
+    @app.get("/api/notices")
+    def notices():
+        """Problems found while loading (broken files, missing items, the migration from 1.3)."""
+        return store.notices
+
+    @app.delete("/api/notices")
+    def dismiss_notices():
+        store.notices.clear()
         return {"ok": True}
 
     # ------------------------------------------------------------------ macros
@@ -211,7 +241,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.get("/api/fixture-types/status")
     def fixture_types_status():
-        return {"unsaved": sorted(type_state["unsaved"]), "usage": store.type_usage()}
+        return {"unsaved": sorted(type_state["unsaved"]), "usage": store.type_usage(), "origins": store.type_origins()}
 
     @app.put("/api/fixture-types/{name}")
     def put_fixture_type(name: str, data: dict, persist: bool = True):
@@ -275,10 +305,25 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         engine.rebuild_fixtures()
         return {"ok": True, "name": new, "rigs_updated": changed}
 
+    @app.post("/api/fixture-types/{name}/reset")
+    def reset_fixture_type(name: str):
+        """Back to the shipped version: delete the user's copy."""
+        known_type(name)
+        with engine.lock:
+            ftype = store.reset_fixture_type(name)
+        if ftype is None:
+            raise HTTPException(409, f"'{name}' is not shipped with the app")
+        type_state["unsaved"].discard(name)
+        engine.rebuild_fixtures()
+        return ftype.model_dump(mode="json", exclude_none=True)
+
     @app.delete("/api/fixture-types/{name}")
     def delete_fixture_type(name: str):
-        """Delete a type file; refused while any rig uses it."""
+        """Delete a type file; refused while any rig uses it, and for the types shipped with the app."""
         known_type(name)
+        origin = store.type_origins().get(name, "user")
+        if origin != "user":
+            raise HTTPException(409, "shipped with the app: it can't be deleted" + (" (Reset to default removes your changes)" if origin == "modified" else ""))
         used = store.type_usage().get(name, [])
         if used:
             raise HTTPException(409, f"used by the rig{'s' if len(used) > 1 else ''} {', '.join(used)}")
@@ -291,7 +336,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.get("/api/rigs")
     def rigs():
-        return {"active": store.rig.name, "available": store.list_names(store.rigs_dir), "unsaved": rig_state["unsaved"]}
+        return {"active": store.rig.name, "available": store.rig_names(), "origins": store.rig_origins(), "unsaved": rig_state["unsaved"]}
 
     @app.get("/api/rig")
     def get_rig():
@@ -382,13 +427,26 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         engine.rebuild_fixtures()
         return {"ok": True, "name": name}
 
+    @app.post("/api/rig/reset")
+    def reset_rig():
+        """Back to the shipped version of the active rig: delete the user's copy (and unsaved changes)."""
+        with engine.lock:
+            if not store.reset_rig():
+                raise HTTPException(409, f"'{store.rig.name}' is not shipped with the app")
+        rig_state["unsaved"] = False
+        engine.rebuild_fixtures()
+        return store.rig.model_dump(mode="json", exclude_none=True)
+
     @app.delete("/api/rig")
     def delete_rig():
-        """Delete the active rig's file and load the next one. The last rig can't be deleted."""
-        names = store.list_names(store.rigs_dir)
+        """Delete the active rig's file and load the next one. The last rig and the shipped rigs can't be deleted."""
+        names = store.rig_names()
         current = store.rig.name
         if current not in names:
             raise HTTPException(404, f"rig '{current}' has no file")
+        origin = store.rig_origins().get(current, "user")
+        if origin != "user":
+            raise HTTPException(409, "shipped with the app: it can't be deleted" + (" (Reset to default removes your changes)" if origin == "modified" else ""))
         if len(names) < 2:
             raise HTTPException(409, "the last rig can't be deleted")
         i = names.index(current)
@@ -404,11 +462,12 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.post("/api/rig/activate")
     def activate_rig(body: Activate):
-        if body.name not in store.list_names(store.rigs_dir):
+        if store.find(RIGS, body.name) is None:
             raise HTTPException(404, f"rig '{body.name}' not found")
         store.settings.active_rig = body.name
         store.save_settings()
-        store.load_rig(body.name)
+        with engine.lock:
+            store.load_rig(body.name)
         rig_state["unsaved"] = False
         engine.rebuild_fixtures()
         return {"ok": True}
@@ -416,14 +475,14 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     # ------------------------------------------------------------------ controllers & devices
     @app.get("/api/controllers")
     def controllers():
-        return {"active": store.settings.active_controller, "available": store.list_names(store.controllers_dir)}
+        return {"active": store.settings.active_controller, "available": store.controller_names()}
 
     @app.get("/api/controllers/{name}")
     def controller(name: str):
-        path = store.controllers_dir / f"{name}.json"
-        if not path.exists():
+        ctrl = store.load_controller_file(name)
+        if ctrl is None:
             raise HTTPException(404)
-        return Controller.model_validate_json(path.read_text()).model_dump(mode="json")
+        return ctrl.model_dump(mode="json")
 
     @app.get("/api/devices/serial")
     def serial_devices():
@@ -455,9 +514,18 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.post("/api/scenes/{index}/load")
     def load_scene(index: int):
-        if not 0 <= index < 8 or not engine.load_scene(index):
-            raise HTTPException(404, "scene not found")
+        """Load a scene; an empty slot sets every macro to its default."""
+        if not 0 <= index < 8:
+            raise HTTPException(404)
+        engine.load_scene(index)
         return {"ok": True}
+
+    @app.delete("/api/scenes/{index}")
+    def delete_scene(index: int):
+        """Empty a scene slot (loading it then gives the macro defaults)."""
+        if not 0 <= index < 8:
+            raise HTTPException(404)
+        return {"ok": True, "deleted": store.delete_scene(index)}
 
     # ------------------------------------------------------------------ live websocket
     @app.websocket("/ws")

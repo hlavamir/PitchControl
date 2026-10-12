@@ -86,6 +86,11 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
   useEffect(() => () => window.clearTimeout(saveTimer.current), [])
 
   // engine frame rate: stored in settings.json next to the UI settings, applied by the engine at once
+  const [folders, setFolders] = useState<{ data_dir?: string; machine_dir?: string }>({})
+  useEffect(() => {
+    api.get<{ data_dir?: string; machine_dir?: string }>('/api/app-info').then(setFolders).catch(() => undefined)
+  }, [])
+
   const [fps, setFpsState] = useState<number | null>(null)
   useEffect(() => {
     api.get<SettingsData>('/api/settings').then((s) => setFpsState(s.fps))
@@ -289,8 +294,11 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
             <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Open this UI in the default browser, e.g. for a second screen" onClick={() => api.post('/api/open-browser')}>
               Open in browser
             </button>
-            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Show the folder with rigs, fixture types, scenes and settings.json in Finder / Explorer" onClick={() => api.post('/api/open-data-folder')}>
+            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Show your data folder (your rigs, fixture types, scenes and settings) in Finder / Explorer" onClick={() => api.post('/api/open-data-folder')}>
               Open data folder
+            </button>
+            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Show the log files (one per start) in Finder / Explorer: attach the latest one to a bug report" onClick={() => api.post('/api/open-logs-folder')}>
+              Open logs folder
             </button>
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-seam pt-3">
@@ -317,6 +325,18 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
             {version || '…'}
           </span>
         </div>
+        {folders.data_dir && (
+          <div className="mt-3 flex flex-col gap-1 border-t border-seam pt-3 text-[11px]">
+            <span className="flex gap-2" data-hint="info" data-tip="Your rigs, fixture types, scenes and settings: what you made or changed (the app's own defaults are never changed)">
+              <span className="lbl w-20 flex-none text-[10px] text-dim">Data</span>
+              <span className="truncate font-mono">{folders.data_dir}</span>
+            </span>
+            <span className="flex gap-2" data-hint="info" data-tip="This computer's settings (audio input, MIDI port, outputs, appearance), the macro autosave and the logs">
+              <span className="lbl w-20 flex-none text-[10px] text-dim">Computer</span>
+              <span className="truncate font-mono">{folders.machine_dir}</span>
+            </span>
+          </div>
+        )}
         <span className="lbl mt-3 flex gap-4 text-[10px] text-dim">
           <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl')} data-hint="button" data-tip="Open the project page on GitHub in the browser">
             Project on GitHub ›

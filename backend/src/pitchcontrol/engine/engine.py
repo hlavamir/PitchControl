@@ -225,26 +225,26 @@ class Engine:
         log.info("saved scene %d", index + 1)
 
     def load_scene(self, index: int) -> bool:
+        """Load a scene; an empty slot means the default values. True if the slot held a scene."""
         scene = self.store.load_scene(index)
         if scene is None:
-            log.warning("scene %d does not exist", index + 1)
+            self.macros.reset_to_defaults()
+            log.info("scene %d is empty: macros set to their defaults", index + 1)
             return False
         self.macros.load(scene.values, source=f"scene {index + 1}")
         log.info("loaded scene %d (%s)", index + 1, scene.name)
         return True
 
     def _restore_macros(self) -> None:
+        """The values of the last session (the autosave), or on a first start the macro defaults."""
         path = self.store.state_dir / "macros.json"
         if path.exists():
-            state = load_model(path, MacroState)
+            state = load_model(path, MacroState, broken=self.store.broken_file)
             if state is not None:
                 self.macros.load(state.values, source=str(path))
                 log.info("restored macro values from %s", path)
                 return
-        # first start (the state folder is not in the repo): begin with scene 1, not with every
-        # fader at 0, which would be a dark room until somebody moves the brightness faders
-        if self.load_scene(0):
-            log.info("no saved macro values: started with scene 1")
+        log.info("no saved macro values: started with the defaults")
 
     def _autosave_macros(self, force: bool = False) -> None:
         now = time.monotonic()

@@ -98,6 +98,6 @@ jobs:
           - **macOS (Apple Silicon):** open PitchControl once; when macOS refuses, go to System Settings → Privacy & Security → "Open Anyway".
           - **Windows:** SmartScreen → More info → Run anyway.
 
-          On first start the app creates its configuration folder in Documents/PitchControl.
+          Your rigs, scenes and settings are kept in Documents/PitchControl (only what you make or change); a folder from 1.3 is moved into the new layout on the first start.
           EOF
           gh release create "$TAG" artifacts/*.zip --draft --title "PitchControl $VERSION" --notes-file notes.md

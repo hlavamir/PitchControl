@@ -22,17 +22,17 @@ def git_describe() -> str | None:
     return res.stdout.strip() if res.returncode == 0 else None
 
 
-# where this repo lives on the build machine: the app uses its config/ folder when it exists
+# build info: version and git describe (shown in the app); the app never uses the repo folder itself
 import json
 from datetime import datetime
 
 BUILD_INFO = Path(workpath) / "build_info.json"
 BUILD_INFO.parent.mkdir(parents=True, exist_ok=True)
 BUILD_INFO.write_text(
-    json.dumps({"pitch_control_dir": str(ROOT), "built": datetime.now().isoformat(timespec="seconds"), "version": VERSION, "describe": git_describe()})
+    json.dumps({"built": datetime.now().isoformat(timespec="seconds"), "version": VERSION, "describe": git_describe()})
 )
 
-# bundled default config (without runtime state), build info and the built web UI
+# the read-only defaults (config/, without runtime state), build info and the built web UI
 datas = [(str(ROOT / "frontend" / "dist"), "frontend_dist"), (str(BUILD_INFO), ".")]
 for f in (ROOT / "config").rglob("*"):
     rel = f.relative_to(ROOT / "config")

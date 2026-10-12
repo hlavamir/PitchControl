@@ -120,20 +120,28 @@ def test_react_to_strobo_is_a_rig_setting(config_dir):
 
 
 def test_shipped_config_loads(tmp_path):
-    """The config in the repo (what a downloaded app starts with) loads cleanly: every rig fixture
-    has its type and no DMX ranges overlap."""
-    import shutil
+    """The defaults in the repo (what a downloaded app starts with) load cleanly into an empty user
+    folder: every rig fixture has its type, no DMX ranges overlap, nothing to report."""
+    import json
 
     from conftest import SHIPPED_CONFIG
 
-    dst = tmp_path / "shipped"
-    shutil.copytree(SHIPPED_CONFIG, dst, ignore=shutil.ignore_patterns("state"))
-    store = ConfigStore(dst)
+    from pitchcontrol.config.layers import split_machine
+
+    store = ConfigStore(tmp_path / "user", defaults=SHIPPED_CONFIG, machine=tmp_path / "machine")
     store.load_all()
-    for rig in store.list_names(store.rigs_dir):
+    assert store.notices == [] and store.rig.name == "Default"
+    for rig in store.rig_names():
         store.load_rig(rig)
         assert store.rig.fixtures, f"rig {rig} is empty"
         assert store.validate_rig() == [], f"rig {rig}: {store.validate_rig()}"
+    # no scenes ship, the Default rig has no PitchPlease fixtures, nothing of one computer is shipped
+    assert not list((SHIPPED_CONFIG / "scenes").glob("*.json"))
+    store.load_rig("Default")
+    assert not any(fx.type.startswith("PitchPls") for fx in store.rig.fixtures)
+    shipped = json.loads((SHIPPED_CONFIG / "settings.json").read_text(encoding="utf-8"))
+    assert set(split_machine(shipped)[1]) <= {"ui"} and not shipped.get("fog", {}).get("machines")
+    assert not list(tmp_path.rglob("*.json"))  # loading wrote nothing
 
 
 def test_version_label():
