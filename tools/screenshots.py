@@ -184,7 +184,21 @@ NEUTRAL = """() => {
 }"""
 
 
-def shoot(url: str, out: Path, settle: float, channel: str | None) -> None:
+# The throw-away folders have ugly temp names; show what a user would see instead.
+SHOWN_DATA = "~/Documents/PitchControl"
+SHOWN_MACHINE = "~/Library/Application Support/PitchControl"
+
+DISGUISE = """([real, shown]) => {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    real.forEach((from, i) => {
+      if (n.nodeValue.includes(from)) n.nodeValue = n.nodeValue.replace(from, shown[i]);
+    });
+  }
+}"""
+
+
+def shoot(url: str, out: Path, settle: float, channel: str | None, folders: tuple[list[str], list[str]]) -> None:
     from playwright.sync_api import sync_playwright
 
     out.mkdir(parents=True, exist_ok=True)
@@ -201,6 +215,7 @@ def shoot(url: str, out: Path, settle: float, channel: str | None) -> None:
                 page.get_by_text("show channel values").first.click()  # the DMX numbers, as in the docs
             page.evaluate(NEUTRAL)
             page.wait_for_timeout(settle * 1000)
+            page.evaluate(DISGUISE, list(folders))
             page.screenshot(path=str(out / f"{name}.png"))
             print("  ", out / f"{name}.png")
         browser.close()
@@ -249,7 +264,7 @@ def main() -> None:
             sys.exit(f"the server did not start on {url}")
         print(f"PitchControl {label} at {url}, screenshots into {args.out}")
         try:
-            shoot(url, args.out, args.settle, args.browser)
+            shoot(url, args.out, args.settle, args.browser, ([str(data), str(machine)], [SHOWN_DATA, SHOWN_MACHINE]))
         finally:
             stop.set()
             server.should_exit = True
