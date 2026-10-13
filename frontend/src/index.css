@@ -134,6 +134,14 @@ option {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+/* the corner where two scrollbars meet, and the resize handle of a textarea: the browser's own
+   light grey grip is replaced by two diagonal strokes in the edge colour */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-resizer {
+  background: linear-gradient(135deg, transparent 0 48%, var(--color-edge) 48% 58%, transparent 58% 72%, var(--color-edge) 72% 82%, transparent 82%);
+}
 /* the page scrollbar: 6 px gap to the panels (a transparent border), 8 px thumb */
 .page-scroll::-webkit-scrollbar {
   width: 14px;
