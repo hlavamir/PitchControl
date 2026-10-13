@@ -2,16 +2,15 @@
   "app_version": "1.4.1",
   "name": "Novation Launch Control XL 3",
   "author": "Miroslav Hlava",
-  "description": "Faders and knob row 3 (CC 5-12, 29-36) drive the general macros, knob row 1 (CC 21-28) Dimmer 01-08. Buttons: CC 37-42 switches (Manual Strobo, with shift Preset A), CC 45-51 save scenes 1-7. CC 52 is the shift button.",
+  "description": "Faders and knob row 3 (CC 5-12, 29-36) drive the general macros, knob row 1 (CC 21-28) Dimmer 01-08. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select the shader presets A-D. Bottom button row: CC 45-51 save scenes 1-7, with shift they load them. CC 52 is the shift button.",
   "contact": "pitchcontrol.eu",
-  "modified": "2026-10-13T19:24:03+02:00",
+  "modified": "2026-10-13T22:18:21+02:00",
   "port_match": "LCXL3",
   "channel": 13,
   "mappings": [
     {
       "number": 29,
-      "macro": "Strobo Decay",
-      "channel": 13
+      "macro": "Strobo Decay"
     },
     {
       "number": 30,
@@ -39,8 +38,7 @@
     },
     {
       "number": 5,
-      "macro": "Audio Reactivity",
-      "channel": 13
+      "macro": "Audio Reactivity"
     },
     {
       "number": 6,
@@ -103,19 +101,22 @@
       "number": 40,
       "macro": "Vertical Symmetry",
       "mode": "toggle",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 39,
       "macro": "Invert Discoball",
       "mode": "toggle",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 38,
       "macro": "Fog Machine",
       "mode": "momentary",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 37,
@@ -128,7 +129,6 @@
       "number": 37,
       "macro": "Preset A",
       "mode": "trigger",
-      "channel": 13,
       "shift": "on"
     },
     {
@@ -174,47 +174,114 @@
       "number": 45,
       "macro": "Scene 1 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 46,
       "macro": "Scene 2 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 47,
       "macro": "Scene 3 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 48,
       "macro": "Scene 4 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 49,
       "macro": "Scene 5 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 50,
       "macro": "Scene 6 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 51,
       "macro": "Scene 7 Save",
       "mode": "trigger",
-      "channel": 13
+      "channel": 13,
+      "shift": "off"
     },
     {
       "number": 52,
       "mode": "shift"
+    },
+    {
+      "number": 38,
+      "macro": "Preset B",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 39,
+      "macro": "Preset C",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 40,
+      "macro": "Preset D",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 45,
+      "macro": "Scene 1 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 46,
+      "macro": "Scene 2 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 47,
+      "macro": "Scene 3 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 48,
+      "macro": "Scene 4 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 49,
+      "macro": "Scene 5 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 50,
+      "macro": "Scene 6 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 51,
+      "macro": "Scene 7 Load",
+      "mode": "trigger",
+      "shift": "on"
     }
   ]
 }
