@@ -6,7 +6,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
-Planned as **1.4.1** (fixes and small changes since 1.4.0).
+## 1.4.1 — 2026-10-13
 
 ### Changed
 - **Fog machines are part of the rig** (`fog_machines` in the rig file) instead of `settings.json`:
