@@ -150,12 +150,13 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     a.type === b.type &&
     a.number === b.number &&
     channelOf(a) === channelOf(b) &&
-    (a.page ?? null) === (b.page ?? null) &&
-    (a.shift ?? null) === (b.shift ?? null) &&
+    (!a.page || !b.page || a.page === b.page) &&
+    (!a.shift || !b.shift || a.shift === b.shift) &&
     (a.mode === 'shift') === (b.mode === 'shift')
   const mappingLabel = (m: MidiMappingEntry) => (m.mode === 'shift' ? 'shift' : labelOf(m.macro ?? '?'))
 
-  // controls used twice in the same layer: a warning only (the first one wins; a mapping for a page or a shift state beats one for either)
+  // controls used twice where their pages and shift settings overlap ("any" overlaps with everything): a warning only. Where both apply,
+  // the more specific one (a page or a shift setting) wins, otherwise the first in the list.
   const clashes = useMemo(() => {
     const out = new Map<number, string[]>()
     const ms = draft?.mappings ?? []
@@ -302,7 +303,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
         <span className="truncate" title={label}>
           {label}
           {others && (
-            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} in the same layer: both react to this control`}>
+            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} where the page and shift settings overlap ("any" overlaps with everything). When both apply, the one with a page or shift setting wins, otherwise the first in the list`}>
               ⚠ also {others[0]}
               {others.length > 1 ? ` +${others.length - 1}` : ''}
             </span>

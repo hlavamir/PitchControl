@@ -139,7 +139,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
               {io?.midi?.received ?? 0} received · mapping on channel {io?.midi?.channel ?? '–'}
             </span>
           </div>
-          <div className="max-h-64 overflow-auto bg-panel-2 p-2 font-mono text-[11px]">
+          <div className="h-56 overflow-x-hidden overflow-y-auto bg-panel-2 p-2 font-mono text-[11px]">
             {(io?.midi?.recent ?? []).length === 0 && (
               <div className="text-dim">Nothing received yet — move a fader or knob on the controller.</div>
             )}
