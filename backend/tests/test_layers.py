@@ -116,14 +116,58 @@ def test_per_computer_values_move_out_of_settings_json(layered):
     # a settings.json from 1.3 (or written by hand): everything in one file
     full = layered.settings.model_dump(mode="json")
     full["audio"]["device"] = "Test Interface"
-    full["fog"]["machines"] = [{"name": "Fog", "channel": 9}]
+    full["masks"]["transition_s"] = 4.0
     layered.settings_path.parent.mkdir(parents=True, exist_ok=True)
     layered.settings_path.write_text(json.dumps(full), encoding="utf-8")
     layered.load_settings()
-    assert layered.settings.audio.device == "Test Interface" and layered.settings.fog.machines[0].channel == 9
+    assert layered.settings.audio.device == "Test Interface" and layered.settings.masks.transition_s == 4.0
     assert read(layered.machine_path)["audio"] == {"device": "Test Interface"}
     show = read(layered.settings_path)
-    assert "audio" not in show and show["fog"]["machines"][0]["channel"] == 9  # sparse: only the change
+    assert "audio" not in show and show["masks"] == {"transition_s": 4.0}  # sparse: only the change
+
+
+def test_fog_machines_move_from_settings_into_the_rigs(layered):
+    # 1.4 and earlier: the fog machines were in settings.json
+    old = [{"name": "Hazer", "channel": 300, "interval_s": 30.0}]
+    layered.settings_path.parent.mkdir(parents=True, exist_ok=True)
+    layered.settings_path.write_text(json.dumps({"fog": {"machines": old}}), encoding="utf-8")
+    layered.rigs_dir.mkdir(parents=True)
+    (layered.rigs_dir / "club.json").write_text(json.dumps({"fixtures": []}), encoding="utf-8")
+    (layered.rigs_dir / "bar.json").write_text(json.dumps({"fog_machines": []}), encoding="utf-8")
+    layered.load_all()
+    # the user's rig without fog machines and the shipped active rig (as the user's copy) get them,
+    # a rig that already has its own keeps them, and settings.json no longer has any
+    assert read(layered.rigs_dir / "club.json")["fog_machines"][0]["channel"] == 300
+    assert read(layered.rig_path("default"))["fog_machines"][0]["name"] == "Hazer"
+    assert read(layered.rigs_dir / "bar.json")["fog_machines"] == []
+    assert "fog" not in read(layered.settings_path)
+    assert [m.channel for m in layered.rig.fog_machines] == [300]
+    assert any("Fog machines are now part of each rig" in n for n in layered.notices)
+    layered.notices.clear()
+    layered.load_all()  # once only
+    assert layered.notices == []
+
+
+def test_fog_page_writes_only_the_fog_machines(layered):
+    engine = Engine(layered, enable_hardware=False)
+    client = TestClient(create_app(engine))
+    rig = client.get("/api/rig").json()
+    rig["description"] = "unsaved"
+    client.put("/api/rig?persist=false", json=rig)
+    res = client.put("/api/rig/fog", json=[{"name": "Fog", "channel": 1}])
+    assert res.json()["ok"] and client.get("/api/rig/fog").json()["machines"][0]["channel"] == 1
+    saved = read(layered.rig_path("default"))
+    assert saved["fog_machines"][0]["channel"] == 1 and saved["description"] != "unsaved"
+    assert client.get("/api/rig").json()["description"] == "unsaved"  # still live, still unsaved
+    # a fog channel inside a fixture's channels is a rig problem
+    fx = layered.rig.fixtures[0]
+    res = client.put("/api/rig/fog", json=[{"name": "Fog", "universe": fx.universe, "channel": fx.address}])
+    assert any("fog machine 'Fog'" in p for p in res.json()["problems"])
+    # the engine fogs from the active rig
+    client.put("/api/rig/fog", json=[{"name": "Fog", "universe": 3, "channel": 500, "on_value": 200}])
+    engine.macros.set("Fog Machine", 1.0)
+    engine.tick(1 / 40)
+    assert engine.universes[3][499] == 200
 
 
 def test_broken_user_file_is_kept_aside_and_the_default_used(layered):

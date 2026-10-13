@@ -396,14 +396,26 @@ export function useSettings() {
   return { settings, update, save, dirty, reload, message }
 }
 
-export function SaveBar({ dirty, save, reload, message }: { dirty: boolean; save: () => void; reload: () => void; message: string | null }) {
+export function SaveBar({
+  dirty,
+  save,
+  reload,
+  message,
+  saveTip = 'Write the changes to settings.json; outputs and inputs restart with the new values',
+}: {
+  dirty: boolean
+  save: () => void
+  reload: () => void
+  message: string | null
+  saveTip?: string
+}) {
   return (
     <div className="flex items-center gap-3">
       {message && <span className="lbl text-[11px] text-dim">{message}</span>}
       <Button onClick={reload} disabled={!dirty} tip="Discard the unsaved changes on this page and load what is saved">
         Revert
       </Button>
-      <Button onClick={save} primary disabled={!dirty} tip="Write the changes to settings.json; outputs and inputs restart with the new values">
+      <Button onClick={save} primary disabled={!dirty} tip={saveTip}>
         Save
       </Button>
     </div>

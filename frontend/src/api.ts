@@ -143,7 +143,6 @@ export interface Settings {
     artnet: { enabled: boolean; targets: { universe: number; ip: string; artnet_universe?: number | null }[] }
     pitchpls_v2: { enabled: boolean; device: DeviceRef; baudrate: number; mode: number; strips: number; pixels_per_strip: number }
   }
-  fog: { machines: FogMachine[] }
   masks: { line_falloff: number; transition_s: number }
   auto_colors: HSB[]
   ui: { ink: 'grey' | 'amber' | 'phosphor'; glow: number; brightness: number; key_hints: boolean; start_fullscreen: boolean; scale: number }
@@ -250,3 +249,6 @@ export function rgbCss(rgb: number[], scale = 255): string {
   const [r, g, b] = rgb.map((x) => Math.round((x * 255) / scale))
   return `rgb(${r}, ${g}, ${b})`
 }
+
+/** Alphabetical, ignoring case, with numbers in order ("Light 2" before "Light 10"): the order of every list of names. */
+export const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })

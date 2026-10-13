@@ -101,7 +101,10 @@ def test_migration_from_the_1_3_layout(tmp_path, monkeypatch):
     assert store.settings.audio.device == "Test Interface"
     assert json.loads((machine / "machine.json").read_text(encoding="utf-8"))["audio"] == {"device": "Test Interface"}
     assert "audio" not in json.loads((user / "settings.json").read_text(encoding="utf-8"))
-    assert store.rig_origins() == {"club": "user", "default": "default"}
+    # the old settings had fog machines: they moved into the user's rig and, as a copy, the shipped
+    # active rig (see test_layers)
+    assert store.rig_origins() == {"club": "user", "default": "modified"}
+    assert json.loads((user / "rigs" / "club.json").read_text(encoding="utf-8"))["fog_machines"]
 
     assert migrate.migrate_old_layout(user, machine, defaults) == []  # once only
 

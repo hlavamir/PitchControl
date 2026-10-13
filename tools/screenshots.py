@@ -9,8 +9,8 @@ Runs the engine and the web UI in this process, without hardware, on a throw-awa
 The state shown:
 - the shipped defaults, plus a copy of ``--data`` if given (for example a showcase rig);
 - this computer: one USB DMX interface that isn't plugged in and an Art-Net target, amber ink, UI
-  scale 1; two fog machines, two Control Desk overrides and three named scenes, unless the copied
-  data brings its own settings and scenes;
+  scale 1; two Control Desk overrides and three named scenes, unless the copied data brings its own
+  scenes (the fog machines are the rig's);
 - the macros at their defaults with Strobo (0.59) and Audio Reactivity (0.3) raised, so the pages
   move (more Audio Reactivity darkens the lights: the peaks map takes over the mask);
 - a synthetic 128 BPM techno loop feeding the audio analysis;
@@ -81,13 +81,7 @@ def macro_values(**changes: float) -> dict[str, float]:
 def stage(data_src: Path | None, data: Path, machine: Path) -> None:
     if data_src is not None:
         shutil.copytree(data_src.expanduser(), data, ignore=shutil.ignore_patterns(".machine", "*.broken-*"))
-    data.mkdir(parents=True, exist_ok=True)
-    if not (data / "settings.json").exists():
-        fog = {"universe": 0, "on_value": 255, "off_value": 0, "interval_s": 60.0, "manual_macro": "Fog Machine"}
-        write_json(
-            data / "settings.json",
-            {"fog": {"machines": [{"name": "Fog", "channel": 100, "duration_s": 4.0, **fog}, {"name": "Ground fog", "channel": 101, "duration_s": 2.0, **fog}]}},
-        )
+    data.mkdir(parents=True, exist_ok=True)  # fog machines come with the rig (the shipped one has one)
     scenes = data / "scenes"
     if not list(scenes.glob("scene_*.json")):
         looks = [

@@ -129,17 +129,17 @@ export function RigPanel({
       </select>
       {origin !== 'user' && (
         <div className="flex items-center justify-between gap-2 text-[11px] text-dim" data-hint="info" data-tip={origin === 'default' ? 'This rig comes with the app. Saving it keeps your copy in your data folder; the app’s version stays untouched' : 'A rig that comes with the app, changed by you: your copy is in your data folder. Reset to default deletes it'}>
-          <span className="lbl text-[10px]">{origin === 'default' ? 'shipped with the app' : 'shipped · modified by you'}</span>
+          <span className="lbl min-w-0 text-[10px]">{origin === 'default' ? 'shipped with the app' : 'shipped · modified by you'}</span>
           {origin === 'modified' && prompt === null && (
-            <button className="lbl glow-hover h-[18px] border border-edge px-2 text-[10px] text-ink" onClick={() => setPrompt({ kind: 'reset' })}>
-              Reset to default
+            <button className="lbl glow-hover h-[18px] flex-none border border-edge px-2 text-[10px] whitespace-nowrap text-ink" onClick={() => setPrompt({ kind: 'reset' })}>
+              Reset
             </button>
           )}
         </div>
       )}
       <textarea
-        rows={2}
-        className="w-full resize-none text-[11px] leading-snug"
+        rows={5}
+        className="w-full resize-y text-[11px] leading-snug"
         placeholder="description"
         data-tip="Free text about this rig (venue, setup); saved in the rig file"
         value={description}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, channelCount, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
+import { api, byName, channelCount, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { Preview } from '../components/Preview'
 import { RigPanel, type RigList } from '../components/RigPanel'
@@ -201,7 +201,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const addFixture = (copyOf?: FixtureInstance) => {
     if (!rig) return
     const next = structuredClone(rig)
-    const base = copyOf ? structuredClone(copyOf) : { ...NEW_FIXTURE, type: Object.keys(types)[0] ?? '' }
+    const base = copyOf ? structuredClone(copyOf) : { ...NEW_FIXTURE, type: Object.keys(types).sort(byName)[0] ?? '' }
     base.name = copyOf ? `${copyOf.name} copy` : base.name
     next.fixtures.push(base)
     setSelection([next.fixtures.length - 1])
@@ -264,7 +264,11 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           tip="The lights of the rig: group, name and universe:address. Click one to edit it; Shift + click selects several"
         >
           <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
-            {rig?.fixtures.map((f, i) => (
+            {/* alphabetical (natural order): rename or number the fixtures to arrange them */}
+            {rig?.fixtures
+              .map((f, i) => [f, i] as const)
+              .sort(([a], [b]) => byName(a.name, b.name))
+              .map(([f, i]) => (
               <li key={i}>
                 <button
                   onClick={(e) => clickFixture(i, e.shiftKey)}
@@ -323,7 +327,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                   <select value={opt((f) => f.type)} onChange={(e) => edit((f) => (f.type = e.target.value))}>
                     {mixedOption(opt((f) => f.type))}
                     {sharedType !== MIXED && !types[sharedType] && <option value={sharedType}>{sharedType} (missing)</option>}
-                    {Object.keys(types).map((t) => (
+                    {Object.keys(types).sort(byName).map((t) => (
                       <option key={t}>{t}</option>
                     ))}
                   </select>

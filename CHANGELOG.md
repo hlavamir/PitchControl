@@ -6,6 +6,19 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Fog machines are part of the rig** (`fog_machines` in the rig file) instead of `settings.json`:
+  each rig has its own, loading another rig switches them. The Fog page edits the active rig's
+  machines; its Save writes only them into the rig file. Fog machines from an older `settings.json`
+  are moved once into the user's rigs (and into a copy of the shipped rig if that one is active).
+- **Default rig:** four RGB lights at addresses 3–12, two 20-pixel LED strips at 20 and 100, and one
+  fog machine on channel 1. New fixture type **Generic Addressable LED Strip** (20 RGB pixels).
+- **Rig page:** fixtures in alphabetical order (numbers in order, case ignored), as are the fixture
+  types on the Rig and Fixtures pages; a taller description field; the Reset button fits.
+
+### Added
+- A fog machine on a channel that a fixture uses too is reported as a rig problem.
+
 ## 1.4.0 — 2026-10-12
 
 ### Changed

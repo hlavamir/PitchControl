@@ -21,8 +21,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..config.loader import RIGS, report_unknown_keys
-from ..config.models import FixtureType, Rig, Settings
+from ..config.loader import RIGS, report_unknown_keys, save_model
+from ..config.models import FixtureType, FogMachine, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices
@@ -357,6 +357,25 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             store.save_rig()
         rig_state["unsaved"] = not persist
         engine.rebuild_fixtures()
+        return {"ok": True, "problems": problems}
+
+    @app.get("/api/rig/fog")
+    def get_fog():
+        """The fog machines of the active rig (Fog page)."""
+        return {"rig": store.rig.name, "machines": [m.model_dump(mode="json") for m in store.rig.fog_machines]}
+
+    @app.put("/api/rig/fog")
+    def put_fog(machines: list[dict]):
+        """Set the active rig's fog machines and write them into its file. Only the fog machines are
+        written: other unsaved changes of the rig (Rig page) stay unsaved."""
+        parsed = [FogMachine.model_validate(m) for m in machines]
+        with engine.lock:
+            store.rig.fog_machines = parsed
+            saved = store.load_rig_file(store.rig.name) or store.rig.model_copy(deep=True)
+            saved.name = store.rig.name
+            saved.fog_machines = [m.model_copy() for m in parsed]
+            save_model(store.rig_path(store.rig.name), saved)
+            problems = store.validate_rig()
         return {"ok": True, "problems": problems}
 
     @app.post("/api/rig/dimmer-name")

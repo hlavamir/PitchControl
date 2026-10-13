@@ -1,61 +1,198 @@
 {
   "name": "Default",
-  "description": "A starting point: four generic RGB lights (3 DMX channels each) on universe 0 at addresses 1, 4, 7 and 10, groups A and B alternating. Replace them with your own fixtures.",
+  "description": "A starting point: four generic RGB lights (3 DMX channels each) on universe 0 at addresses 3, 6, 9 and 12, and 2 LED strips (20 RGB segments each) at addresses 20 and 100. Replace them with your own fixtures. Also see the Fog page: a fog machine is set up on address 1.",
   "fixtures": [
     {
-      "name": "Light 1",
+      "name": "Light A1",
       "type": "Generic 1xRGB Fixture",
+      "enabled": true,
       "group": "A",
       "universe": 0,
-      "address": 1,
+      "address": 3,
       "position": [
-        0.2,
-        0.5
+        0.35,
+        0.85
       ],
+      "rotation": 0,
+      "length": 0,
+      "channel_values": {},
       "react_to_strobo": true,
-      "dimmer_macro": "Dimmer 01"
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 02",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
     },
     {
-      "name": "Light 2",
+      "name": "Light A2",
       "type": "Generic 1xRGB Fixture",
-      "group": "B",
-      "universe": 0,
-      "address": 4,
-      "position": [
-        0.4,
-        0.5
-      ],
-      "react_to_strobo": true,
-      "dimmer_macro": "Dimmer 01"
-    },
-    {
-      "name": "Light 3",
-      "type": "Generic 1xRGB Fixture",
+      "enabled": true,
       "group": "A",
       "universe": 0,
-      "address": 7,
+      "address": 6,
       "position": [
-        0.6,
-        0.5
+        0.65,
+        0.85
       ],
+      "rotation": 0,
+      "length": 0,
+      "channel_values": {},
       "react_to_strobo": true,
-      "dimmer_macro": "Dimmer 01"
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 02",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
     },
     {
-      "name": "Light 4",
+      "name": "Light B1",
       "type": "Generic 1xRGB Fixture",
+      "enabled": true,
       "group": "B",
       "universe": 0,
-      "address": 10,
+      "address": 9,
       "position": [
-        0.8,
+        0.35,
+        0.15
+      ],
+      "rotation": 0,
+      "length": 0,
+      "channel_values": {},
+      "react_to_strobo": false,
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 03",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
+    },
+    {
+      "name": "Light B2",
+      "type": "Generic 1xRGB Fixture",
+      "enabled": true,
+      "group": "B",
+      "universe": 0,
+      "address": 12,
+      "position": [
+        0.65,
+        0.15
+      ],
+      "rotation": 0,
+      "length": 0,
+      "channel_values": {},
+      "react_to_strobo": false,
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 03",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
+    },
+    {
+      "name": "LED Strip 1",
+      "type": "Generic Addressable LED Strip",
+      "enabled": true,
+      "group": "A",
+      "universe": 0,
+      "address": 20,
+      "position": [
+        0.15,
         0.5
       ],
-      "react_to_strobo": true,
-      "dimmer_macro": "Dimmer 01"
+      "rotation": -90,
+      "length": 0.5,
+      "channel_values": {},
+      "react_to_strobo": false,
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 01",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
+    },
+    {
+      "name": "LED Strip 2",
+      "type": "Generic Addressable LED Strip",
+      "enabled": true,
+      "group": "A",
+      "universe": 0,
+      "address": 100,
+      "position": [
+        0.85,
+        0.5
+      ],
+      "rotation": -90,
+      "length": 0.5,
+      "channel_values": {},
+      "react_to_strobo": false,
+      "real_strobo": false,
+      "dimmer_macro": "Dimmer 01",
+      "hue_source": "group",
+      "hue": 0,
+      "saturation_source": "group",
+      "saturation": 1,
+      "brightness_source": "pipeline",
+      "brightness": 1,
+      "idle_mask_range": {
+        "min": 0,
+        "max": 1,
+        "curve": 0
+      }
     }
   ],
   "dimmer_names": {
-    "Dimmer 01": "All lights"
-  }
+    "Dimmer 01": "LED Strips",
+    "Dimmer 02": "Lights A1, A2",
+    "Dimmer 03": "Lights B1, B2"
+  },
+  "fog_machines": [
+    {
+      "name": "Fog",
+      "enabled": true,
+      "universe": 0,
+      "channel": 1,
+      "on_value": 255,
+      "off_value": 0,
+      "interval_s": 60,
+      "duration_s": 4,
+      "manual_macro": "Fog Machine"
+    }
+  ]
 }

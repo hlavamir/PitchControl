@@ -193,7 +193,7 @@ class Engine:
                 start = fx.inst.address - 1
                 end = min(start + len(data), 512)
                 uni[start:end] = bytes(data[: end - start])
-            self.fog.update(dt, s.fog.machines, m, universes)
+            self.fog.update(dt, self.store.rig.fog_machines, m, universes)
             self.overrides.apply(universes)  # last: manual overrides win
             self.universes, self.v2_strips = universes, v2_strips
 

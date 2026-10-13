@@ -40,7 +40,7 @@ from pydantic import BaseModel, ValidationError
 
 from .. import __version__
 from .layers import diff, has_machine_keys, merge, split_machine
-from .models import Controller, FixtureType, Rig, Scene, Settings
+from .models import Controller, FixtureType, FogMachine, Rig, Scene, Settings
 
 log = logging.getLogger(__name__)
 
@@ -178,6 +178,7 @@ class ConfigStore:
     controller: Controller | None = None
     # problems the user should see in the UI (broken files, missing items, an unwritable folder)
     notices: list[str] = field(default_factory=list)
+    _legacy_fog: list | None = field(default=None, repr=False)  # see move_fog_into_rigs
 
     def notice(self, text: str) -> None:
         if text not in self.notices:
@@ -287,8 +288,49 @@ class ConfigStore:
     def load_all(self) -> None:
         self.load_settings()
         self.load_fixture_types()
+        self.move_fog_into_rigs()
         self.load_rig(self.settings.active_rig)
         self.load_controller(self.settings.active_controller)
+
+    def move_fog_into_rigs(self) -> None:
+        """Up to 1.4 the fog machines were in settings.json; now each rig has its own. Once: every rig
+        of the user's without fog machines gets the old ones, and so does the active rig if it is a
+        shipped one (as the user's copy, so their show doesn't change); then settings.json is
+        rewritten without them."""
+        legacy = self._legacy_fog
+        self._legacy_fog = None
+        if legacy is None:
+            return
+        machines: list[dict] = []
+        for m in legacy if isinstance(legacy, list) else []:
+            try:
+                machines.append(FogMachine.model_validate(m).model_dump(mode="json", exclude_none=True))
+            except ValidationError as exc:
+                log.error("settings.json: a fog machine can't be read, dropped:\n%s", exc)
+        moved: list[str] = []
+        try:
+            for name, d, u in self._layer(RIGS).values():
+                path, shipped = u, False
+                if u is None and name.lower() == self.settings.active_rig.lower() and machines:
+                    path, shipped = self.root / RIGS / f"{name}.json", True
+                if path is None:
+                    continue
+                data = json.loads((u or d).read_text(encoding="utf-8"))  # type: ignore[union-attr]
+                if not isinstance(data, dict) or ("fog_machines" in data and not shipped):
+                    continue
+                if shipped and data.get("fog_machines") == machines:
+                    continue  # the shipped rig already has the same machines
+                data.pop(VERSION_KEY, None)
+                data["fog_machines"] = machines
+                write_json(path, data)
+                moved.append(name)
+            self.save_settings()  # fog isn't a setting any more: this drops it from the file
+        except (OSError, ValueError) as exc:
+            log.error("moving the fog machines into the rigs failed: %s", exc)
+            return
+        log.info("fog machines moved from settings.json into the rigs: %s", ", ".join(moved) or "none needed")
+        if machines and moved:
+            self.notice(f"Fog machines are now part of each rig: yours were moved from settings.json into {', '.join(moved)}.")
 
     # -- settings: model defaults <- shipped settings.json <- user settings.json <- machine.json
     def _read_json(self, path: Path, user: bool) -> dict:
@@ -321,6 +363,9 @@ class ConfigStore:
         merged = self.settings_base()
         user = self._read_json(self.settings_path, user=True)
         machine = self._read_json(self.machine_path, user=True)
+        fog = user.get("fog")
+        # fog machines of 1.4 and earlier, for move_fog_into_rigs (None: nothing to move)
+        self._legacy_fog = fog.get("machines", []) if isinstance(fog, dict) else None
         for data, path in ((user, self.settings_path), (machine, self.machine_path)):
             candidate = merge(merged, data)
             try:
@@ -530,6 +575,10 @@ class ConfigStore:
                     )
                     break
                 used[(fx.universe, ch)] = fx.name
+        for fog in self.rig.fog_machines:
+            other = used.get((fog.universe, fog.channel))
+            if other:
+                problems.append(f"fog machine '{fog.name}' uses channel {fog.channel} of universe {fog.universe}, which '{other}' uses too")
         for p in problems:
             log.warning("rig '%s': %s", self.rig.name, p)
         return problems

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, channelCount, slotKind, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
+import { api, byName, channelCount, slotKind, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import type { Origin } from '../components/RigPanel'
@@ -74,7 +74,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
             wanted = ''
           }
         }
-        return all[wanted] ? wanted : (Object.keys(all)[0] ?? '')
+        return all[wanted] ? wanted : (Object.keys(all).sort(byName)[0] ?? '')
       })
     },
     [loadStatus],
@@ -186,7 +186,9 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         tip="Fixture types: what a kind of light is (pixels, channels, defaults). Some come with the app, your own are files in your data folder (fixtures/types); rigs place them"
       >
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
-          {Object.values(types).map((x) => (
+          {Object.values(types)
+            .sort((a, b) => byName(a.name, b.name))
+            .map((x) => (
             <li key={x.name}>
               <button
                 onClick={() => {

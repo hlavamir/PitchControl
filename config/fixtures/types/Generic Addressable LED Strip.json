@@ -1,0 +1,16 @@
+{
+  "description": "Use this as a starting point for any generic addressable RGB LED strip (like WS2811). The amount of pixels defined should match the amount of addressable segments of your LED strips.",
+  "transport": "dmx",
+  "pixels": 20,
+  "channels": [
+    {
+      "pixels": "RGB"
+    }
+  ],
+  "gamma": 1,
+  "strobo_color": {
+    "h": 0,
+    "s": 0,
+    "b": 1
+  }
+}

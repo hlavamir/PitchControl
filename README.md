@@ -81,7 +81,7 @@ Not supported: interfaces that only work through their manufacturer's driver or 
 
 ![Fog page](screenshots/fog.png)
 
-One panel per fog machine: a timer ("every 60 s for 4 s"), DMX universe and channel, on / off values, and whether the Fog button on the General page (or the controller) fires it by hand. The header shows when it is fogging.
+The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s"), DMX universe and channel, on / off values, and whether the Fog button on the General page (or the controller) fires it by hand. The header shows when it is fogging. Fog machines are part of the rig: loading another rig switches them, and Save writes them into the rig file (only them; other unsaved rig changes stay unsaved). A fog channel that a fixture uses too is reported. The Default rig has one, on channel 1.
 
 ### 8 · Settings
 
@@ -155,7 +155,7 @@ App options (for example from a terminal) are the same as for the backend (`--da
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
 1. Set `__version__`, and move the changelog's "Unreleased" notes under a `## X.Y.Z — date` heading.
 2. If a default in `config/` changed since the last release, commit it, then record it: `backend/.venv/bin/python tools/shipped_config_history.py` (it adds every committed version of the shipped files to `config/shipped_history.py`, so a later migration recognises untouched copies) and commit that too.
-3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Settings → About shows the plain version: build the frontend, then `backend/.venv/bin/python tools/screenshots.py` (once: `uv pip install -e "backend[screenshots]"`; it uses the installed Chrome or Edge). It runs the app without hardware on a throw-away copy of the defaults plus a staged demo state (a USB DMX interface, an Art-Net target, two fog machines, two overrides, three scenes) and a synthetic 128 BPM loop, and writes the nine PNGs into `screenshots/`; `--data <folder>` shows a showcase setup instead. Check them, then commit.
+3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Settings → About shows the plain version: build the frontend, then `backend/.venv/bin/python tools/screenshots.py` (once: `uv pip install -e "backend[screenshots]"`; it uses the installed Chrome or Edge). It runs the app without hardware on a throw-away copy of the defaults plus a staged demo state (a USB DMX interface, an Art-Net target, two overrides, three scenes) and a synthetic 128 BPM loop, and writes the nine PNGs into `screenshots/`; `--data <folder>` shows a showcase setup instead. Check them, then commit.
 4. Commit, then tag and push: `git tag -a vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin vX.Y.Z`.
 5. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
 
@@ -205,10 +205,10 @@ A file in your data folder wins over a default of the same name (ignoring case);
 
 | Path | Content |
 |---|---|
-| `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, fog machines, Auto Color palette, masks, audio analysis |
+| `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, Auto Color palette, masks, audio analysis |
 | `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial), appearance (`ui`) |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
-| `rigs/<name>.json` | fixture instances for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
+| `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
 | `controllers/*.json` | MIDI controller mappings (CC → macro) |
 | `scenes/scene_N.json` | the 8 scenes (macro name → control value); an empty slot means the macro defaults |
 | `state/macros.json` (this computer) | auto-saved macro values, restored on start; without it (first start) the macro defaults |

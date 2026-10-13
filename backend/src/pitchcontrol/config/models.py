@@ -262,6 +262,18 @@ class FixtureInstance(Model):
     idle_mask_range: IdleMaskRange = Field(default_factory=IdleMaskRange)
 
 
+class FogMachine(Model):
+    name: str = "Fog"
+    enabled: bool = True
+    universe: int = 0
+    channel: int = Field(default=1, ge=1, le=512)
+    on_value: int = Field(default=255, ge=0, le=255)
+    off_value: int = Field(default=0, ge=0, le=255)
+    interval_s: float = 60.0
+    duration_s: float = 4.0
+    manual_macro: str | None = "Fog Machine"
+
+
 class Rig(Model):
     name: str = ""
     description: str = ""
@@ -270,6 +282,8 @@ class Rig(Model):
     # shows the macro name. Which dimmer a fixture follows is its dimmer_macro; a dimmer that no
     # fixture uses is unassigned: disabled in the UI and ignored by MIDI.
     dimmer_names: dict[str, str] = Field(default_factory=dict)
+    # the fog machines of this setup (Fog page); up to 1.4 they were in settings.json
+    fog_machines: list[FogMachine] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- settings
@@ -359,19 +373,10 @@ class OutputSettings(Model):
         return data
 
 
-class FogMachine(Model):
-    name: str = "Fog"
-    enabled: bool = True
-    universe: int = 0
-    channel: int = Field(default=1, ge=1, le=512)
-    on_value: int = Field(default=255, ge=0, le=255)
-    off_value: int = Field(default=0, ge=0, le=255)
-    interval_s: float = 60.0
-    duration_s: float = 4.0
-    manual_macro: str | None = "Fog Machine"
-
-
 class FogSettings(Model):
+    """Up to 1.4 the fog machines were settings; now they belong to the rig (``Rig.fog_machines``).
+    Still read from an old settings.json, so the loader can move them into the rigs."""
+
     machines: list[FogMachine] = Field(default_factory=list)
 
 
@@ -405,7 +410,7 @@ class Settings(Model):
     midi_settle_s: float = 0.4  # hue/saturation knobs apply once they rest this long
     audio: AudioSettings = Field(default_factory=AudioSettings)
     outputs: OutputSettings = Field(default_factory=OutputSettings)
-    fog: FogSettings = Field(default_factory=FogSettings)
+    fog: FogSettings = Field(default_factory=FogSettings, exclude=True)  # legacy, never written: see FogSettings
     masks: MaskSettings = Field(default_factory=MaskSettings)
     auto_colors: list[HSB] = Field(default_factory=_default_palette)
     ui: UiSettings = Field(default_factory=UiSettings)
