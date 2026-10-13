@@ -213,3 +213,60 @@ def test_saved_files_record_the_app_version(layered, tmp_path):
     old = Overrides()
     old.load(tmp_path / "old.json")
     assert old.snapshot() == {"1": {"7": 100}}
+
+
+# --------------------------------------------------------------------------- controller files
+
+
+def test_editing_a_shipped_controller_makes_a_user_copy_and_reset_removes_it(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "default"}
+    data = client.get("/api/controllers/lcxl3").json()
+    data["author"] = "Me"
+    data["mappings"].append({"number": 99, "macro": "Fog Machine", "mode": "momentary"})
+    saved = client.put("/api/controllers/lcxl3", json=data).json()
+    assert saved["modified"] and saved["author"] == "Me"
+    user = layered.root / "controllers" / "lcxl3.json"
+    stored = read(user)
+    assert stored["app_version"] == __version__ and stored["modified"] == saved["modified"]  # when and with which version
+    assert stored["mappings"][-1] == {"number": 99, "macro": "Fog Machine", "mode": "momentary"}  # defaults are left out
+    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "modified"}
+    assert layered.controller.author == "Me"  # it is the active one: live
+    assert client.delete("/api/controllers/lcxl3").status_code == 409  # shipped
+    again = client.post("/api/controllers/lcxl3/reset").json()
+    assert again["author"] == "" and not user.exists()  # the test config has no author
+
+
+def test_new_duplicate_and_delete_controller(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    assert client.post("/api/controllers", json={"name": "bad/name"}).status_code == 409
+    assert client.post("/api/controllers", json={"name": "LCXL3"}).status_code == 409  # exists, ignoring case
+    assert client.post("/api/controllers", json={"name": "Mine"}).json()["name"] == "Mine"
+    assert client.post("/api/controllers", json={"name": "Copy", "copy_of": "lcxl3"}).status_code == 200
+    copy = client.get("/api/controllers/Copy").json()
+    assert copy["name"] == "Copy" and len(copy["mappings"]) == len(client.get("/api/controllers/lcxl3").json()["mappings"])
+    assert client.get("/api/controllers").json()["origins"]["Mine"] == "user"
+    assert client.delete("/api/controllers/Mine").status_code == 200
+    assert "Mine" not in client.get("/api/controllers").json()["available"]
+    assert client.get("/api/controllers/Mine").status_code == 404
+
+
+def test_active_controller_cannot_be_deleted_and_bad_content_is_refused(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    client.post("/api/controllers", json={"name": "Mine"})
+    layered.settings.active_controller = "Mine"
+    assert client.delete("/api/controllers/Mine").status_code == 409
+    with pytest.raises(Exception):  # a mapping without a macro
+        client.put("/api/controllers/Mine", json={"mappings": [{"number": 1}]})
+
+
+def test_midi_learning_endpoint(layered):
+    from pitchcontrol.io.midi_in import MidiInput
+
+    engine = Engine(layered, enable_hardware=False)
+    engine.midi = MidiInput(layered.controller, None, engine.macros)
+    client = TestClient(create_app(engine))
+    assert client.post("/api/midi/learning", json={"on": True}).status_code == 200
+    assert engine.midi.learning
+    client.post("/api/midi/learning", json={"on": False})
+    assert not engine.midi.learning

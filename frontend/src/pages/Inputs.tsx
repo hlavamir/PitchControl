@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
+import { MidiMappingSection } from '../components/MidiMapping'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
 
@@ -145,6 +146,8 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
           </div>
         </div>
       </Section>
+
+      <MidiMappingSection engine={engine} midiPorts={midiPorts} onActiveChanged={reload} />
     </div>
   )
 }

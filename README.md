@@ -57,6 +57,7 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 - **Audio input:** device, input channels and gain, with the 32-band meter. The dotted line shows how strongly each band counts towards the strobo trigger.
 - **MIDI controller:** controller mapping and port, and a monitor of the last received messages, showing which macro each one moved or why it was ignored.
+- **MIDI mapping:** one row per macro with its control (CC or note, channel), Learn, behaviour (fader, encoder, toggle, held, press), page and shift layers; saved as your own copy of the controller file.
 
 ### 6 · Outputs
 
@@ -209,7 +210,7 @@ A file in your data folder wins over a default of the same name (ignoring case);
 | `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial), appearance (`ui`) |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
 | `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
-| `controllers/*.json` | MIDI controller mappings (CC → macro) |
+| `controllers/*.json` | MIDI controller mappings (CC or note → macro), edited on the Inputs page |
 | `scenes/scene_N.json` | the 8 scenes (macro name → control value); an empty slot means the macro defaults |
 | `state/macros.json` (this computer) | auto-saved macro values, restored on start; without it (first start) the macro defaults |
 | `state/overrides.json` (this computer) | Control Desk channel overrides, restored on start |

@@ -6,6 +6,25 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **MIDI mapping in the app** (Inputs page, section 03): one row per macro with the control that drives it, a **Learn**
+  button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
+  control, "page" (the same fader drives other macros on the Dimmers page) and **shift** layers (a shift button changes
+  what other buttons do: the LCXL3 buttons load scenes, with shift they save them). Clashes (a control used twice) are
+  marked and Learn offers Replace or Swap. Mappings are saved as your own copy of the controller file (the shipped one
+  stays untouched; Reset brings it back), and can be created, duplicated and deleted. A controller file also has an author,
+  description and contact, and records when and with which PitchControl version it was last edited.
+- The shipped **Launch Control XL 3** mapping now covers its buttons, as in the vvvv patch: the top row (Manual Strobo, Fog,
+  Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors; with shift the shader presets A-D), the bottom row
+  (load scenes 1-7, with shift save them), the knob row 1 (Dimmer 01-08 on the General page) and the shift buttons.
+
+### Changed
+- **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
+  scene load or a change on screen), the macro follows the fader proportionally instead of jumping: both reach the end of
+  the range together.
+- Controller files are a flat list of mappings now (`mappings`, with `page` and `shift` per mapping); files in the old
+  form (`pages`, `page_knob`, `cc`) still load and are written in the new form when saved.
+
 ## 1.4.1 — 2026-10-13
 
 ### Changed

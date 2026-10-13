@@ -419,23 +419,75 @@ class Settings(Model):
 # --------------------------------------------------------------------------- MIDI controllers
 
 
+MidiKind = Literal["cc", "note"]
+# absolute: a fader or knob (value/127) · relative: an encoder, each message turns the value up or down ·
+# toggle: flips on every press · momentary: on while pressed (also right for buttons that toggle themselves
+# on the controller) · trigger: one press, for scene buttons and the like · shift: a modifier button ·
+# page_knob: an absolute knob that steps through the control pages
+MidiMode = Literal["absolute", "relative", "toggle", "momentary", "trigger", "shift", "page_knob"]
+Encoder = Literal["twos_complement", "sign_bit", "offset_64"]
+
+
 class MidiMapping(Model):
-    cc: int = Field(ge=0, le=127)
-    macro: str
-    # absolute: CC value / 127 -> control value; toggle: flips on press; momentary: on while held
-    mode: Literal["absolute", "toggle", "momentary"] = "absolute"
+    """One MIDI control (a CC or a note) and what it does."""
+
+    type: MidiKind = "cc"
+    number: int = Field(ge=0, le=127)  # CC or note number
+    macro: str | None = None  # none for ``shift`` and ``page_knob``
+    mode: MidiMode = "absolute"
+    channel: int | None = Field(default=None, ge=1, le=16)  # 1-based; none = the controller's channel
+    page: Literal["general", "dimmers"] | None = None  # only while this control page is active; none = on every page
+    shift: Literal["on", "off"] | None = None  # only while shift is held / not held; none = either way
+    invert: bool = False
+    encoder: Encoder = "twos_complement"  # relative mode: how the controller sends its steps
+    sensitivity: float = Field(default=1.0, gt=0)  # relative mode: 1 = 127 steps for the whole range
+    note: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_cc(cls, data: Any) -> Any:
+        # before 1.5 a mapping was {"cc": 29, "macro": …}
+        if isinstance(data, dict) and "cc" in data and "number" not in data:
+            data = dict(data)
+            data["number"] = data.pop("cc")
+        return data
+
+    @model_validator(mode="after")
+    def _macro_needed(self) -> "MidiMapping":
+        if self.mode not in ("shift", "page_knob") and not self.macro:
+            raise ValueError("a mapping needs a macro (except shift and page_knob)")
+        return self
 
 
 class Controller(Model):
     name: str = ""
+    author: str = ""
+    description: str = ""
+    contact: str = ""  # an email address or a website
+    modified: str = ""  # date and time of the last edit in the app (the file also says which version wrote it)
     port_match: str = ""  # substring of the MIDI port name
-    channel: int = Field(default=1, ge=1, le=16)  # 1-based MIDI channel
-    mappings: list[MidiMapping] = Field(default_factory=list)  # active on every page
-    # per control page ("general", "dimmers"): the same physical controls drive the active page,
-    # as in vvvv; page mappings win over the global ones
-    pages: dict[str, list[MidiMapping]] = Field(default_factory=dict)
-    # CC of an absolute knob that switches pages: turning it up = next page, down = previous page
-    page_knob: int | None = None
+    channel: int = Field(default=1, ge=1, le=16)  # 1-based MIDI channel of the controls (a mapping can use another)
+    mappings: list[MidiMapping] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_pages(cls, data: Any) -> Any:
+        # before 1.5: ``mappings`` active on every page, ``pages`` {page: mappings} and ``page_knob``: the CC of
+        # a knob that switches pages. The same control then meant different macros per page.
+        if not isinstance(data, dict) or not ({"pages", "page_knob"} & data.keys()):
+            return data
+        data = dict(data)
+        mappings = list(data.get("mappings") or [])
+        for page, items in (data.pop("pages", None) or {}).items():
+            for item in items:
+                item = dict(item) if isinstance(item, dict) else item.model_dump(exclude_defaults=True)
+                item.setdefault("page", page)
+                mappings.append(item)
+        knob = data.pop("page_knob", None)
+        if knob is not None:
+            mappings.append({"number": knob, "mode": "page_knob"})
+        data["mappings"] = mappings
+        return data
 
 
 # --------------------------------------------------------------------------- scenes

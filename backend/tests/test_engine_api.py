@@ -135,7 +135,8 @@ def test_dimmer_names_and_unused_dimmers_ignore_midi(store):
     engine.macros.set("Dimmer 01", 1.0)
     engine.macros.set("Dimmer 02", 1.0)
     for cc in (1, 2):
-        midi.handle(mido.Message("control_change", channel=0, control=cc, value=0))
+        for value in (127, 0):  # the first message only tells where the fader is (it matches the macro), then it moves
+            midi.handle(mido.Message("control_change", channel=0, control=cc, value=value))
     assert engine.macros.control("Dimmer 01") == 1.0  # unassigned: ignored
     assert engine.macros.control("Dimmer 02") == 0.0
     assert "unassigned" in midi.recent[0]["note"]

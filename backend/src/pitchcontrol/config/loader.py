@@ -649,6 +649,47 @@ class ConfigStore:
     def load_controller_file(self, name: str) -> Controller | None:
         return self._load_layered(CONTROLLERS, name, Controller, name=name)
 
+    def controller_origins(self) -> dict[str, Origin]:
+        return self.origins(CONTROLLERS, Controller)
+
+    def controller_name_problem(self, name: str) -> str | None:
+        """Why ``name`` can't be used for a new controller file, or None."""
+        if not RIG_NAME.fullmatch(name):
+            return "use letters, digits, space, - _ . (max 64, starting with a letter or digit)"
+        taken = next((n for n in self.controller_names() if n.lower() == name.lower()), None)
+        if taken is not None:
+            return f"the controller '{taken}' already exists"
+        return None
+
+    def save_controller(self, name: str, ctrl: Controller) -> Controller:
+        """Write a controller to the user's folder (a shipped one gets a user copy that takes its place),
+        stamped with the time of the edit; the file also records the app version (``write_json``)."""
+        ctrl.modified = datetime.now().astimezone().isoformat(timespec="seconds")
+        # defaults are left out, so a mapping reads {"number": 29, "macro": "Hue A", "page": "general"}
+        write_json(self.write_path(CONTROLLERS, name), ctrl.model_dump(mode="json", exclude_none=True, exclude_defaults=True))
+        if self.settings.active_controller and self.settings.active_controller.lower() == name.lower():
+            self.controller = ctrl
+        return ctrl
+
+    def delete_controller(self, name: str) -> None:
+        """Delete the user's controller file (a shipped one can't be deleted, see ``reset_controller``)."""
+        path = self.user_file(CONTROLLERS, name)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        log.info("deleted controller '%s'", name)
+
+    def reset_controller(self, name: str) -> Controller | None:
+        """Back to the shipped version: delete the user's copy. None if the controller isn't shipped."""
+        if self.default_file(CONTROLLERS, name) is None:
+            return None
+        path = self.user_file(CONTROLLERS, name)
+        if path is not None:
+            path.unlink(missing_ok=True)
+        if self.settings.active_controller and self.settings.active_controller.lower() == name.lower():
+            self.load_controller(name)
+        log.info("controller '%s' reset to the shipped version", name)
+        return self.load_controller_file(name)
+
     # -- scenes (none ship; an empty slot means the macro defaults)
     def scene_name(self, index: int) -> str:
         return f"scene_{index + 1}"

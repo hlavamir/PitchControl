@@ -9,7 +9,7 @@ export interface MacroDef {
   max: number
   steps: number
   kind: MacroKind
-  page: 'general' | 'dimmers' | 'scenes'
+  page: 'general' | 'dimmers' | 'scenes' | 'system'
   default: number
   display_name: string
   radio_group: string | null
@@ -33,9 +33,43 @@ export interface FixtureState {
 
 export interface MidiEvent {
   t: number
+  seq: number // counts every message since the port was opened
   text: string
+  kind: 'cc' | 'note' | null
+  number: number
+  channel: number // 1-based
+  value: number
   macro: string | null
   note: string
+}
+
+export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift' | 'page_knob'
+
+/** One MIDI control of a controller file, as the API sends it (optional fields are left out when unset). */
+export interface MidiMappingEntry {
+  type: 'cc' | 'note'
+  number: number
+  macro?: string | null
+  mode: MidiMode
+  channel?: number | null // none = the controller's channel
+  page?: 'general' | 'dimmers' | null // none = on every page
+  shift?: 'on' | 'off' | null // none = either way
+  invert: boolean
+  encoder: 'twos_complement' | 'sign_bit' | 'offset_64'
+  sensitivity: number
+  note: string
+}
+
+export interface ControllerFile {
+  name: string
+  author: string
+  description: string
+  contact: string
+  modified: string // when the app last wrote it
+  app_version?: string | null // the version that wrote it
+  port_match: string
+  channel: number
+  mappings: MidiMappingEntry[]
 }
 
 export interface IoStatus {
@@ -50,6 +84,8 @@ export interface IoStatus {
   channel?: number | null
   received?: number
   recent?: MidiEvent[]
+  shift?: boolean // a shift button of the controller is held
+  learning?: boolean
 }
 
 export interface EngineState {

@@ -1,0 +1,718 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, byName, type ControllerFile, type MacroDef, type MidiEvent, type MidiMappingEntry, type MidiMode, type Rig } from '../api'
+import type { EngineConnection } from '../useEngine'
+import { Button, NumberInput, Row, Section } from './forms'
+
+// MIDI mapping: one row per macro with the control (CC or note) that drives it. "Learn" listens for the
+// next message from the controller. Edits are made on a draft and written with Save, to the user's copy of
+// the controller file (the one that comes with the app is never changed).
+
+type Tab = 'general' | 'dimmers' | 'scenes' | 'controller'
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'dimmers', label: 'Dimmers' },
+  { id: 'scenes', label: 'Scenes & pages' },
+  { id: 'controller', label: 'Controller' },
+]
+
+const MODE_LABEL: Record<MidiMode, string> = {
+  absolute: 'Fader / knob',
+  relative: 'Encoder (relative)',
+  toggle: 'Button: toggle',
+  momentary: 'Button: while held',
+  trigger: 'Button: press',
+  shift: 'Shift',
+  page_knob: 'Page knob',
+}
+const MODE_TIP: Record<MidiMode, string> = {
+  absolute: 'The control position is the value (with value scaling: nothing jumps when the fader and the value differ)',
+  relative: 'An endless encoder: every step turns the value up or down',
+  toggle: 'Every press flips the switch on or off',
+  momentary: 'On while the button is held; also right for buttons that toggle themselves on the controller',
+  trigger: 'One press does it (scene buttons, shader presets)',
+  shift: '',
+  page_knob: '',
+}
+
+/** The behaviours that make sense for a macro. */
+function modesFor(d: MacroDef): MidiMode[] {
+  if (d.kind === 'fader') return ['absolute', 'relative']
+  if (d.kind === 'toggle' || d.kind === 'momentary') return ['toggle', 'momentary', 'trigger']
+  return ['trigger']
+}
+const defaultMode = (d: MacroDef): MidiMode => (d.kind === 'fader' ? 'absolute' : d.kind === 'toggle' ? 'toggle' : d.kind === 'momentary' ? 'momentary' : 'trigger')
+/** Faders and knobs are shared between pages by default; buttons work on every page. */
+const defaultPage = (d: MacroDef) => (d.kind === 'fader' && (d.page === 'general' || d.page === 'dimmers') ? d.page : null)
+
+const newMapping = (over: Partial<MidiMappingEntry>): MidiMappingEntry => ({
+  type: 'cc',
+  number: 0,
+  macro: null,
+  mode: 'absolute',
+  channel: null,
+  page: null,
+  shift: null,
+  invert: false,
+  encoder: 'twos_complement',
+  sensitivity: 1,
+  note: '',
+  ...over,
+})
+
+interface Learning {
+  /** the row waiting for a control: an existing mapping, or a new one to be created from ``template`` */
+  index: number | null
+  template: MidiMappingEntry
+}
+
+interface Clash {
+  proposal: MidiMappingEntry
+  index: number | null
+  others: number[]
+  text: string
+}
+
+type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
+
+const LEARN_TIMEOUT_MS = 15000
+
+export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: () => void }) {
+  const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string> } | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [saved, setSaved] = useState<ControllerFile | null>(null)
+  const [draft, setDraft] = useState<ControllerFile | null>(null)
+  const [defs, setDefs] = useState<MacroDef[]>([])
+  const [dimmerNames, setDimmerNames] = useState<Record<string, string>>({})
+  const [tab, setTab] = useState<Tab>('general')
+  const [learning, setLearning] = useState<Learning | null>(null)
+  const [clash, setClash] = useState<Clash | null>(null)
+  const [prompt, setPrompt] = useState<Prompt>(null)
+  const [name, setName] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+  const learnFrom = useRef(0)
+
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
+  const midi = engine.state?.io.midi
+  const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
+
+  const say = (text: string) => {
+    setMessage(text)
+    window.setTimeout(() => setMessage(null), 4000)
+  }
+  const fail = (e: unknown) => say(e instanceof Error ? e.message : String(e))
+
+  const loadList = useCallback(async (select?: string) => {
+    const l = await api.get<NonNullable<typeof list>>('/api/controllers')
+    setList(l)
+    setSelected((cur) => select ?? (cur && l.available.includes(cur) ? cur : (l.active ?? l.available[0] ?? null)))
+    return l
+  }, [])
+
+  useEffect(() => {
+    loadList().catch(fail)
+    api.get<MacroDef[]>('/api/macros/defs').then(setDefs)
+    api.get<Rig>('/api/rig').then((r) => setDimmerNames(r.dimmer_names ?? {}))
+  }, [loadList])
+
+  useEffect(() => {
+    if (!selected) {
+      setSaved(null)
+      setDraft(null)
+      return
+    }
+    api
+      .get<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`)
+      .then((c) => {
+        setSaved(c)
+        setDraft(structuredClone(c))
+        setLearning(null)
+        setClash(null)
+      })
+      .catch(fail)
+  }, [selected])
+
+  const defOf = useMemo(() => new Map(defs.map((d) => [d.name, d])), [defs])
+  const labelOf = (macro: string) => {
+    const d = defOf.get(macro)
+    const base = d?.label ?? macro
+    return dimmerNames[macro] ? `${base} — ${dimmerNames[macro]}` : base
+  }
+
+  // -- edits
+  const edit = (fn: (c: ControllerFile) => void) => setDraft((c) => {
+    if (!c) return c
+    const next = structuredClone(c)
+    fn(next)
+    return next
+  })
+  const patch = (index: number, over: Partial<MidiMappingEntry>) => edit((c) => void Object.assign(c.mappings[index], over))
+  const remove = (index: number) => edit((c) => void c.mappings.splice(index, 1))
+
+  const channelOf = (m: MidiMappingEntry) => m.channel ?? draft?.channel ?? 1
+  const overlaps = (a: MidiMappingEntry, b: MidiMappingEntry) =>
+    a.type === b.type &&
+    a.number === b.number &&
+    channelOf(a) === channelOf(b) &&
+    (!a.page || !b.page || a.page === b.page) &&
+    (!a.shift || !b.shift || a.shift === b.shift) &&
+    (a.mode === 'shift') === (b.mode === 'shift')
+  const mappingLabel = (m: MidiMappingEntry) => (m.mode === 'shift' ? 'shift' : m.mode === 'page_knob' ? 'the page knob' : labelOf(m.macro ?? '?'))
+
+  // controls used twice in the same layer
+  const clashes = useMemo(() => {
+    const out = new Map<number, string[]>()
+    const ms = draft?.mappings ?? []
+    ms.forEach((a, i) =>
+      ms.forEach((b, j) => {
+        if (i !== j && overlaps(a, b)) out.set(i, [...(out.get(i) ?? []), mappingLabel(b)])
+      }),
+    )
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, defs, dimmerNames])
+
+  // -- learn
+  const stopLearning = useCallback(() => {
+    setLearning(null)
+    api.post('/api/midi/learning', { on: false }).catch(() => {})
+  }, [])
+
+  const startLearning = (l: Learning) => {
+    setClash(null)
+    learnFrom.current = midi?.recent?.[0]?.seq ?? 0
+    setLearning(l)
+    api.post('/api/midi/learning', { on: true }).catch(fail)
+  }
+
+  useEffect(() => {
+    if (!learning) return
+    const timer = window.setTimeout(() => {
+      stopLearning()
+      say('Learn: no message arrived (is the controller selected and connected?)')
+    }, LEARN_TIMEOUT_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [learning])
+  useEffect(() => () => void api.post('/api/midi/learning', { on: false }).catch(() => {}), [])
+
+  const commit = (index: number | null, proposal: MidiMappingEntry, remove: number[] = [], giveOld?: { at: number; from: MidiMappingEntry }) =>
+    edit((c) => {
+      if (giveOld) {
+        const o = c.mappings[giveOld.at]
+        o.type = giveOld.from.type
+        o.number = giveOld.from.number
+        o.channel = giveOld.from.channel
+      }
+      let target = index
+      if (index === null) {
+        c.mappings.push(proposal)
+        target = c.mappings.length - 1
+      } else c.mappings[index] = proposal
+      const gone = new Set(remove)
+      c.mappings = c.mappings.filter((_, i) => !gone.has(i))
+      return target
+    })
+
+  // a control arrived while learning
+  useEffect(() => {
+    if (!learning || !draft) return
+    const e = (midi?.recent ?? []).find((x: MidiEvent) => x.seq > learnFrom.current && x.kind)
+    if (!e || !e.kind) return
+    const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
+    const proposal: MidiMappingEntry = { ...base, type: e.kind, number: e.number, channel: e.channel === draft.channel ? null : e.channel }
+    stopLearning()
+    const others = draft.mappings.map((o, i) => (i !== learning.index && overlaps(o, proposal) ? i : -1)).filter((i) => i >= 0)
+    if (others.length === 0) return commit(learning.index, proposal)
+    const text = `${e.kind === 'cc' ? 'CC' : 'Note'} ${e.number} is already used by ${others.map((i) => mappingLabel(draft.mappings[i])).join(', ')}.`
+    setClash({ proposal, index: learning.index, others, text })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [midi?.recent, learning])
+
+  // -- the monitor lights up the row that the control moved
+  useEffect(() => {
+    const e = midi?.recent?.[0]
+    if (!e?.macro) return
+    setFlash(e.macro)
+    const t = window.setTimeout(() => setFlash(null), 350)
+    return () => window.clearTimeout(t)
+  }, [midi?.recent?.[0]?.seq]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -- files
+  const save = async () => {
+    if (!draft || !selected) return
+    try {
+      const c = await api.put<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`, draft)
+      setSaved(c)
+      setDraft(structuredClone(c))
+      await loadList()
+      say('Saved')
+    } catch (e) {
+      fail(e)
+    }
+  }
+  const submitName = async (action: 'new' | 'duplicate') => {
+    try {
+      const res = await api.post<{ name: string }>('/api/controllers', { name: name.trim(), copy_of: action === 'duplicate' ? selected : undefined })
+      setPrompt(null)
+      await loadList(res.name)
+    } catch (e) {
+      fail(e)
+    }
+  }
+  const resetFile = async () => {
+    if (!selected) return
+    try {
+      await api.post(`/api/controllers/${encodeURIComponent(selected)}/reset`)
+      setPrompt(null)
+      await loadList(selected)
+      const c = await api.get<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`)
+      setSaved(c)
+      setDraft(structuredClone(c))
+    } catch (e) {
+      fail(e)
+    }
+  }
+  const deleteFile = async () => {
+    if (!selected) return
+    try {
+      await api.delete(`/api/controllers/${encodeURIComponent(selected)}`)
+      setPrompt(null)
+      setSelected(null)
+      await loadList()
+    } catch (e) {
+      fail(e)
+    }
+  }
+  const useIt = async () => {
+    if (!selected) return
+    try {
+      const s = await api.get<Record<string, unknown>>('/api/settings')
+      await api.put('/api/settings', { ...s, active_controller: selected })
+      await loadList(selected)
+      onActiveChanged()
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  // -- rows
+  const index = (macro: string) => (draft?.mappings ?? []).map((m, i) => (m.macro === macro && m.mode !== 'shift' && m.mode !== 'page_knob' ? i : -1)).filter((i) => i >= 0)
+
+  const row = (key: string, label: string, hint: string | undefined, i: number | null, d: MacroDef | null, template: MidiMappingEntry) => {
+    const m = i !== null && draft ? draft.mappings[i] : null
+    const waiting = learning !== null && learning.index === i && (i !== null || (learning.template.macro === template.macro && learning.template.mode === template.mode))
+    const others = i !== null ? clashes.get(i) : undefined
+    const special = m?.mode === 'shift' || m?.mode === 'page_knob' || template.mode === 'shift' || template.mode === 'page_knob'
+    const modes = d ? modesFor(d) : []
+    return (
+      <div
+        key={key}
+        data-tip={hint}
+        className={`grid min-w-[880px] grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] items-center gap-x-2 border-b border-edge/50 px-2 py-[3px] text-[12px] ${
+          flash && flash === m?.macro ? 'bg-panel-2' : ''
+        }`}
+      >
+        <span className="truncate" title={label}>
+          {label}
+          {others && (
+            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} in the same layer: both react to this control`}>
+              ⚠ also {others[0]}
+              {others.length > 1 ? ` +${others.length - 1}` : ''}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-1">
+          <select value={m?.type ?? 'cc'} disabled={!m} onChange={(e) => i !== null && patch(i, { type: e.target.value as 'cc' | 'note' })} data-tip="Which kind of MIDI message: a controller (CC) or a note">
+            <option value="cc">CC</option>
+            <option value="note">Note</option>
+          </select>
+          <NumberInput
+            value={m?.number ?? null}
+            integer
+            min={0}
+            max={127}
+            className="w-14"
+            placeholder="–"
+            tip="CC or note number (0–127)"
+            onChange={(v) => (i !== null ? patch(i, { number: v }) : edit((c) => void c.mappings.push({ ...template, number: v })))}
+          />
+        </span>
+        <span className="flex items-center gap-1">
+          <select
+            value={m?.channel ?? ''}
+            disabled={!m}
+            className="w-[4.6rem]"
+            onChange={(e) => i !== null && patch(i, { channel: e.target.value ? Number(e.target.value) : null })}
+            data-tip={`MIDI channel of this control: ${draft?.channel ?? 1} unless you pick another one (some controllers use a channel per track)`}
+          >
+            <option value="">ch {draft?.channel ?? 1}</option>
+            {Array.from({ length: 16 }, (_, c) => (
+              <option key={c} value={c + 1}>
+                ch {c + 1}
+              </option>
+            ))}
+          </select>
+          <button
+            className={`lbl h-6 px-2 text-[10px] whitespace-nowrap ${waiting ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge text-ink'}`}
+            data-tip={waiting ? 'Waiting for a message: move or press the control (click again to cancel)' : 'Learn: then move or press the control on the controller'}
+            onClick={() => (waiting ? stopLearning() : startLearning({ index: i, template }))}
+          >
+            {waiting ? 'move it…' : 'Learn'}
+          </button>
+        </span>
+        {special ? (
+          <span className="lbl text-[10px] text-dim">{MODE_LABEL[(m?.mode ?? template.mode) as MidiMode]}</span>
+        ) : (
+          <select
+            value={m?.mode ?? (d ? defaultMode(d) : 'absolute')}
+            disabled={!m || modes.length < 2}
+            onChange={(e) => i !== null && patch(i, { mode: e.target.value as MidiMode })}
+            data-tip={m ? MODE_TIP[m.mode] : 'How the control acts on this macro'}
+          >
+            {(m && !modes.includes(m.mode) ? [m.mode, ...modes] : modes).map((x) => (
+              <option key={x} value={x}>
+                {MODE_LABEL[x]}
+              </option>
+            ))}
+          </select>
+        )}
+        {special ? (
+          <span />
+        ) : (
+          <select
+            value={m?.page ?? ''}
+            disabled={!m}
+            onChange={(e) => i !== null && patch(i, { page: (e.target.value || null) as MidiMappingEntry['page'] })}
+            data-tip="On which control page the control does this: the same fader can drive other macros on the other page"
+          >
+            <option value="">any page</option>
+            <option value="general">General</option>
+            <option value="dimmers">Dimmers</option>
+          </select>
+        )}
+        {special ? (
+          <span />
+        ) : (
+          <select
+            value={m?.shift ?? ''}
+            disabled={!m}
+            onChange={(e) => i !== null && patch(i, { shift: (e.target.value || null) as MidiMappingEntry['shift'] })}
+            data-tip="Whether the shift button must be held (or must not be) for the control to do this"
+          >
+            <option value="">shift: any</option>
+            <option value="off">no shift</option>
+            <option value="on">with shift</option>
+          </select>
+        )}
+        <span className="flex items-center gap-1.5">
+          {m && !special && (
+            <label className="lbl flex items-center gap-1 text-[10px] text-dim" data-tip="Flip the direction: 127 becomes 0">
+              <input type="checkbox" checked={m.invert} onChange={(e) => i !== null && patch(i, { invert: e.target.checked })} />
+              inv
+            </label>
+          )}
+          {m?.mode === 'relative' && (
+            <>
+              <select
+                value={m.encoder}
+                onChange={(e) => i !== null && patch(i, { encoder: e.target.value as MidiMappingEntry['encoder'] })}
+                data-tip="How the encoder sends its steps: most controllers use two's complement (127 = one step down); try the others if it turns the wrong way or jumps"
+              >
+                <option value="twos_complement">2's compl.</option>
+                <option value="sign_bit">sign bit</option>
+                <option value="offset_64">offset 64</option>
+              </select>
+              <NumberInput value={m.sensitivity} min={0.05} className="w-14" tip="Steps per message: 1 = 127 steps cover the whole range" onChange={(v) => i !== null && patch(i, { sensitivity: v })} />
+            </>
+          )}
+        </span>
+        <button
+          className="text-dim hover:text-ink disabled:opacity-30"
+          disabled={!m}
+          data-tip="Remove this control from the macro"
+          onClick={() => i !== null && remove(i)}
+          aria-label="Remove"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
+  const macroRows = (macros: MacroDef[]) =>
+    macros.flatMap((d) => {
+      const idx = index(d.name)
+      const template = newMapping({ macro: d.name, mode: defaultMode(d), page: defaultPage(d) })
+      const label = labelOf(d.name)
+      return (idx.length ? idx : [null]).map((i, n) => row(`${d.name}-${n}`, label, undefined, i, d, template))
+    })
+
+  const inTab = (t: Tab) => defs.filter((d) => (t === 'scenes' ? d.page === 'scenes' || d.page === 'system' : d.page === t))
+  const unknown = (draft?.mappings ?? []).map((m, i) => ({ m, i })).filter(({ m }) => m.macro && !defOf.has(m.macro))
+
+  // -- the controller tab
+  const controllerTab = () => {
+    if (!draft) return null
+    const shifts = draft.mappings.map((m, i) => ({ m, i })).filter(({ m }) => m.mode === 'shift')
+    const knob = draft.mappings.findIndex((m) => m.mode === 'page_knob')
+    const set = <K extends keyof ControllerFile>(k: K, v: ControllerFile[K]) => edit((c) => void (c[k] = v))
+    const shiftTemplate = newMapping({ mode: 'shift' })
+    const knobTemplate = newMapping({ mode: 'page_knob' })
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="grid gap-x-6 gap-y-0.5 wide:grid-cols-2">
+          <Row label="Name" hint="The name of this controller mapping, as shown in lists">
+            <input type="text" className="w-full" value={draft.name} onChange={(e) => set('name', e.target.value)} />
+          </Row>
+          <Row label="Author" hint="Who made this mapping">
+            <input type="text" className="w-full" value={draft.author} onChange={(e) => set('author', e.target.value)} />
+          </Row>
+          <Row label="Contact" hint="An email address or a website, for questions about this mapping">
+            <input type="text" className="w-full" value={draft.contact} onChange={(e) => set('contact', e.target.value)} />
+          </Row>
+          <Row label="Last edited" hint="Written by the app every time the mapping is saved">
+            <span className="text-[12px] text-dim">
+              {draft.modified ? new Date(draft.modified).toLocaleString() : 'never (as shipped)'}
+              {draft.app_version ? ` · PitchControl ${draft.app_version}` : ''}
+            </span>
+          </Row>
+          <Row label="MIDI port" hint="Part of the MIDI port's name: the controller is found by it (unless a port is chosen above)">
+            <input type="text" className="w-full" list="midi-port-names" value={draft.port_match} onChange={(e) => set('port_match', e.target.value)} />
+            <datalist id="midi-port-names">
+              {midiPorts.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+          </Row>
+          <Row label="Channel" hint="The MIDI channel the controls send on (a single control can use another one)">
+            <select value={draft.channel} onChange={(e) => set('channel', Number(e.target.value))}>
+              {Array.from({ length: 16 }, (_, c) => (
+                <option key={c} value={c + 1}>
+                  {c + 1}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <div className="wide:col-span-2">
+            <Row label="Description" hint="Notes on the mapping: which controller, what is where">
+              <textarea className="h-20 w-full resize-y" value={draft.description} onChange={(e) => set('description', e.target.value)} />
+            </Row>
+          </div>
+        </div>
+        <div>
+          <div className="lbl mb-1 text-[10px] text-dim">Shift and pages</div>
+          <div className="border border-edge/60" data-tip="A shift button changes what the other buttons do: set 'with shift' / 'no shift' on a mapping. Several buttons can act as shift">
+            {shifts.map(({ i }, n) => row(`shift-${i}`, `Shift button ${shifts.length > 1 ? n + 1 : ''}`.trim(), undefined, i, null, shiftTemplate))}
+            <div className="flex min-w-[880px] items-center gap-2 border-b border-edge/50 px-2 py-1">
+              <Button onClick={() => startLearning({ index: null, template: { ...shiftTemplate } })} tip="Press a button on the controller to make it a shift button">
+                {learning && learning.index === null && learning.template.mode === 'shift' ? 'press a button…' : 'Add shift button'}
+              </Button>
+            </div>
+            {knob >= 0 ? (
+              row('page-knob', 'Page knob', 'An absolute knob: turn it up for the next control page (General → Dimmers), down for the previous one', knob, null, knobTemplate)
+            ) : (
+              <div className="flex min-w-[880px] items-center gap-2 px-2 py-1">
+                <Button onClick={() => startLearning({ index: null, template: { ...knobTemplate } })} tip="Turn a knob on the controller: turning it up then switches to the next control page, down to the previous one">
+                  {learning && learning.index === null && learning.template.mode === 'page_knob' ? 'turn a knob…' : 'Set page knob'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+        {unknown.length > 0 && (
+          <div>
+            <div className="lbl mb-1 text-[10px] text-dim">Mapped to macros that don't exist (typo, or from a newer version)</div>
+            <div className="border border-edge/60">{unknown.map(({ m, i }) => row(`unknown-${i}`, m.macro ?? '?', undefined, i, null, m))}</div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const prompts = () => (
+    <>
+      {prompt?.kind === 'name' && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-edge p-2">
+          <span className="lbl text-[10px] text-dim">{prompt.action === 'new' ? 'New empty controller' : `Duplicate “${selected}”`}</span>
+          <input
+            type="text"
+            autoFocus
+            value={name}
+            placeholder="file name"
+            data-tip="Name of the controller file: letters, digits, space, - _ . ; ⏎ confirms, Esc cancels"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitName(prompt.action)
+              else if (e.key === 'Escape') setPrompt(null)
+            }}
+          />
+          <Button primary onClick={() => submitName(prompt.action)} disabled={!name.trim()}>
+            {prompt.action === 'new' ? 'Create' : 'Duplicate'}
+          </Button>
+          <Button onClick={() => setPrompt(null)}>Cancel</Button>
+        </div>
+      )}
+      {prompt?.kind === 'delete' && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
+          <span className="text-[11px]">Delete the controller file “{selected}”?</span>
+          <Button primary onClick={deleteFile}>
+            Delete
+          </Button>
+          <Button onClick={() => setPrompt(null)}>Cancel</Button>
+        </div>
+      )}
+      {prompt?.kind === 'reset' && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
+          <span className="text-[11px]">Reset “{selected}” to the version that comes with the app? Your changes to it are lost.</span>
+          <Button primary onClick={resetFile}>
+            Reset
+          </Button>
+          <Button onClick={() => setPrompt(null)}>Cancel</Button>
+        </div>
+      )}
+      {clash && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
+          <span className="text-[11px]">{clash.text}</span>
+          <Button
+            primary
+            onClick={() => {
+              commit(clash.index, clash.proposal, clash.others)
+              setClash(null)
+            }}
+            tip="Use the control here and remove it from the other macro"
+          >
+            Replace
+          </Button>
+          {clash.index !== null && clash.others.length === 1 && draft && (
+            <Button
+              onClick={() => {
+                commit(clash.index, clash.proposal, [], { at: clash.others[0], from: draft.mappings[clash.index!] })
+                setClash(null)
+              }}
+              tip="The other macro gets the control this macro had"
+            >
+              Swap
+            </Button>
+          )}
+          <Button onClick={() => setClash(null)}>Cancel</Button>
+        </div>
+      )}
+    </>
+  )
+
+  const names = (list?.available ?? []).slice().sort(byName)
+  const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
+
+  return (
+    <Section
+      index="03"
+      title="MIDI mapping"
+      className="wide:col-span-2"
+      bodyClassName="p-3 gap-2"
+      right={
+        <>
+          {midi?.shift && <span className="text-ink">shift held</span>}
+          {message && <span>{message}</span>}
+          {dirty && (
+            <span className="inline-flex items-center gap-1.5 text-ink">
+              <span className="dot-on inline-block size-[7px]" />
+              unsaved
+            </span>
+          )}
+        </>
+      }
+      tip="Which control on the controller drives which macro. Learn listens for the next message; Save writes your own copy of the controller file"
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={selected ?? ''}
+          disabled={dirty}
+          onChange={(e) => setSelected(e.target.value || null)}
+          data-tip={dirty ? 'Save or revert your changes first' : 'The controller file to edit'}
+        >
+          {names.length === 0 && <option value="">no controller files</option>}
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+              {list?.active === n ? ' (active)' : ''}
+            </option>
+          ))}
+        </select>
+        {selected && (
+          <span className="lbl text-[9px] text-dim" data-hint="info" data-tip={origin === 'default' ? 'Comes with the app. Saving keeps your copy in your data folder; the app’s version stays untouched' : origin === 'modified' ? 'Comes with the app, changed by you (your copy is in your data folder)' : 'Your own file'}>
+            {origin === 'default' ? 'app' : origin === 'modified' ? 'modified' : 'yours'}
+          </span>
+        )}
+        {selected && !isActive && (
+          <Button onClick={useIt} disabled={dirty} tip="Make this the controller that is listened to (saves the setting)">
+            Use this controller
+          </Button>
+        )}
+        <span className="flex-1" />
+        <Button onClick={() => { setName(''); setPrompt({ kind: 'name', action: 'new' }) }} disabled={dirty || prompt !== null} tip="Start an empty mapping for another controller">
+          New
+        </Button>
+        <Button onClick={() => { setName(selected ? `${selected} copy` : ''); setPrompt({ kind: 'name', action: 'duplicate' }) }} disabled={!selected || dirty || prompt !== null} tip="Copy this mapping under a new name, as a starting point">
+          Duplicate
+        </Button>
+        {origin === 'modified' ? (
+          <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={dirty || prompt !== null} tip="Back to the version that comes with the app: your changes are deleted (asks first)">
+            Reset
+          </Button>
+        ) : (
+          <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={!selected || origin !== 'user' || isActive || dirty || prompt !== null} tip={origin === 'default' ? 'Comes with the app: it cannot be deleted' : isActive ? 'The active controller cannot be deleted: choose another one first' : 'Delete this controller file (asks first)'}>
+            Delete
+          </Button>
+        )}
+        <Button onClick={() => { if (saved) setDraft(structuredClone(saved)); stopLearning(); setClash(null) }} disabled={!dirty} tip="Discard the unsaved changes">
+          Revert
+        </Button>
+        <Button primary onClick={save} disabled={!dirty} tip="Write the mapping to your copy of the controller file; it applies at once if this is the active controller">
+          Save
+        </Button>
+      </div>
+      {prompts()}
+
+      {!draft ? (
+        <p className="text-[12px] text-dim">{names.length ? 'Loading…' : 'No controller files yet: create one with New.'}</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`lbl h-7 px-3 text-[11px] ${tab === t.id ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge text-ink'}`}
+              >
+                {t.label}
+                {t.id !== 'controller' && <span className="ml-1.5 font-mono opacity-60">{inTab(t.id).filter((d) => index(d.name).length).length}/{inTab(t.id).length}</span>}
+              </button>
+            ))}
+          </div>
+          {tab === 'controller' ? (
+            controllerTab()
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[880px] border border-edge/60">
+                <div className="lbl grid grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] gap-x-2 border-b border-edge px-2 py-1 text-[10px] text-dim">
+                  <span>Macro</span>
+                  <span>Control</span>
+                  <span>Channel</span>
+                  <span>Behaviour</span>
+                  <span>Page</span>
+                  <span>Shift</span>
+                  <span>Options</span>
+                  <span />
+                </div>
+                {macroRows(inTab(tab))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  )
+}

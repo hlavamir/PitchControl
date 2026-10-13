@@ -7,6 +7,7 @@ user input. If the browser disconnects, the lights keep running.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import os
@@ -21,8 +22,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..config.loader import RIGS, report_unknown_keys, save_model
-from ..config.models import FixtureType, FogMachine, Rig, Settings
+from .. import __version__
+from ..config.loader import CONTROLLERS, RIGS, VERSION_KEY, report_unknown_keys, save_model
+from ..config.models import Controller, FixtureType, FogMachine, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices
@@ -47,6 +49,10 @@ class Activate(BaseModel):
 class NewType(BaseModel):
     name: str
     copy_of: str | None = None  # duplicate this type
+
+
+class Learning(BaseModel):
+    on: bool
 
 
 class DimmerName(BaseModel):
@@ -494,14 +500,95 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     # ------------------------------------------------------------------ controllers & devices
     @app.get("/api/controllers")
     def controllers():
-        return {"active": store.settings.active_controller, "available": store.controller_names()}
+        return {
+            "active": store.settings.active_controller,
+            "available": store.controller_names(),
+            "origins": store.controller_origins(),
+        }
+
+    def known_controller(name: str) -> str:
+        """The name as the files spell it; 404 if there is no such controller."""
+        found = store.names_map(CONTROLLERS).get(name.lower())
+        if found is None:
+            raise HTTPException(404, f"controller '{name}' not found")
+        return found
+
+    def is_active(name: str) -> bool:
+        active = store.settings.active_controller
+        return bool(active) and active.lower() == name.lower()
 
     @app.get("/api/controllers/{name}")
     def controller(name: str):
+        name = known_controller(name)
         ctrl = store.load_controller_file(name)
         if ctrl is None:
-            raise HTTPException(404)
-        return ctrl.model_dump(mode="json")
+            raise HTTPException(409, f"the file of controller '{name}' can't be read")
+        path = store.find(CONTROLLERS, name)
+        try:
+            version = json.loads(path.read_text(encoding="utf-8")).get(VERSION_KEY) if path else None
+        except (OSError, ValueError):
+            version = None
+        return ctrl.model_dump(mode="json", exclude_none=True) | {"app_version": version}  # who last wrote the file
+
+    @app.put("/api/controllers/{name}")
+    def put_controller(name: str, data: dict):
+        """Save a controller's mapping (a shipped one becomes the user's own copy); applied at once if it is the active one."""
+        name = known_controller(name)
+        ctrl = Controller.model_validate(data)
+        report_unknown_keys(ctrl, f"controller '{name}' (from UI)")
+        with engine.lock:
+            store.save_controller(name, ctrl)
+        if is_active(name):
+            engine.restart_midi()
+        return ctrl.model_dump(mode="json", exclude_none=True) | {"app_version": __version__}
+
+    @app.post("/api/controllers")
+    def create_controller(body: NewType):
+        """A new controller file: a copy of another one, or an empty mapping."""
+        name = body.name.strip()
+        problem = store.controller_name_problem(name)
+        if problem:
+            raise HTTPException(409, problem)
+        if body.copy_of is not None:
+            source = store.load_controller_file(known_controller(body.copy_of))
+            if source is None:
+                raise HTTPException(409, f"the file of controller '{body.copy_of}' can't be read")
+            ctrl = source.model_copy(deep=True, update={"name": name})
+        else:
+            ctrl = Controller(name=name)
+        store.save_controller(name, ctrl)
+        return {"ok": True, "name": name}
+
+    @app.post("/api/controllers/{name}/reset")
+    def reset_controller(name: str):
+        """Back to the shipped version: delete the user's copy."""
+        name = known_controller(name)
+        with engine.lock:
+            ctrl = store.reset_controller(name)
+        if ctrl is None:
+            raise HTTPException(409, f"'{name}' is not shipped with the app")
+        if is_active(name):
+            engine.restart_midi()
+        return ctrl.model_dump(mode="json", exclude_none=True)
+
+    @app.delete("/api/controllers/{name}")
+    def delete_controller(name: str):
+        """Delete a controller file; refused for the shipped ones and for the active one."""
+        name = known_controller(name)
+        origin = store.controller_origins().get(name, "user")
+        if origin != "user":
+            raise HTTPException(409, "shipped with the app: it can't be deleted" + (" (Reset to default removes your changes)" if origin == "modified" else ""))
+        if is_active(name):
+            raise HTTPException(409, "it is the active controller: choose another one first")
+        store.delete_controller(name)
+        return {"ok": True}
+
+    @app.post("/api/midi/learning")
+    def midi_learning(body: Learning):
+        """While learning, MIDI messages show in the monitor but move nothing (it ends by itself after 20 s)."""
+        if engine.midi is not None:
+            engine.midi.set_learning(body.on)
+        return {"ok": True}
 
     @app.get("/api/devices/serial")
     def serial_devices():
