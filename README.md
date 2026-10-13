@@ -57,7 +57,7 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 - **Audio input:** device, input channels and gain, with the 32-band meter. The dotted line shows how strongly each band counts towards the strobo trigger.
 - **MIDI controller:** controller mapping and port, and a monitor of the last received messages, showing which macro each one moved or why it was ignored.
-- **MIDI mapping:** one row per macro with its control (CC or note, channel), Learn, behaviour (fader, encoder, toggle, held, press), page and shift layers; saved as your own copy of the controller file.
+- **MIDI mapping:** one row per macro with its control (CC or note, channel), Learn, behaviour (fader, encoder, toggle, held, press), page and shift (one shift button); saved as your own copy of the controller file.
 
 ### 6 · Outputs
 

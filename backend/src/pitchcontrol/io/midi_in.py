@@ -18,7 +18,6 @@ from collections import deque
 from dataclasses import dataclass
 
 from ..config.models import Controller, MidiMapping
-from ..engine.macros import CONTROL_PAGES
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +77,6 @@ class MidiInput:
         self.shift_controls: set[tuple[str, int, int]] = set()  # (kind, number, channel) of the shift buttons held down
         self._takeover: dict[str, _Takeover] = {}
         self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover state belongs to
-        self._page_knob_last: dict[tuple[str, int], int] = {}
         self._learn_until = 0.0
         self.recent: deque[dict] = deque(maxlen=20)  # MIDI monitor for the Inputs page
         self.received = 0
@@ -200,9 +198,6 @@ class MidiInput:
         self._apply(m, kind, value, pressed, entry)
 
     def _apply(self, m: MidiMapping, kind: str, value: int, pressed: bool, entry: dict) -> None:
-        if m.mode == "page_knob":
-            entry["note"] = self._page_knob(m, kind, value)
-            return
         name = m.macro
         entry["macro"] = name
         if self.ignored(name):
@@ -264,19 +259,6 @@ class MidiInput:
                 value, state.h0 = h, None
         state.last = min(max(value, 0.0), 1.0)
         self._put(name, macro_def, value)
-
-    def _page_knob(self, m: MidiMapping, kind: str, value: int) -> str:
-        """Like vvvv: turning the page knob up selects the next page, down the previous one."""
-        key = (kind, m.number)
-        last = self._page_knob_last.get(key)
-        self._page_knob_last[key] = value
-        current = CONTROL_PAGES.index(self.macros.control_page)
-        if last is None or value == last:
-            return "page knob"
-        target = min(current + 1, len(CONTROL_PAGES) - 1) if value > last else max(current - 1, 0)
-        if target != current:
-            self.macros.set_control_page(CONTROL_PAGES[target])
-        return f"page knob → {CONTROL_PAGES[target]}"
 
     def status(self) -> dict:
         return {

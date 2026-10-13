@@ -288,15 +288,6 @@ def test_unmapped_on_this_page_is_reported():
     assert "not mapped on page 'general'" in midi.recent[-1]["note"]
 
 
-def test_page_knob_switches_pages():
-    midi, macros = build(MidiMapping(number=13, mode="page_knob"), channel=13)
-    for v in (60, 61, 62):  # turning up
-        cc(midi, 13, v, channel=12)
-    assert macros.control_page == "dimmers"
-    cc(midi, 13, 50, channel=12)  # turning down
-    assert macros.control_page == "general"
-
-
 # --------------------------------------------------------------------------- learn mode
 
 
@@ -326,8 +317,10 @@ def test_old_files_load_into_the_flat_list():
         }
     )
     got = [(m.number, m.macro, m.mode, m.page) for m in ctrl.mappings]
-    assert got == [(1, "Strobo", "absolute", None), (29, "Strobo Decay", "absolute", "general"), (29, "Dimmer 01", "absolute", "dimmers"), (13, None, "page_knob", None)]
+    # the knob that switched pages is gone: pages are switched with the Page macros now
+    assert got == [(1, "Strobo", "absolute", None), (29, "Strobo Decay", "absolute", "general"), (29, "Dimmer 01", "absolute", "dimmers")]
     assert "pages" not in ctrl.model_dump() and "page_knob" not in ctrl.model_dump()
+    assert Controller.model_validate({"mappings": [{"number": 13, "mode": "page_knob"}, {"number": 1, "macro": "Strobo"}]}).mappings[0].number == 1
 
 
 def test_a_mapping_needs_a_macro_unless_it_is_a_modifier():
@@ -342,4 +335,3 @@ def test_shipped_lcxl3_mapping_matches_ui_layout(store):
     dimmers = [m for m in ctrl.mappings if m.page == "dimmers"]
     assert general[5].macro == "Saturation A"
     assert dimmers[8].number == 5 and dimmers[8].macro == "Dimmer 09"
-    assert any(m.mode == "page_knob" and m.number == 13 for m in ctrl.mappings)

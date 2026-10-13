@@ -43,7 +43,7 @@ export interface MidiEvent {
   note: string
 }
 
-export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift' | 'page_knob'
+export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'
 
 /** One MIDI control of a controller file, as the API sends it (optional fields are left out when unset). */
 export interface MidiMappingEntry {

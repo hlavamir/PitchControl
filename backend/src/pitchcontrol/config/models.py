@@ -422,9 +422,8 @@ class Settings(Model):
 MidiKind = Literal["cc", "note"]
 # absolute: a fader or knob (value/127) · relative: an encoder, each message turns the value up or down ·
 # toggle: flips on every press · momentary: on while pressed (also right for buttons that toggle themselves
-# on the controller) · trigger: one press, for scene buttons and the like · shift: a modifier button ·
-# page_knob: an absolute knob that steps through the control pages
-MidiMode = Literal["absolute", "relative", "toggle", "momentary", "trigger", "shift", "page_knob"]
+# on the controller) · trigger: one press, for scene buttons and the like · shift: the modifier button
+MidiMode = Literal["absolute", "relative", "toggle", "momentary", "trigger", "shift"]
 Encoder = Literal["twos_complement", "sign_bit", "offset_64"]
 
 
@@ -433,7 +432,7 @@ class MidiMapping(Model):
 
     type: MidiKind = "cc"
     number: int = Field(ge=0, le=127)  # CC or note number
-    macro: str | None = None  # none for ``shift`` and ``page_knob``
+    macro: str | None = None  # none for ``shift``
     mode: MidiMode = "absolute"
     channel: int | None = Field(default=None, ge=1, le=16)  # 1-based; none = the controller's channel
     page: Literal["general", "dimmers"] | None = None  # only while this control page is active; none = on every page
@@ -454,8 +453,8 @@ class MidiMapping(Model):
 
     @model_validator(mode="after")
     def _macro_needed(self) -> "MidiMapping":
-        if self.mode not in ("shift", "page_knob") and not self.macro:
-            raise ValueError("a mapping needs a macro (except shift and page_knob)")
+        if self.mode != "shift" and not self.macro:
+            raise ValueError("a mapping needs a macro (except shift)")
         return self
 
 
@@ -472,20 +471,20 @@ class Controller(Model):
     @model_validator(mode="before")
     @classmethod
     def _legacy_pages(cls, data: Any) -> Any:
-        # before 1.5: ``mappings`` active on every page, ``pages`` {page: mappings} and ``page_knob``: the CC of
-        # a knob that switches pages. The same control then meant different macros per page.
-        if not isinstance(data, dict) or not ({"pages", "page_knob"} & data.keys()):
+        # before 1.5: ``mappings`` active on every page, ``pages`` {page: mappings}, and ``page_knob``, the CC of a
+        # knob that switched pages (no longer there: pages are switched with the Page macros, or in the app)
+        if not isinstance(data, dict) or not ({"pages", "page_knob"} & data.keys() or any(isinstance(m, dict) and m.get("mode") == "page_knob" for m in data.get("mappings") or [])):
             return data
         data = dict(data)
-        mappings = list(data.get("mappings") or [])
+        data.pop("page_knob", None)
+        mappings = [m for m in data.get("mappings") or [] if not (isinstance(m, dict) and m.get("mode") == "page_knob")]
         for page, items in (data.pop("pages", None) or {}).items():
             for item in items:
                 item = dict(item) if isinstance(item, dict) else item.model_dump(exclude_defaults=True)
+                if item.get("mode") == "page_knob":
+                    continue
                 item.setdefault("page", page)
                 mappings.append(item)
-        knob = data.pop("page_knob", None)
-        if knob is not None:
-            mappings.append({"number": knob, "mode": "page_knob"})
         data["mappings"] = mappings
         return data
 

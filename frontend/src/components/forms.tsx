@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type Settings } from '../api'
+import { useLeaveGuard } from '../leaveGuard'
 
 /**
  * A panel: square, 1px hairline border, a header strip with an optional number ("01 / Macros").
@@ -382,16 +383,20 @@ export function useSettings() {
   }, [])
 
   const save = useCallback(async () => {
-    if (!settings) return
+    if (!settings) return true
+    let ok = true
     try {
       await api.put('/api/settings', settings)
       setDirty(false)
       setMessage('Saved')
     } catch (e) {
+      ok = false
       setMessage(String(e))
     }
     window.setTimeout(() => setMessage(null), 3000)
+    return ok
   }, [settings])
+  useLeaveGuard('settings', dirty, save)
 
   return { settings, update, save, dirty, reload, message }
 }

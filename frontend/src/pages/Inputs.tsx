@@ -16,12 +16,16 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [midiPorts, setMidiPorts] = useState<string[]>([])
   const [controllers, setControllers] = useState<string[]>([])
+  const [controllerLabels, setControllerLabels] = useState<Record<string, string>>({})
   const [bands, setBands] = useState<BandInfo | null>(null)
 
   const refresh = () => {
     api.get<AudioDevice[]>('/api/devices/audio').then(setAudioDevices)
     api.get<string[]>('/api/devices/midi').then(setMidiPorts)
-    api.get<{ available: string[] }>('/api/controllers').then((c) => setControllers(c.available))
+    api.get<{ available: string[]; labels: Record<string, string> }>('/api/controllers').then((c) => {
+      setControllers(c.available)
+      setControllerLabels(c.labels)
+    })
     api.get<BandInfo>('/api/audio/bands').then(setBands)
   }
   useEffect(refresh, [])
@@ -114,7 +118,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
           <select value={settings.active_controller ?? ''} onChange={(e) => update((s) => (s.active_controller = e.target.value || null))}>
             <option value="">none</option>
             {controllers.map((c) => (
-              <option key={c}>{c}</option>
+              <option key={c} value={c}>
+                {controllerLabels[c] ?? c}
+              </option>
             ))}
           </select>
         </Row>

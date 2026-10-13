@@ -270,3 +270,14 @@ def test_midi_learning_endpoint(layered):
     assert engine.midi.learning
     client.post("/api/midi/learning", json={"on": False})
     assert not engine.midi.learning
+
+
+def test_controller_list_shows_the_name_from_the_file_or_the_file_name(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    client.post("/api/controllers", json={"name": "Blank"})
+    data = {"name": "", "mappings": []}
+    client.put("/api/controllers/Blank", json=data)
+    labels = client.get("/api/controllers").json()["labels"]
+    assert labels["Blank"] == "Blank"  # no name inside the file: the file name
+    client.put("/api/controllers/Blank", json={"name": "Akai APC40 (mine)", "mappings": []})
+    assert client.get("/api/controllers").json()["labels"]["Blank"] == "Akai APC40 (mine)"

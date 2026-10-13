@@ -1,369 +1,220 @@
 {
   "app_version": "1.4.1",
   "name": "Novation Launch Control XL 3",
-  "author": "PitchControl",
-  "description": "MIDI channel 13. Knob row 3 (CC 29-36) and the faders (CC 5-12) drive the 16 faders of the active page (General or Dimmers); knob row 1 (CC 21-28) drives Dimmer 01-08 on the General page; the knob CC 13 switches pages. Top button row: Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors; with shift the first four select shader presets A-D. Bottom button row: load scene 1-7, with shift save it. The buttons CC 44 and CC 52 are shift (in vvvv each shifted only its own row).",
-  "contact": "https://pitchcontrol.eu",
+  "author": "Miroslav Hlava",
+  "description": "Faders and knob row 3 (CC 5-12, 29-36) drive the general macros, knob row 1 (CC 21-28) Dimmer 01-08. Buttons: CC 37-42 switches (Manual Strobo, with shift Preset A), CC 45-51 save scenes 1-7. CC 52 is the shift button.",
+  "contact": "pitchcontrol.eu",
+  "modified": "2026-10-13T19:24:03+02:00",
   "port_match": "LCXL3",
   "channel": 13,
   "mappings": [
     {
-      "number": 44,
-      "mode": "shift",
-      "note": "Shift (top button row)"
+      "number": 29,
+      "macro": "Strobo Decay",
+      "channel": 13
     },
     {
-      "number": 52,
-      "mode": "shift",
-      "note": "Shift (bottom button row)"
+      "number": 30,
+      "macro": "Idle Attack",
+      "channel": 13
     },
     {
-      "number": 37,
-      "macro": "Manual Strobo",
-      "mode": "momentary",
-      "shift": "off"
+      "number": 31,
+      "macro": "Shader Speed",
+      "channel": 13
     },
     {
-      "number": 38,
-      "macro": "Fog Machine",
-      "mode": "momentary",
-      "shift": "off"
+      "number": 32,
+      "macro": "Shader Param",
+      "channel": 13
     },
     {
-      "number": 39,
-      "macro": "Invert Discoball",
-      "mode": "toggle",
-      "shift": "off"
+      "number": 33,
+      "macro": "Hue A"
     },
     {
-      "number": 40,
-      "macro": "Vertical Symmetry",
-      "mode": "toggle",
-      "shift": "off"
+      "number": 35,
+      "macro": "Hue B",
+      "channel": 13
     },
     {
-      "number": 41,
-      "macro": "Auto Color Change",
-      "mode": "toggle",
-      "shift": "off"
+      "number": 5,
+      "macro": "Audio Reactivity",
+      "channel": 13
+    },
+    {
+      "number": 6,
+      "macro": "Strobo",
+      "channel": 13
+    },
+    {
+      "number": 7,
+      "macro": "Strobo Brightness",
+      "channel": 13
+    },
+    {
+      "number": 8,
+      "macro": "Idle Brightness",
+      "channel": 13
+    },
+    {
+      "number": 9,
+      "macro": "Strobo Bright. A",
+      "channel": 13
+    },
+    {
+      "number": 10,
+      "macro": "Idle Bright. A",
+      "channel": 13
+    },
+    {
+      "number": 11,
+      "macro": "Strobo Bright. B",
+      "channel": 13
+    },
+    {
+      "number": 12,
+      "macro": "Idle Bright. B",
+      "channel": 13
+    },
+    {
+      "number": 34,
+      "macro": "Saturation A",
+      "channel": 13
+    },
+    {
+      "number": 36,
+      "macro": "Saturation B",
+      "channel": 13
     },
     {
       "number": 42,
       "macro": "Swap Colors",
       "mode": "toggle",
+      "channel": 13
+    },
+    {
+      "number": 41,
+      "macro": "Auto Color Change",
+      "mode": "toggle",
+      "channel": 13
+    },
+    {
+      "number": 40,
+      "macro": "Vertical Symmetry",
+      "mode": "toggle",
+      "channel": 13
+    },
+    {
+      "number": 39,
+      "macro": "Invert Discoball",
+      "mode": "toggle",
+      "channel": 13
+    },
+    {
+      "number": 38,
+      "macro": "Fog Machine",
+      "mode": "momentary",
+      "channel": 13
+    },
+    {
+      "number": 37,
+      "macro": "Manual Strobo",
+      "mode": "momentary",
+      "channel": 13,
       "shift": "off"
     },
     {
       "number": 37,
       "macro": "Preset A",
       "mode": "trigger",
+      "channel": 13,
       "shift": "on"
     },
     {
-      "number": 38,
-      "macro": "Preset B",
-      "mode": "trigger",
-      "shift": "on"
+      "number": 21,
+      "macro": "Dimmer 01"
     },
     {
-      "number": 39,
-      "macro": "Preset C",
-      "mode": "trigger",
-      "shift": "on"
+      "number": 22,
+      "macro": "Dimmer 02",
+      "channel": 13
     },
     {
-      "number": 40,
-      "macro": "Preset D",
-      "mode": "trigger",
-      "shift": "on"
+      "number": 23,
+      "macro": "Dimmer 03",
+      "channel": 13
     },
     {
-      "number": 45,
-      "macro": "Scene 1 Load",
-      "mode": "trigger",
-      "shift": "off"
+      "number": 24,
+      "macro": "Dimmer 04",
+      "channel": 13
     },
     {
-      "number": 46,
-      "macro": "Scene 2 Load",
-      "mode": "trigger",
-      "shift": "off"
+      "number": 25,
+      "macro": "Dimmer 05",
+      "channel": 13
     },
     {
-      "number": 47,
-      "macro": "Scene 3 Load",
-      "mode": "trigger",
-      "shift": "off"
+      "number": 26,
+      "macro": "Dimmer 06",
+      "channel": 13
     },
     {
-      "number": 48,
-      "macro": "Scene 4 Load",
-      "mode": "trigger",
-      "shift": "off"
+      "number": 27,
+      "macro": "Dimmer 07",
+      "channel": 13
     },
     {
-      "number": 49,
-      "macro": "Scene 5 Load",
-      "mode": "trigger",
-      "shift": "off"
-    },
-    {
-      "number": 50,
-      "macro": "Scene 6 Load",
-      "mode": "trigger",
-      "shift": "off"
-    },
-    {
-      "number": 51,
-      "macro": "Scene 7 Load",
-      "mode": "trigger",
-      "shift": "off"
+      "number": 28,
+      "macro": "Dimmer 08",
+      "channel": 13
     },
     {
       "number": 45,
       "macro": "Scene 1 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 46,
       "macro": "Scene 2 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 47,
       "macro": "Scene 3 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 48,
       "macro": "Scene 4 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 49,
       "macro": "Scene 5 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 50,
       "macro": "Scene 6 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
       "number": 51,
       "macro": "Scene 7 Save",
       "mode": "trigger",
-      "shift": "on"
+      "channel": 13
     },
     {
-      "number": 29,
-      "macro": "Strobo Decay",
-      "page": "general"
-    },
-    {
-      "number": 30,
-      "macro": "Idle Attack",
-      "page": "general"
-    },
-    {
-      "number": 31,
-      "macro": "Shader Speed",
-      "page": "general"
-    },
-    {
-      "number": 32,
-      "macro": "Shader Param",
-      "page": "general"
-    },
-    {
-      "number": 33,
-      "macro": "Hue A",
-      "page": "general"
-    },
-    {
-      "number": 34,
-      "macro": "Saturation A",
-      "page": "general"
-    },
-    {
-      "number": 35,
-      "macro": "Hue B",
-      "page": "general"
-    },
-    {
-      "number": 36,
-      "macro": "Saturation B",
-      "page": "general"
-    },
-    {
-      "number": 5,
-      "macro": "Audio Reactivity",
-      "page": "general"
-    },
-    {
-      "number": 6,
-      "macro": "Strobo",
-      "page": "general"
-    },
-    {
-      "number": 7,
-      "macro": "Strobo Brightness",
-      "page": "general"
-    },
-    {
-      "number": 8,
-      "macro": "Idle Brightness",
-      "page": "general"
-    },
-    {
-      "number": 9,
-      "macro": "Strobo Bright. A",
-      "page": "general"
-    },
-    {
-      "number": 10,
-      "macro": "Idle Bright. A",
-      "page": "general"
-    },
-    {
-      "number": 11,
-      "macro": "Strobo Bright. B",
-      "page": "general"
-    },
-    {
-      "number": 12,
-      "macro": "Idle Bright. B",
-      "page": "general"
-    },
-    {
-      "number": 29,
-      "macro": "Dimmer 01",
-      "page": "dimmers"
-    },
-    {
-      "number": 30,
-      "macro": "Dimmer 02",
-      "page": "dimmers"
-    },
-    {
-      "number": 31,
-      "macro": "Dimmer 03",
-      "page": "dimmers"
-    },
-    {
-      "number": 32,
-      "macro": "Dimmer 04",
-      "page": "dimmers"
-    },
-    {
-      "number": 33,
-      "macro": "Dimmer 05",
-      "page": "dimmers"
-    },
-    {
-      "number": 34,
-      "macro": "Dimmer 06",
-      "page": "dimmers"
-    },
-    {
-      "number": 35,
-      "macro": "Dimmer 07",
-      "page": "dimmers"
-    },
-    {
-      "number": 36,
-      "macro": "Dimmer 08",
-      "page": "dimmers"
-    },
-    {
-      "number": 5,
-      "macro": "Dimmer 09",
-      "page": "dimmers"
-    },
-    {
-      "number": 6,
-      "macro": "Dimmer 10",
-      "page": "dimmers"
-    },
-    {
-      "number": 7,
-      "macro": "Dimmer 11",
-      "page": "dimmers"
-    },
-    {
-      "number": 8,
-      "macro": "Dimmer 12",
-      "page": "dimmers"
-    },
-    {
-      "number": 9,
-      "macro": "Dimmer 13",
-      "page": "dimmers"
-    },
-    {
-      "number": 10,
-      "macro": "Dimmer 14",
-      "page": "dimmers"
-    },
-    {
-      "number": 11,
-      "macro": "Dimmer 15",
-      "page": "dimmers"
-    },
-    {
-      "number": 12,
-      "macro": "Dimmer 16",
-      "page": "dimmers"
-    },
-    {
-      "number": 21,
-      "macro": "Dimmer 01",
-      "page": "general"
-    },
-    {
-      "number": 22,
-      "macro": "Dimmer 02",
-      "page": "general"
-    },
-    {
-      "number": 23,
-      "macro": "Dimmer 03",
-      "page": "general"
-    },
-    {
-      "number": 24,
-      "macro": "Dimmer 04",
-      "page": "general"
-    },
-    {
-      "number": 25,
-      "macro": "Dimmer 05",
-      "page": "general"
-    },
-    {
-      "number": 26,
-      "macro": "Dimmer 06",
-      "page": "general"
-    },
-    {
-      "number": 27,
-      "macro": "Dimmer 07",
-      "page": "general"
-    },
-    {
-      "number": 28,
-      "macro": "Dimmer 08",
-      "page": "general"
-    },
-    {
-      "number": 13,
-      "mode": "page_knob"
+      "number": 52,
+      "mode": "shift"
     }
   ]
 }

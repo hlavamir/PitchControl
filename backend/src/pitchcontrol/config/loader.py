@@ -652,6 +652,20 @@ class ConfigStore:
     def controller_origins(self) -> dict[str, Origin]:
         return self.origins(CONTROLLERS, Controller)
 
+    def controller_labels(self) -> dict[str, str]:
+        """File name → the name shown in lists: the ``name`` inside the file, or the file name if there is none."""
+        out: dict[str, str] = {}
+        for name in self.controller_names():
+            path = self.find(CONTROLLERS, name)
+            label = ""
+            try:
+                data = json.loads(path.read_text(encoding="utf-8")) if path else {}
+                label = str(data.get("name") or "").strip() if isinstance(data, dict) else ""
+            except (OSError, ValueError):
+                pass
+            out[name] = label or name
+        return out
+
     def controller_name_problem(self, name: str) -> str | None:
         """Why ``name`` can't be used for a new controller file, or None."""
         if not RIG_NAME.fullmatch(name):

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLeaveGuard } from '../leaveGuard'
 import { api, type FogMachine } from '../api'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
@@ -42,17 +43,21 @@ function useRigFog() {
   }, [])
 
   const save = useCallback(async () => {
-    if (!machines) return
+    if (!machines) return true
+    let ok = true
     try {
       const res = await api.put<{ problems: string[] }>('/api/rig/fog', machines)
       setDirty(false)
       const fog = res.problems.filter((p) => p.startsWith('fog machine'))
       setMessage(fog.length ? `Saved · ${fog.join('; ')}` : 'Saved')
     } catch (e) {
+      ok = false
       setMessage(String(e))
     }
     window.setTimeout(() => setMessage(null), 5000)
+    return ok
   }, [machines])
+  useLeaveGuard('fog machines', dirty, save)
 
   return { rig, machines, update, save, dirty, reload, message }
 }

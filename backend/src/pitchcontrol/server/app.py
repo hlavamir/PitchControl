@@ -504,6 +504,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             "active": store.settings.active_controller,
             "available": store.controller_names(),
             "origins": store.controller_origins(),
+            "labels": store.controller_labels(),
         }
 
     def known_controller(name: str) -> str:

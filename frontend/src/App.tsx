@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
-import { StatusDot } from './components/forms'
+import { Button, StatusDot } from './components/forms'
+import { LeaveGuardContext, type Guard } from './leaveGuard'
 import { HINT_KEYS, MOD, hintAt, type HintKind } from './hints'
 import { Dimmers } from './pages/Dimmers'
 import { Fixtures } from './pages/Fixtures'
@@ -102,10 +103,42 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize)
   }, [ui.scale])
 
-  const go = useCallback((p: Page) => {
+  const pageRef = useRef(page)
+  useEffect(() => {
+    pageRef.current = page
+  })
+  const guards = useRef(new Set<Guard>())
+  const [guardApi] = useState(() => ({
+    register: (g: Guard) => {
+      guards.current.add(g)
+      return () => void guards.current.delete(g)
+    },
+  }))
+  // a page change that waits for the answer to "unsaved changes: save, discard or stay?"
+  const [leave, setLeave] = useState<{ to: Page; dirty: Guard[]; error?: string } | null>(null)
+
+  const navigate = useCallback((p: Page) => {
+    setLeave(null)
     setPage(p)
     history.replaceState(null, '', `#${p}`)
   }, [])
+  const go = useCallback(
+    (p: Page) => {
+      if (p === pageRef.current) return
+      const dirty = [...guards.current].filter((g) => g.dirty())
+      if (dirty.length) setLeave({ to: p, dirty })
+      else navigate(p)
+    },
+    [navigate],
+  )
+  const saveAndLeave = async () => {
+    if (!leave) return
+    for (const g of leave.dirty) {
+      const ok = await g.save().catch(() => false)
+      if (ok === false) return setLeave({ ...leave, error: `Could not save the ${g.label}: see the message on the page.` })
+    }
+    navigate(leave.to)
+  }
 
   const toggleFullscreen = useCallback(async () => {
     const res = await api.post<{ fullscreen: boolean }>('/api/fullscreen').catch(() => null)
@@ -212,6 +245,7 @@ export default function App() {
   // row grows so that it still measures 38 pt on screen.
   const topRow = fullscreen.on && navigator.userAgent.includes('Mac') ? Math.max(38, Math.ceil(38 / clampScale(ui.scale))) : 38
   return (
+    <LeaveGuardContext.Provider value={guardApi}>
     <SelectionContext.Provider value={setFooter}>
       <div className="flex h-full flex-col">
         {/* Two rows: the top one keeps its middle free, so in full screen on a MacBook the camera notch
@@ -327,7 +361,27 @@ export default function App() {
             )}
           </footer>
         )}
+        {leave && (
+          <div className="fixed inset-x-0 top-14 z-50 flex justify-center px-3" role="alertdialog" aria-label="Unsaved changes">
+            <div className="flex max-w-full flex-wrap items-center gap-2 border border-ink bg-panel p-3 shadow-[0_0_30px_rgb(0_0_0/0.6)]">
+              <span className="text-[12px]">
+                Unsaved changes in {leave.dirty.map((g) => g.label).join(' and ')} on {page}. Save them before leaving?
+                {leave.error && <span className="ml-2 text-ink"> {leave.error}</span>}
+              </span>
+              <Button primary onClick={saveAndLeave} tip="Write the changes, then go to the other page">
+                Save and leave
+              </Button>
+              <Button onClick={() => navigate(leave.to)} tip="Throw the changes away and go to the other page">
+                Discard
+              </Button>
+              <Button onClick={() => setLeave(null)} tip="Stay on this page">
+                Stay
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </SelectionContext.Provider>
+    </LeaveGuardContext.Provider>
   )
 }

@@ -9,14 +9,16 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Added
 - **MIDI mapping in the app** (Inputs page, section 03): one row per macro with the control that drives it, a **Learn**
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
-  control, "page" (the same fader drives other macros on the Dimmers page) and **shift** layers (a shift button changes
-  what other buttons do: the LCXL3 buttons load scenes, with shift they save them). Clashes (a control used twice) are
-  marked and Learn offers Replace or Swap. Mappings are saved as your own copy of the controller file (the shipped one
-  stays untouched; Reset brings it back), and can be created, duplicated and deleted. A controller file also has an author,
-  description and contact, and records when and with which PitchControl version it was last edited.
-- The shipped **Launch Control XL 3** mapping now covers its buttons, as in the vvvv patch: the top row (Manual Strobo, Fog,
-  Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors; with shift the shader presets A-D), the bottom row
-  (load scenes 1-7, with shift save them), the knob row 1 (Dimmer 01-08 on the General page) and the shift buttons.
+  control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what other
+  buttons do (for example scene load / save on the same button). A control used twice in the same layer is only
+  warned about. Learn notices when the controller sends on another channel than the file says and offers to change it.
+  Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back), and
+  can be created, duplicated and deleted. A controller file also has an author, description and contact, and records
+  when and with which PitchControl version it was last edited. The Controller mapping list shows the name from the file.
+- Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
+  (they used to be dropped silently).
+- The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
+  top button row, scene saving on the bottom row, Dimmer 01-08 on knob row 1 and CC 52 as the shift button.
 
 ### Changed
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
