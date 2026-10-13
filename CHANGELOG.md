@@ -21,6 +21,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   top button row, scene saving on the bottom row, Dimmer 01-08 on knob row 1 and CC 52 as the shift button.
 
 ### Changed
+- MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
+  show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
   scene load or a change on screen), the macro follows the fader proportionally instead of jumping: both reach the end of
   the range together.

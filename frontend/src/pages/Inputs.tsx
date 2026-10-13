@@ -145,7 +145,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             )}
             {(io?.midi?.recent ?? []).map((m, i) => (
               <div key={`${m.t}-${i}`} className="flex gap-3">
-                <span className="flex-1 truncate text-ink" title={m.text}>
+                <span className="flex-1 truncate text-ink" title={`raw message: ${m.text} (the raw message counts channels from 0)`}>
                   {/* the channel as on the controller (1-16), not the 0-15 of the raw message */}
                   {m.kind ? `ch ${m.channel} · ${m.kind === 'cc' ? 'CC' : 'note'} ${m.number} · ${m.value}` : m.text}
                 </span>
