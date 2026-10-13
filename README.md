@@ -10,7 +10,7 @@ Website, documentation and downloads: **[pitchcontrol.eu](https://pitchcontrol.e
 
 ## Pages
 
-Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The screenshots were taken with `tools/screenshots.py` at the 1512 × 915 design size with amber ink, without hardware connected (so audio, MIDI and the DMX interface show as off), with a synthetic techno loop feeding the audio analysis. The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with their defaults: a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, so the music changes nothing until you raise them).
+Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with their defaults: a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, so the music changes nothing until you raise them).
 
 ### 1 · General
 
@@ -155,7 +155,7 @@ App options (for example from a terminal) are the same as for the backend (`--da
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
 1. Set `__version__`, and move the changelog's "Unreleased" notes under a `## X.Y.Z — date` heading.
 2. If a default in `config/` changed since the last release, commit it, then record it: `backend/.venv/bin/python tools/shipped_config_history.py` (it adds every committed version of the shipped files to `config/shipped_history.py`, so a later migration recognises untouched copies) and commit that too.
-3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Settings → About shows the plain version: build the frontend, then `backend/.venv/bin/python tools/screenshots.py` (once: `uv pip install -e "backend[screenshots]"`; it uses the installed Chrome or Edge). It runs the app without hardware on a throw-away copy of the defaults plus a staged demo state (a USB DMX interface, an Art-Net target, two overrides, three scenes) and a synthetic 128 BPM loop, and writes the nine PNGs into `screenshots/`; `--data <folder>` shows a showcase setup instead. Check them, then commit.
+3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Settings → About shows the plain version: build the frontend, then run `tools/screenshots.py` (see its header for the setup). Check the nine PNGs in `screenshots/`, then commit.
 4. Commit, then tag and push: `git tag -a vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin vX.Y.Z`.
 5. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
 
