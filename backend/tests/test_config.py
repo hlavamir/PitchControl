@@ -4,7 +4,7 @@ import logging
 import pytest
 
 from pitchcontrol.config.loader import ConfigStore, load_model
-from pitchcontrol.config.models import FixtureType
+from pitchcontrol.config.models import FixtureInstance, FixtureType, FogMachine
 
 
 def test_default_config_loads_cleanly(store, caplog):
@@ -152,3 +152,19 @@ def test_version_label():
     assert label_from_describe("v1.1.0-3-gabc1234", "1.1.0") == "1.1.0+3 (abc1234)"
     assert label_from_describe("v1.1.0-0-gabc1234-dirty", "1.1.0") == "1.1.0 (abc1234, modified)"
     assert label_from_describe("v1.1.0-5-gabc1234", "1.2.0") == "1.2.0-dev (abc1234)"  # raised, not tagged
+
+
+def test_fixture_types_rigs_and_fog_machines_with_the_1_4_macro_names_read_the_new_ones(tmp_path):
+    path = tmp_path / "mine.json"
+    path.write_text(
+        json.dumps(
+            {
+                "channels": [{"name": "Strobe speed", "macro": "Shader Param"}, {"pixels": "RGB"}, {"name": "Fog", "macro": "Fog Machine"}],
+            }
+        )
+    )
+    ftype = load_model(path, FixtureType, name="mine")
+    assert [c.macro for c in ftype.channels] == ["Mask Param B", None, "Fog Machine"]
+    assert FixtureInstance.model_validate({"idle_mask_range": {"macro": "Preset A"}}).idle_mask_range.macro == "Mask A"  # a rig's fixture
+    assert FogMachine.model_validate({"manual_macro": "Preset B"}).manual_macro == "Mask B"
+    assert FogMachine.model_validate({"manual_macro": None}).manual_macro is None

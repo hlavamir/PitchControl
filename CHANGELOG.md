@@ -50,7 +50,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   form (`pages`, `cc`) still load and are written in the new form when saved.
 - **The mask macros are renamed:** the four presets are now **Mask A–D** (Gradient, Back & Forth, Rotating Line, Noise)
   and Shader Speed and Shader Param are **Mask Param A** and **Mask Param B**; "shader" and "preset" are gone from the
-  app. Scenes, controller mappings and the autosave from earlier versions still load: the old names are read as the new
+  app. Scenes, controller mappings, the autosave, fixture types, rigs and fog settings from earlier versions still load: the old names are read as the new
   ones, and a file gets the new names when it is next saved.
 
 ### Removed

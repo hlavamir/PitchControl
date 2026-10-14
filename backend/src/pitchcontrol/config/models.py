@@ -38,8 +38,9 @@ class Model(BaseModel):
 
 
 # Macros that were renamed in 1.5. Files written before (controller mappings, scenes, state/macros.json) still use the
-# old names; every model that stores a macro name reads them through here, and a file gets the new names when it is
-# next saved. Add to this table when a macro is renamed again, so older files keep loading.
+# old names; every model that stores a macro name (a mapping, a scene, a fixture type's macro channel and idle mask range, the fog
+# setting) reads them through here, and a file gets the new names when it is next saved. Add to this table when a macro is
+# renamed again, so older files keep loading.
 MACRO_RENAMES = {
     "Shader Speed": "Mask Param A",
     "Shader Param": "Mask Param B",
@@ -98,6 +99,11 @@ class ChannelSlot(Model):
     pixels: PixelFormat | None = None
     macro: str | None = None
     shutter: Shutter | None = None
+
+    @field_validator("macro", mode="before")
+    @classmethod
+    def _renamed_macro(cls, v: Any) -> Any:
+        return current_macro_name(v) if isinstance(v, str) else v
 
     @model_validator(mode="after")
     def _exactly_one_kind(self) -> "ChannelSlot":
@@ -209,6 +215,11 @@ class IdleMaskRange(Model):
     curve: float = 0.0
     macro: str | None = None
 
+    @field_validator("macro", mode="before")
+    @classmethod
+    def _renamed_macro(cls, v: Any) -> Any:
+        return current_macro_name(v) if isinstance(v, str) else v
+
 
 class FixtureInstance(Model):
     name: str = ""
@@ -298,6 +309,11 @@ class FogMachine(Model):
     interval_s: float = 60.0
     duration_s: float = 4.0
     manual_macro: str | None = "Fog Machine"
+
+    @field_validator("manual_macro", mode="before")
+    @classmethod
+    def _renamed_manual_macro(cls, v: Any) -> Any:
+        return current_macro_name(v) if isinstance(v, str) else v
 
 
 class Rig(Model):
