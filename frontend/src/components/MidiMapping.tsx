@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry, type MidiMode, type Rig } from '../api'
+import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry, type Rig } from '../api'
 import type { EngineConnection } from '../useEngine'
 import { useLeaveGuard } from '../leaveGuard'
-import { Button, NumberInput, Row, Section } from './forms'
+import { clashes as findClashes, channelOf, deadMappings, defaultMode, newMapping } from '../midiMapping'
+import { Button, Row, Section } from './forms'
+import { MidiMappingRow } from './MidiMappingRow'
 
 // MIDI mapping: one row per macro with the control (CC or note) that drives it. "Learn" listens for the
 // next message from the controller. Edits are made on a draft and written with Save, to the user's copy of
@@ -15,45 +17,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'scenes', label: 'Scenes & pages' },
   { id: 'controller', label: 'Controller' },
 ]
-
-const MODE_LABEL: Record<MidiMode, string> = {
-  absolute: 'Fader / knob',
-  relative: 'Encoder (relative)',
-  toggle: 'Button: toggle',
-  momentary: 'Button: while held',
-  trigger: 'Button: press',
-  shift: 'Shift',
-}
-const MODE_TIP: Record<MidiMode, string> = {
-  absolute: 'The control position is the value (with value scaling: nothing jumps when the fader and the value differ)',
-  relative: 'An endless encoder: every step turns the value up or down',
-  toggle: 'Every press flips the switch on or off',
-  momentary: 'On while the button is held; also right for buttons that toggle themselves on the controller',
-  trigger: 'One press does it (scene buttons, the masks A–D)',
-  shift: '',
-}
-
-/** The behaviours that make sense for a macro. */
-function modesFor(d: MacroDef): MidiMode[] {
-  if (d.kind === 'fader') return ['absolute', 'relative']
-  if (d.kind === 'toggle' || d.kind === 'momentary') return ['toggle', 'momentary', 'trigger']
-  return ['trigger']
-}
-const defaultMode = (d: MacroDef): MidiMode => (d.kind === 'fader' ? 'absolute' : d.kind === 'toggle' ? 'toggle' : d.kind === 'momentary' ? 'momentary' : 'trigger')
-const newMapping = (over: Partial<MidiMappingEntry>): MidiMappingEntry => ({
-  type: 'cc',
-  number: 0,
-  macro: null,
-  mode: 'absolute',
-  channel: null,
-  page: null,
-  shift: null,
-  invert: false,
-  encoder: 'twos_complement',
-  sensitivity: 1,
-  note: '',
-  ...over,
-})
 
 interface Learning {
   /** the row waiting for a control: an existing mapping, or a new one to be created from ``template`` */
@@ -159,27 +122,14 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     edit((c) => void c.mappings.splice(index, 1))
   }
 
-  const channelOf = (m: MidiMappingEntry) => m.channel ?? draft?.channel ?? 1
-  const overlaps = (a: MidiMappingEntry, b: MidiMappingEntry) =>
-    a.type === b.type &&
-    a.number === b.number &&
-    channelOf(a) === channelOf(b) &&
-    (!a.page || !b.page || a.page === b.page) &&
-    (!a.shift || !b.shift || a.shift === b.shift) &&
-    (a.mode === 'shift') === (b.mode === 'shift')
   const mappingLabel = (m: MidiMappingEntry) => (m.mode === 'shift' ? 'shift' : labelOf(m.macro ?? '?'))
 
   // a mapping on the same control (kind, number, channel) as a shift button never fires: the shift button wins
   const dead = useMemo(() => {
-    const out = new Map<number, string>()
     const ms = draft?.mappings ?? []
-    ms.forEach((a, i) =>
-      ms.forEach((b, j) => {
-        if (i === j || b.mode !== 'shift' || a.type !== b.type || a.number !== b.number || channelOf(a) !== channelOf(b)) return
-        if (a.mode === 'shift') return
-        out.set(i, 'never fires: this control is the shift button')
-        out.set(j, `${out.get(j) ? out.get(j) + ', ' : 'also mapped to '}${mappingLabel(a)} (never fires)`)
-      }),
+    const out = new Map<number, string>()
+    deadMappings(ms, draft?.channel ?? 1).forEach((v, i) =>
+      out.set(i, v === 'self' ? 'never fires: this control is the shift button' : `also mapped to ${v.map((k) => `${mappingLabel(ms[k])} (never fires)`).join(', ')}`),
     )
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,13 +138,9 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   // controls used twice where their pages and shift settings overlap ("any" overlaps with everything): a warning only. Where both apply,
   // shift is checked first, then page: with shift and page > with shift only > page only > neither; the same settings: the first in the list.
   const clashes = useMemo(() => {
-    const out = new Map<number, string[]>()
     const ms = draft?.mappings ?? []
-    ms.forEach((a, i) =>
-      ms.forEach((b, j) => {
-        if (i !== j && overlaps(a, b)) out.set(i, [...(out.get(i) ?? []), mappingLabel(b)])
-      }),
-    )
+    const out = new Map<number, string[]>()
+    findClashes(ms, draft?.channel ?? 1).forEach((others, i) => out.set(i, others.map((k) => mappingLabel(ms[k]))))
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, defs, dimmerNames])
@@ -230,7 +176,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     learnSeen.current = false
     setLearning({ ...l, id: null, seconds: 20 }) // waiting for the engine's answer
     // the engine judges what is learnable against the mapping being edited, which may not be saved yet
-    const shifts = draft.mappings.filter((m) => m.mode === 'shift').map((m) => ({ type: m.type, number: m.number, channel: channelOf(m) }))
+    const shifts = draft.mappings.filter((m) => m.mode === 'shift').map((m) => ({ type: m.type, number: m.number, channel: channelOf(m, draft.channel) }))
     const shiftRow = (l.index !== null ? draft.mappings[l.index] : l.template).mode === 'shift'
     try {
       const r = await api.post<{ learn_id: number | null; seconds: number }>('/api/midi/learning', { on: true, shifts, shift_row: shiftRow })
@@ -396,147 +342,25 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   const row = (key: string, label: string, hint: string | undefined, i: number | null, d: MacroDef | null, template: MidiMappingEntry) => {
     const m = i !== null && draft ? draft.mappings[i] : null
     const waiting = learning !== null && learning.index === i && (i !== null || (learning.template.macro === template.macro && learning.template.mode === template.mode))
-    const others = i !== null ? clashes.get(i) : undefined
-    const deadText = i !== null ? dead.get(i) : undefined
-    const special = m?.mode === 'shift' || template.mode === 'shift'
-    const modes = d ? modesFor(d) : []
     return (
-      <div
+      <MidiMappingRow
         key={key}
-        data-tip={hint}
-        className={`grid min-w-[880px] grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] items-center gap-x-2 border-b border-edge/50 px-2 py-[3px] text-[12px] ${
-          flash && flash === m?.macro ? 'bg-panel-2' : ''
-        }`}
-      >
-        <span className="truncate" title={label}>
-          {label}
-          {deadText && (
-            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip="A shift button always wins on its control, so nothing else mapped to the same CC / note and channel ever fires. Give the macro another control or change the shift button">
-              ⚠ {deadText}
-            </span>
-          )}
-          {others && (
-            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} where the page and shift settings overlap ("any" overlaps with everything). When both apply, the one with a shift setting wins, then the one with a page setting; with the same settings the first in the list`}>
-              ⚠ also {others[0]}
-              {others.length > 1 ? ` +${others.length - 1}` : ''}
-            </span>
-          )}
-        </span>
-        <span className="flex items-center gap-1">
-          <select value={m?.type ?? 'cc'} disabled={!m} onChange={(e) => i !== null && patch(i, { type: e.target.value as 'cc' | 'note' })} data-tip="Which kind of MIDI message: a controller (CC) or a note">
-            <option value="cc">CC</option>
-            <option value="note">Note</option>
-          </select>
-          <NumberInput
-            value={m?.number ?? null}
-            integer
-            min={0}
-            max={127}
-            className="w-14"
-            placeholder="–"
-            tip="CC or note number (0–127)"
-            onChange={(v) => (i !== null ? patch(i, { number: v }) : edit((c) => void c.mappings.push({ ...template, number: v })))}
-          />
-        </span>
-        <span className="flex items-center gap-1">
-          <select
-            value={m?.channel ?? ''}
-            disabled={!m}
-            className="w-[4.6rem]"
-            onChange={(e) => i !== null && patch(i, { channel: e.target.value ? Number(e.target.value) : null })}
-            data-tip={`MIDI channel of this control: ${draft?.channel ?? 1} unless you pick another one (some controllers use a channel per track)`}
-          >
-            <option value="">ch {draft?.channel ?? 1}</option>
-            {Array.from({ length: 16 }, (_, c) => (
-              <option key={c} value={c + 1}>
-                ch {c + 1}
-              </option>
-            ))}
-          </select>
-          <button
-            className={`lbl h-6 px-2 text-[10px] whitespace-nowrap ${waiting ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge text-ink'}`}
-            data-tip={waiting ? 'Waiting for a message: move or press the control (click again to cancel)' : 'Learn: then move or press the control on the controller'}
-            onClick={() => (waiting ? stopLearning() : startLearning({ index: i, template }))}
-          >
-            {waiting ? 'move it…' : 'Learn'}
-          </button>
-        </span>
-        {special ? (
-          <span className="lbl text-[10px] text-dim">{MODE_LABEL[(m?.mode ?? template.mode) as MidiMode]}</span>
-        ) : (
-          <select
-            value={m?.mode ?? (d ? defaultMode(d) : 'absolute')}
-            disabled={!m || modes.length < 2}
-            onChange={(e) => i !== null && patch(i, { mode: e.target.value as MidiMode })}
-            data-tip={m ? MODE_TIP[m.mode] : 'How the control acts on this macro'}
-          >
-            {(m && !modes.includes(m.mode) ? [m.mode, ...modes] : modes).map((x) => (
-              <option key={x} value={x}>
-                {MODE_LABEL[x]}
-              </option>
-            ))}
-          </select>
-        )}
-        {special ? (
-          <span />
-        ) : (
-          <select
-            value={m?.page ?? ''}
-            disabled={!m}
-            onChange={(e) => i !== null && patch(i, { page: (e.target.value || null) as MidiMappingEntry['page'] })}
-            data-tip="On which control page the control does this: the same fader can drive other macros on the other page"
-          >
-            <option value="">any page</option>
-            <option value="general">General</option>
-            <option value="dimmers">Dimmers</option>
-          </select>
-        )}
-        {special ? (
-          <span />
-        ) : (
-          <select
-            value={m?.shift ?? ''}
-            disabled={!m}
-            onChange={(e) => i !== null && patch(i, { shift: (e.target.value || null) as MidiMappingEntry['shift'] })}
-            data-tip="Whether the shift button must be held (or must not be) for the control to do this"
-          >
-            <option value="">shift: any</option>
-            <option value="off">no shift</option>
-            <option value="on">with shift</option>
-          </select>
-        )}
-        <span className="flex items-center gap-1.5">
-          {m && !special && (
-            <label className="lbl flex items-center gap-1 text-[10px] text-dim" data-tip="Flip the direction: 127 becomes 0">
-              <input type="checkbox" checked={m.invert} onChange={(e) => i !== null && patch(i, { invert: e.target.checked })} />
-              inv
-            </label>
-          )}
-          {m?.mode === 'relative' && (
-            <>
-              <select
-                value={m.encoder}
-                onChange={(e) => i !== null && patch(i, { encoder: e.target.value as MidiMappingEntry['encoder'] })}
-                data-tip="How the encoder sends its steps: most controllers use two's complement (127 = one step down); try the others if it turns the wrong way or jumps"
-              >
-                <option value="twos_complement">2's compl.</option>
-                <option value="sign_bit">sign bit</option>
-                <option value="offset_64">offset 64</option>
-              </select>
-              <NumberInput value={m.sensitivity} min={0.05} className="w-14" max={127} tip="Steps per message: 1 = 127 steps cover the whole range" onChange={(v) => i !== null && patch(i, { sensitivity: v })} />
-            </>
-          )}
-        </span>
-        <button
-          className="text-dim hover:text-ink disabled:opacity-30"
-          disabled={!m}
-          data-tip="Remove this control from the macro"
-          onClick={() => i !== null && remove(i)}
-          aria-label="Remove"
-        >
-          ×
-        </button>
-      </div>
+        label={label}
+        hint={hint}
+        index={i}
+        mapping={m}
+        def={d}
+        template={template}
+        controllerChannel={draft?.channel ?? 1}
+        waiting={waiting}
+        clashes={i !== null ? clashes.get(i) : undefined}
+        deadText={i !== null ? dead.get(i) : undefined}
+        highlighted={!!flash && flash === m?.macro}
+        patch={patch}
+        remove={remove}
+        onAdd={(number) => edit((c) => void c.mappings.push({ ...template, number }))}
+        onLearn={() => (waiting ? stopLearning() : startLearning({ index: i, template }))}
+      />
     )
   }
 

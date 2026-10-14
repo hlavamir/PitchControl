@@ -129,7 +129,7 @@ On Windows, use `.venv\Scripts\python -m pitchcontrol`. ASIO devices appear in t
 
 For frontend development, run `npm run dev` in `frontend/` (port 5173, proxied to the backend on 8420).
 
-Tests: `cd backend && .venv/bin/python -m pytest`.
+Tests: `cd backend && .venv/bin/python -m pytest`; the frontend rules (MIDI mapping overlap and behaviours) have Vitest tests: `cd frontend && npm test`.
 
 ## Standalone app
 

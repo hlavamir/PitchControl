@@ -1,0 +1,103 @@
+import { describe, expect, it } from 'vitest'
+import type { MacroDef, MidiMappingEntry } from './api'
+import { channelOf, clashes, deadMappings, defaultMode, modesFor, newMapping, overlaps } from './midiMapping'
+
+// the cases follow backend/tests/test_midi.py: the editor's rules have to agree with the engine's
+
+const mapping = (over: Partial<MidiMappingEntry>) => newMapping({ macro: 'Strobo', ...over })
+const def = (kind: MacroDef['kind']) => ({ name: 'x', kind }) as MacroDef
+
+describe('behaviours that fit a macro', () => {
+  it('a fader can be a fader or an encoder', () => {
+    expect(modesFor(def('fader'))).toEqual(['absolute', 'relative'])
+    expect(defaultMode(def('fader'))).toBe('absolute')
+  })
+  it('a switch or a hold button can toggle, be held or be pressed', () => {
+    expect(modesFor(def('toggle'))).toEqual(['toggle', 'momentary', 'trigger'])
+    expect(modesFor(def('momentary'))).toEqual(['toggle', 'momentary', 'trigger'])
+    expect(defaultMode(def('toggle'))).toBe('toggle')
+    expect(defaultMode(def('momentary'))).toBe('momentary')
+  })
+  it('buttons and radio macros are only pressed', () => {
+    expect(modesFor(def('button'))).toEqual(['trigger'])
+    expect(modesFor(def('radio'))).toEqual(['trigger'])
+    expect(defaultMode(def('radio'))).toBe('trigger')
+  })
+  it('a new mapping starts with the defaults of the file format', () => {
+    expect(newMapping({ number: 5, macro: 'Hue A' })).toMatchObject({ type: 'cc', number: 5, macro: 'Hue A', mode: 'absolute', channel: null, page: null, shift: null, invert: false, sensitivity: 1 })
+  })
+})
+
+describe('which channel a mapping listens on', () => {
+  it("its own, else the controller's", () => {
+    expect(channelOf(mapping({ channel: null }), 13)).toBe(13)
+    expect(channelOf(mapping({ channel: 2 }), 13)).toBe(2)
+  })
+})
+
+describe('overlap', () => {
+  const a = mapping({ number: 5 })
+  it('needs the same kind and number', () => {
+    expect(overlaps(a, mapping({ number: 5 }), 1)).toBe(true)
+    expect(overlaps(a, mapping({ number: 6 }), 1)).toBe(false)
+    expect(overlaps(a, mapping({ number: 5, type: 'note' }), 1)).toBe(false)
+  })
+  it('compares the channels after the controller default is applied', () => {
+    expect(overlaps(a, mapping({ number: 5, channel: 13 }), 13)).toBe(true) // the same channel, said once explicitly
+    expect(overlaps(a, mapping({ number: 5, channel: 2 }), 13)).toBe(false)
+  })
+  it('"any" page or shift overlaps with everything, two settings only when equal', () => {
+    expect(overlaps(mapping({ number: 5, page: 'dimmers' }), a, 1)).toBe(true)
+    expect(overlaps(mapping({ number: 5, page: 'dimmers' }), mapping({ number: 5, page: 'general' }), 1)).toBe(false)
+    expect(overlaps(mapping({ number: 5, shift: 'on' }), mapping({ number: 5, shift: 'off' }), 1)).toBe(false)
+    expect(overlaps(mapping({ number: 5, shift: 'on' }), mapping({ number: 5, shift: 'on' }), 1)).toBe(true)
+  })
+  it('a page-only and a shift-only mapping overlap (item 11: the shift one wins, the app only warns)', () => {
+    expect(overlaps(mapping({ number: 5, page: 'general' }), mapping({ number: 5, shift: 'on' }), 1)).toBe(true)
+  })
+  it('does not compare the shift button with the macros (that is the "never fires" case)', () => {
+    expect(overlaps(a, mapping({ number: 5, mode: 'shift', macro: null }), 1)).toBe(false)
+  })
+  it('agrees with the engine: they overlap exactly when some page and shift state fits both', () => {
+    const pages = [null, 'general', 'dimmers'] as const
+    const shifts = [null, 'on', 'off'] as const
+    for (const p1 of pages) for (const s1 of shifts) for (const p2 of pages) for (const s2 of shifts) {
+      const x = mapping({ number: 5, page: p1, shift: s1 })
+      const y = mapping({ number: 5, page: p2, shift: s2 })
+      const fits = (m: MidiMappingEntry, page: string, shift: string) => (m.page == null || m.page === page) && (m.shift == null || m.shift === shift) // midi_in.py `_pick`
+      const both = ['general', 'dimmers'].some((page) => ['on', 'off'].some((shift) => fits(x, page, shift) && fits(y, page, shift)))
+      expect(overlaps(x, y, 1), `${p1}/${s1} and ${p2}/${s2}`).toBe(both)
+    }
+  })
+})
+
+describe('controls used twice', () => {
+  it('names the others on an overlapping control, both ways round', () => {
+    const ms = [mapping({ number: 5 }), mapping({ number: 6 }), mapping({ number: 5, page: 'dimmers' })]
+    const found = clashes(ms, 1)
+    expect(found.get(0)).toEqual([2])
+    expect(found.get(2)).toEqual([0])
+    expect(found.has(1)).toBe(false)
+  })
+  it('nothing for mappings that never apply together', () => {
+    expect(clashes([mapping({ number: 5, shift: 'on' }), mapping({ number: 5, shift: 'off' })], 1).size).toBe(0)
+  })
+})
+
+describe('a mapping on the shift button', () => {
+  const shift = mapping({ number: 44, mode: 'shift', macro: null })
+  it('never fires: both rows say so', () => {
+    const dead = deadMappings([mapping({ number: 44 }), shift, mapping({ number: 45 })], 1)
+    expect(dead.get(0)).toBe('self')
+    expect(dead.get(1)).toEqual([0])
+    expect(dead.has(2)).toBe(false)
+  })
+  it('the shift button lists every mapping it shadows', () => {
+    const dead = deadMappings([mapping({ number: 44, macro: 'Hue A' }), shift, mapping({ number: 44, macro: 'Hue B', page: 'dimmers' })], 1)
+    expect(dead.get(1)).toEqual([0, 2])
+  })
+  it('on another channel the control is another one', () => {
+    expect(deadMappings([mapping({ number: 44, channel: 2 }), shift], 1).size).toBe(0)
+    expect(deadMappings([mapping({ number: 44, channel: 13 }), shift], 13).size).toBe(2)
+  })
+})
