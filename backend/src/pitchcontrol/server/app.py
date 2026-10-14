@@ -21,7 +21,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .. import __version__
 from ..config.loader import CONTROLLERS, RIGS, VERSION_KEY, report_unknown_keys, save_model
@@ -73,6 +73,19 @@ class SceneName(BaseModel):
     name: str | None = None
 
 
+def describe_validation_error(exc: ValidationError, limit: int = 5) -> str:
+    """The problems of a rejected file as one readable line: ``mappings[3]: a mapping needs a macro; …``."""
+    problems = []
+    for err in exc.errors():
+        where = ""
+        for part in err["loc"]:
+            where += f"[{part}]" if isinstance(part, int) else (f".{part}" if where else str(part))
+        msg = err["msg"].removeprefix("Value error, ")
+        problems.append(f"{where}: {msg}" if where else msg)
+    more = f" (and {len(problems) - limit} more)" if len(problems) > limit else ""
+    return "invalid content: " + "; ".join(problems[:limit]) + more
+
+
 def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | None = None, folders: dict | None = None) -> FastAPI:
     """``desktop``: set by the standalone app (``url``, ``data_dir``, ``logs_dir``, later ``fullscreen``: a
     ``Fullscreen`` controller once the window exists) to enable the app-only actions. ``folders``: the
@@ -87,6 +100,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         log.error("file operation failed: %s", exc)
         where = f" ({exc.filename})" if getattr(exc, "filename", None) else ""
         return JSONResponse(status_code=500, content={"detail": f"can't write the file{where}: {exc.strerror or exc}"})
+
+    @app.exception_handler(ValidationError)
+    async def invalid_content(_request: Request, exc: ValidationError):
+        # a saved settings / rig / fixture type / controller that doesn't fit its model: say which entries are wrong
+        return JSONResponse(status_code=422, content={"detail": describe_validation_error(exc)})
 
     # ------------------------------------------------------------------ app info
     @app.get("/api/app-info")

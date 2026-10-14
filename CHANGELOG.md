@@ -54,6 +54,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   and Shader Speed and Shader Param are **Mask Param A** and **Mask Param B**; "shader" and "preset" are gone from the
   app. Scenes, controller mappings, the autosave, fixture types, rigs and fog settings from earlier versions still load: the old names are read as the new
   ones, and a file gets the new names when it is next saved.
+- Saving content that doesn't fit (a controller mapping without a macro, a rig or fixture type with a wrong value) says
+  what is wrong (`mappings[3]: a mapping needs a macro`) instead of "Internal Server Error".
 
 ### Removed
 - **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are

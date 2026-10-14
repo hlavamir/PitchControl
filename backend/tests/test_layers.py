@@ -256,8 +256,22 @@ def test_active_controller_cannot_be_deleted_and_bad_content_is_refused(layered)
     client.post("/api/controllers", json={"name": "Mine"})
     layered.settings.active_controller = "Mine"
     assert client.delete("/api/controllers/Mine").status_code == 409
-    with pytest.raises(Exception):  # a mapping without a macro
-        client.put("/api/controllers/Mine", json={"mappings": [{"number": 1}]})
+    res = client.put("/api/controllers/Mine", json={"mappings": [{"number": 5, "macro": "Strobo"}, {"number": 1}]})  # no macro
+    assert res.status_code == 422
+    assert res.json()["detail"] == "invalid content: mappings[1]: a mapping needs a macro (except shift)"
+
+
+def test_invalid_settings_rigs_and_fixture_types_are_refused_with_a_readable_422(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    client.post("/api/controllers", json={"name": "Mine"})
+    res = client.put("/api/settings", json={"fps": "fast"})
+    assert res.status_code == 422 and res.json()["detail"].startswith("invalid content: fps: ")
+    res = client.put("/api/rig", json={"fixtures": [{"channel": 0}, "x"]})
+    assert res.status_code == 422 and "fixtures[1]" in res.json()["detail"]
+    res = client.put("/api/fixture-types/rgb_panel", json={"pixels": 0})
+    assert res.status_code == 422 and res.json()["detail"].startswith("invalid content: pixels: ")
+    many = client.put("/api/controllers/Mine", json={"mappings": [{"number": n} for n in range(8)]}).json()["detail"]
+    assert many.count("a mapping needs a macro") == 5 and many.endswith("(and 3 more)")
 
 
 def test_midi_learning_endpoint(layered):
