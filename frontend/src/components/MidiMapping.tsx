@@ -88,11 +88,14 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
+  // Learn refused because nothing would arrive: what to do about it
+  const [learnBlock, setLearnBlock] = useState<{ why: string; fix: 'use' | 'save' | null } | null>(null)
   const learnFrom = useRef(0)
 
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const midi = engine.state?.io.midi
   const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
+  const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
 
   const say = (text: string) => {
     setMessage(text)
@@ -126,6 +129,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
         setDraft(structuredClone(c))
         setLearning(null)
         setAsk(null)
+        setLearnBlock(null)
       })
       .catch(fail)
   }, [selected])
@@ -193,7 +197,22 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     api.post('/api/midi/learning', { on: false }).catch(() => {})
   }, [])
 
+  // Learn listens to the engine's one MidiInput: the active controller's port, as of its last save
+  const learnProblem = (): { why: string; fix: 'use' | 'save' | null } | null => {
+    if (!selected || !draft) return null
+    if (!isActive) {
+      const now = list?.active ? `the active controller (${list.labels?.[list.active] ?? list.active})` : 'no controller'
+      return { why: `This controller isn't the active one, so its MIDI port isn't open: Learn would listen to ${now}.`, fix: 'use' }
+    }
+    if (dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
+    if (!midi?.port) return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that the MIDI port on the Controller tab matches its name.`, fix: null }
+    return null
+  }
+
   const startLearning = (l: Learning) => {
+    const block = learnProblem()
+    setLearnBlock(block)
+    if (block) return
     setAsk(null)
     learnFrom.current = midi?.recent?.[0]?.seq ?? 0
     setLearning(l)
@@ -204,7 +223,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     if (!learning) return
     const timer = window.setTimeout(() => {
       stopLearning()
-      say('Learn: no message arrived (is the controller selected and connected?)')
+      say(midi?.port ? `Learn: the port "${midi.port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
     }, LEARN_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,6 +321,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     } catch (e) {
       fail(e)
     }
+  }
+  const saveAndUse = async () => {
+    if (dirty && !(await save())) return
+    if (!isActive) await useIt()
+    setLearnBlock(null)
+    say('Ready: click Learn again')
   }
   const useIt = async () => {
     if (!selected) return
@@ -656,7 +681,6 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   )
 
   const names = (list?.available ?? []).slice().sort((a, b) => byName(list?.labels?.[a] ?? a, list?.labels?.[b] ?? b))
-  const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
 
   return (
     <Section
@@ -727,6 +751,17 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
         </Button>
       </div>
       {prompts()}
+      {learnBlock && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-edge px-2 py-1.5 text-[12px]" role="alert">
+          <span>{learnBlock.why}</span>
+          {learnBlock.fix && (
+            <Button primary onClick={saveAndUse} tip={learnBlock.fix === 'use' ? 'Save the mapping if it has changes, make this the controller that is listened to, then click Learn again' : 'Save the mapping so that the new port is opened, then click Learn again'}>
+              {learnBlock.fix === 'use' ? (dirty ? 'Save and use this controller' : 'Use this controller') : 'Save'}
+            </Button>
+          )}
+          <Button onClick={() => setLearnBlock(null)}>Dismiss</Button>
+        </div>
+      )}
 
       {!draft ? (
         <p className="text-[12px] text-dim">{names.length ? 'Loading…' : 'No controller files yet: create one with New.'}</p>

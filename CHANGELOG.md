@@ -19,6 +19,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     release of a button as the control; a control learned while the shift button is held gets "with shift" filled in.
   - Learn notices when the controller sends on another channel than the file says and offers to change it. Changing
     the controller's channel on the Controller tab asks about controls that name the old channel themselves.
+  - Learn only listens to the controller that is in use. For another controller, or after an unsaved change of the
+    MIDI port, Learn says so and offers "Save and use this controller" in one click; when no MIDI port is open it says
+    that, and the "nothing arrived" message tells the two cases apart.
   - Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back),
     and can be created, duplicated and deleted. A controller file also has an author, description and contact, and
     records when and with which PitchControl version it was last edited. The Controller mapping list shows the name
