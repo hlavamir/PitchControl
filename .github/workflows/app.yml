@@ -2,6 +2,7 @@
 #
 # - Manual test build: GitHub → Actions → "PitchControl app" → Run workflow; download the zips from
 #   the run's artifacts.
+# - Every build runs the backend tests, the type check and the frontend tests first; a failure stops it.
 # - Release: push a tag vX.Y.Z (X.Y.Z must equal __version__ in
 #   backend/src/pitchcontrol/__init__.py). The builds are attached to a DRAFT GitHub
 #   Release with that version's section of CHANGELOG.md as notes; it becomes public
@@ -52,6 +53,16 @@ jobs:
               exit 1
             fi
           fi
+      - name: Test
+        # a failing test stops the build, so a tag never drafts a release from code that fails its tests
+        shell: bash
+        run: |
+          python -m pip install -q -e "./backend[dev]"
+          (cd backend && python -m pytest -q)
+          cd frontend
+          npm ci --silent
+          npx tsc -b
+          npm test
       - name: Build
         shell: bash
         run: |
