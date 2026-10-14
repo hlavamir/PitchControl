@@ -266,9 +266,13 @@ def test_midi_learning_endpoint(layered):
     engine = Engine(layered, enable_hardware=False)
     engine.midi = MidiInput(layered.controller, None, engine.macros)
     client = TestClient(create_app(engine))
-    assert client.post("/api/midi/learning", json={"on": True}).status_code == 200
-    assert engine.midi.learning
-    client.post("/api/midi/learning", json={"on": False})
+    res = client.post("/api/midi/learning", json={"on": True, "shifts": [{"type": "cc", "number": 60, "channel": 1}]})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["learn_id"] == engine.midi.learn_id and body["seconds"] == 20.0
+    assert engine.midi.learning and engine.midi.status()["learn_seconds"] == body["seconds"]
+    assert engine.midi._learn_shifts == {("cc", 60, 1)}
+    assert client.post("/api/midi/learning", json={"on": False}).json()["learn_id"] is None
     assert not engine.midi.learning
 
 

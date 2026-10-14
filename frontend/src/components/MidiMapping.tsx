@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, byName, type ControllerFile, type MacroDef, type MidiEvent, type MidiMappingEntry, type MidiMode, type Rig } from '../api'
+import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry, type MidiMode, type Rig } from '../api'
 import type { EngineConnection } from '../useEngine'
 import { useLeaveGuard } from '../leaveGuard'
 import { Button, NumberInput, Row, Section } from './forms'
@@ -59,6 +59,10 @@ interface Learning {
   /** the row waiting for a control: an existing mapping, or a new one to be created from ``template`` */
   index: number | null
   template: MidiMappingEntry
+  /** the engine's id of this Learn, once the start was answered: its result is taken by this id, once */
+  id: number | null
+  /** how long the engine waits (it ends Learn by itself) */
+  seconds: number
 }
 
 /** A learned control sends on another channel than the controller is set to. */
@@ -69,8 +73,6 @@ interface ChannelAsk {
 }
 
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
-
-const LEARN_TIMEOUT_MS = 15000
 
 export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: () => void }) {
   const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string>; labels: Record<string, string> } | null>(null)
@@ -90,12 +92,10 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   const [flash, setFlash] = useState<string | null>(null)
   // Learn refused because nothing would arrive: what to do about it
   const [learnBlock, setLearnBlock] = useState<{ why: string; fix: 'use' | 'save' | null } | null>(null)
-  const learnFrom = useRef(0)
+  const learnSeen = useRef(false) // the state has shown the engine's Learn with this id
 
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const midi = engine.state?.io.midi
-  const midiRef = useRef(midi) // the Learn timeout reads the state as it is when it fires, not when Learn started
-  midiRef.current = midi
   const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
   const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
 
@@ -151,7 +151,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     return next
   })
   const patch = (index: number, over: Partial<MidiMappingEntry>) => edit((c) => void Object.assign(c.mappings[index], over))
-  const remove = (index: number) => edit((c) => void c.mappings.splice(index, 1))
+  const remove = (index: number) => {
+    // Learn remembers its row by index: a row removed above it moves it up, the row itself being removed ends Learn
+    if (learning?.index === index) stopLearning()
+    else if (learning?.index != null && learning.index > index) setLearning({ ...learning, index: learning.index - 1 })
+    edit((c) => void c.mappings.splice(index, 1))
+  }
 
   const channelOf = (m: MidiMappingEntry) => m.channel ?? draft?.channel ?? 1
   const overlaps = (a: MidiMappingEntry, b: MidiMappingEntry) =>
@@ -215,26 +220,36 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     return null
   }
 
-  const startLearning = (l: Learning) => {
+  const startLearning = async (l: Pick<Learning, 'index' | 'template'>) => {
     const block = learnProblem()
     setLearnBlock(block)
-    if (block) return
+    if (block || !draft) return
     setAsk(null)
-    learnFrom.current = midi?.recent?.[0]?.seq ?? 0
-    setLearning(l)
-    api.post('/api/midi/learning', { on: true }).catch(fail)
+    learnSeen.current = false
+    setLearning({ ...l, id: null, seconds: 20 }) // waiting for the engine's answer
+    // the engine judges what is learnable against the mapping being edited, which may not be saved yet
+    const shifts = draft.mappings.filter((m) => m.mode === 'shift').map((m) => ({ type: m.type, number: m.number, channel: channelOf(m) }))
+    const shiftRow = (l.index !== null ? draft.mappings[l.index] : l.template).mode === 'shift'
+    try {
+      const r = await api.post<{ learn_id: number | null; seconds: number }>('/api/midi/learning', { on: true, shifts, shift_row: shiftRow })
+      if (r.learn_id === null) throw new Error('Learn: no MIDI input is running')
+      setLearning((cur) => (cur && cur.id === null ? { ...cur, id: r.learn_id, seconds: r.seconds } : cur))
+    } catch (e) {
+      setLearning(null)
+      fail(e)
+    }
   }
 
+  // the engine ends Learn by itself (a capture, or its timeout); this is only a fallback if its state never shows it
   useEffect(() => {
-    if (!learning) return
+    if (!learning || learning.id === null) return
     const timer = window.setTimeout(() => {
       stopLearning()
-      const port = midiRef.current?.port
-      say(port ? `Learn: the port "${port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
-    }, LEARN_TIMEOUT_MS)
+      say('Learn: the MIDI input did not answer, click Learn again')
+    }, (learning.seconds + 3) * 1000)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [learning])
+  }, [learning?.id])
   useEffect(() => () => void api.post('/api/midi/learning', { on: false }).catch(() => {}), [])
 
   const commit = (index: number | null, proposal: MidiMappingEntry) =>
@@ -243,33 +258,45 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
       else c.mappings[index] = proposal
     })
 
-  // a control arrived while learning
+  // the engine's answer to Learn: the first control it got (taken once, by the id of this Learn), or its timeout
   useEffect(() => {
-    if (!learning || !draft) return
+    if (!learning || learning.id === null || !draft) return
+    if (midi?.learn_id !== learning.id) {
+      // the state showed this Learn before and doesn't any more: the input was restarted (a save of the active controller)
+      if (learnSeen.current) {
+        stopLearning()
+        say('Learn was interrupted: the MIDI input was restarted. Click Learn again')
+      }
+      return
+    }
+    learnSeen.current = true
+    const e = midi.learned
+    if (!e) {
+      if (!midi.learning) {
+        setLearning(null)
+        const port = midi.port
+        say(port ? `Learn: the port "${port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
+      }
+      return
+    }
+    setLearning(null)
+    if (e.id !== learning.id) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
-    // the Shift row takes a shift button; every other row skips shift buttons and the let-go of buttons
-    // the engine knows only the saved shift button: the draft's (not saved yet) is skipped here, too
-    const draftShift = draft.mappings.filter((m) => m.mode === 'shift')
-    const isDraftShift = (x: MidiEvent) => draftShift.some((s) => s.type === x.kind && s.number === x.number && channelOf(s) === x.channel)
-    const e = (midi?.recent ?? []).find(
-      (x: MidiEvent) => x.seq > learnFrom.current && x.kind && (base.mode === 'shift' ? !x.release : x.learnable && !isDraftShift(x)),
-    )
-    if (!e || !e.kind) return
+    if (!base) return
     const proposal: MidiMappingEntry = {
       ...base,
       type: e.kind,
       number: e.number,
       channel: e.channel === draft.channel ? null : e.channel,
       // learned while holding the shift button: it is the 'with shift' variant
-      shift: e.shift && base.mode !== 'shift' ? 'on' : base.shift,
+      shift: e.shift ? 'on' : base.shift,
     }
-    stopLearning()
     // the first control that is not on the controller's channel: probably the controller is set to the wrong one
     // (explicit channels that already equal the learned one count as none: "Yes" removes them)
     if (e.channel !== draft.channel && draft.mappings.every((m) => !m.channel || m.channel === e.channel)) setAsk({ proposal, index: learning.index, channel: e.channel })
     else commit(learning.index, proposal)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [midi?.recent, learning])
+  }, [midi?.learn_id, midi?.learned, midi?.learning, learning])
 
   // -- the monitor lights up the row that the control moved
   useEffect(() => {

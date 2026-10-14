@@ -16,6 +16,7 @@ import sys
 import webbrowser
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
@@ -29,7 +30,7 @@ from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices
 from ..io.devices import list_serial_devices
-from ..io.midi_in import list_midi_inputs
+from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..version import version_label
 
 log = logging.getLogger(__name__)
@@ -51,8 +52,16 @@ class NewType(BaseModel):
     copy_of: str | None = None  # duplicate this type
 
 
+class LearnShift(BaseModel):
+    type: Literal["cc", "note"]
+    number: int
+    channel: int
+
+
 class Learning(BaseModel):
     on: bool
+    shifts: list[LearnShift] = []  # the shift buttons of the mapping being edited (it may not be saved yet)
+    shift_row: bool = False  # the Shift row is learning: it takes a shift button
 
 
 class DimmerName(BaseModel):
@@ -586,10 +595,13 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.post("/api/midi/learning")
     def midi_learning(body: Learning):
-        """While learning, MIDI messages show in the monitor but move nothing (it ends by itself after 20 s)."""
+        """Start or cancel Learn. The input captures the first CC / note itself and reports it in the MIDI status
+        (``learn_id``, ``learned``); until then messages show in the monitor but move nothing. Learn ends by itself
+        after ``seconds``."""
+        learn_id = None
         if engine.midi is not None:
-            engine.midi.set_learning(body.on)
-        return {"ok": True}
+            learn_id = engine.midi.set_learning(body.on, [(s.type, s.number, s.channel) for s in body.shifts], body.shift_row)
+        return {"ok": True, "learn_id": learn_id, "seconds": LEARN_SECONDS}
 
     @app.get("/api/devices/serial")
     def serial_devices():

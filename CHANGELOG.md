@@ -17,6 +17,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     mapping is saved, lets go of everything that is held.
   - While Learn waits, the shift button and the buttons you let go keep working. Learn never takes a shift button or the
     release of a button as the control; a control learned while the shift button is held gets "with shift" filled in.
+    Learn takes the first control that arrives (the input itself picks it, so nothing is missed or taken twice),
+    also when the shift button is one you changed and haven't saved yet, and it gives up after 20 seconds. Removing a
+    row while Learn waits no longer sends the control to another row.
   - Learn notices when the controller sends on another channel than the file says and offers to change it. Changing
     the controller's channel on the Controller tab asks about controls that name the old channel themselves.
   - Learn only listens to the controller that is in use. For another controller, or after an unsaved change of the

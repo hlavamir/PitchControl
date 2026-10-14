@@ -12,6 +12,7 @@ and nothing jumps.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import time
 from collections import deque
@@ -27,7 +28,9 @@ except ImportError:  # pragma: no cover
     mido = None
 
 SYNC_TOLERANCE = 1.5 / 127  # hardware and macro this close count as the same position
-LEARN_SECONDS = 20.0  # the learn mode lets go by itself, so a forgotten one doesn't leave the controller dead
+LEARN_SECONDS = 20.0  # the learn mode lets go by itself, so a forgotten one doesn't leave the controller dead (the UI reads it from the API)
+LEARN_GRACE = 0.7  # after a capture the new control stays muted this long, while the UI takes the result over
+_learn_ids = itertools.count(1)  # one counter for every MidiInput: a restart of the input never repeats an id
 
 
 def list_midi_inputs() -> list[str]:
@@ -83,6 +86,10 @@ class MidiInput:
         self._takeover: dict[str, _Takeover] = {}
         self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover state belongs to
         self._learn_until = 0.0
+        self.learn_id: int | None = None  # the Learn that was started last
+        self.learned: dict | None = None  # what that Learn captured: {id, kind, number, channel, shift}
+        self._learn_shifts: set[tuple[str, int, int]] = set()  # the draft's shift buttons: a message from one is no learnable control
+        self._learn_for_shift = False  # the Shift row is learning: it takes a shift button
         self.recent: deque[dict] = deque(maxlen=20)  # MIDI monitor for the Inputs page
         self.received = 0
         self._ignored_channels: set[int] = set()
@@ -140,13 +147,38 @@ class MidiInput:
                 pass
         self.port = None
 
-    # -- learn mode: messages are shown in the monitor but move nothing
-    def set_learning(self, on: bool) -> None:
+    # -- learn mode: the first learnable CC / note after the start is captured here and ends Learn; until then (and a
+    # moment after) messages are shown in the monitor but move nothing
+    def set_learning(self, on: bool, shifts=(), for_shift: bool = False) -> int | None:
+        """Start (``on``) or cancel Learn. ``shifts`` are the (kind, number, channel) of the shift buttons of the
+        *draft* being edited, which may not be the saved controller; ``for_shift``: the Shift row is learning, so it
+        takes a shift button. Returns the id of the new Learn, which ``status()`` reports with the result."""
+        self.learned = None
         self._learn_until = time.monotonic() + LEARN_SECONDS if on else 0.0
+        self._learn_shifts = {(k, n, c) for k, n, c in shifts}
+        self._learn_for_shift = for_shift
+        if on:
+            self.learn_id = next(_learn_ids)
+        return self.learn_id if on else None
 
     @property
     def learning(self) -> bool:
+        """Learn is on: new presses and fader moves are muted (also for a moment after the capture)."""
         return time.monotonic() < self._learn_until
+
+    def _capture(self, key: tuple[str, int, int], release: bool) -> None:
+        """Learn takes the first message that is a press or a fader move, and not a shift button (unless the Shift row learns)."""
+        if release or (key in self._learn_shifts and not self._learn_for_shift):
+            return
+        self.learned = {
+            "id": self.learn_id,
+            "kind": key[0],
+            "number": key[1],
+            "channel": key[2],
+            # a shift button was held when it was learned: the 'with shift' variant (not for the shift button itself)
+            "shift": not self._learn_for_shift and any(s in self._down for s in self._learn_shifts),
+        }
+        self._learn_until = time.monotonic() + LEARN_GRACE
 
     @property
     def shift(self) -> bool:
@@ -195,11 +227,13 @@ class MidiInput:
                 m.mode == "shift" and (m.channel or self.controller.channel) == channel for m in self.by_control.get((kind, number), [])
             )
         entry["learnable"] = not entry["release"] and not entry["shift_button"]
+        learning = self.learning  # Learn: new presses and fader moves are shown but muted; shift and releases still count
+        if learning and self.learned is None:
+            self._capture(key, entry["release"])
         if self.controller is None:
             entry["note"] = "no controller selected"
             return
 
-        learning = self.learning  # Learn: new presses and fader moves are shown but muted; shift and releases still count
         candidates = self.by_control.get((kind, number), [])
         label = "CC" if kind == "cc" else "note"
         if not candidates:
@@ -319,6 +353,9 @@ class MidiInput:
             "channel": self.controller.channel if self.controller else None,
             "received": self.received,
             "shift": self.shift,
-            "learning": self.learning,
+            "learning": self.learning and self.learned is None,  # waiting for a control
+            "learn_id": self.learn_id,
+            "learned": self.learned,
+            "learn_seconds": LEARN_SECONDS,
             "recent": list(self.recent)[::-1],
         }

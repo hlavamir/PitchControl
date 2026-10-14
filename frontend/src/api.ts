@@ -47,6 +47,15 @@ export interface MidiEvent {
   learnable: boolean // what Learn may pick: neither a release nor a shift button
 }
 
+/** The control a Learn captured. */
+export interface LearnedControl {
+  id: number
+  kind: 'cc' | 'note'
+  number: number
+  channel: number // 1-based
+  shift: boolean // a shift button was held: the 'with shift' variant
+}
+
 export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'
 
 /** One MIDI control of a controller file, as the API sends it (optional fields are left out when unset). */
@@ -90,7 +99,10 @@ export interface IoStatus {
   received?: number
   recent?: MidiEvent[]
   shift?: boolean // a shift button of the controller is held
-  learning?: boolean
+  learning?: boolean // Learn is waiting for a control
+  learn_id?: number | null // the Learn that was started last
+  learned?: LearnedControl | null // what that Learn captured: the engine takes the first control itself
+  learn_seconds?: number // how long Learn waits
 }
 
 export interface EngineState {

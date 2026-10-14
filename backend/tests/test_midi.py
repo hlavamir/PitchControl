@@ -427,6 +427,91 @@ def test_learning_shows_messages_without_applying_them():
     assert macros.on("Fog Machine")
 
 
+def test_learn_captures_the_first_control_itself_and_ends():
+    midi, macros = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
+    learn_id = midi.set_learning(True)
+    status = midi.status()
+    assert status["learning"] and status["learn_id"] == learn_id and status["learned"] is None
+    cc(midi, 20, 90)  # the first message is taken ...
+    cc(midi, 21, 90, channel=4)  # ... not the newest
+    status = midi.status()
+    assert status["learned"] == {"id": learn_id, "kind": "cc", "number": 20, "channel": 1, "shift": False}
+    assert not status["learning"]  # waiting is over
+    cc(midi, 6, 127)  # the grace: the new control and whatever comes next is still muted until the UI has the result
+    assert not macros.on("Fog Machine")
+    midi.set_learning(False)
+    cc(midi, 6, 127)
+    assert macros.on("Fog Machine")
+
+
+def test_learn_ends_by_itself(monkeypatch):
+    import pitchcontrol.io.midi_in as module
+
+    midi, macros = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
+    monkeypatch.setattr(module, "LEARN_SECONDS", 0.05)
+    midi.set_learning(True)
+    time.sleep(0.1)
+    assert not midi.status()["learning"] and midi.status()["learned"] is None
+    cc(midi, 6, 127)  # nothing is captured after the timeout, and the press works again
+    assert midi.status()["learned"] is None and macros.on("Fog Machine")
+
+
+def test_every_learn_has_its_own_id_and_forgets_the_last_result():
+    midi, _ = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
+    first = midi.set_learning(True)
+    cc(midi, 20, 90)
+    other, _ = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
+    second = other.set_learning(True)  # ids don't repeat across inputs (a restart makes a new one)
+    assert second != first
+    third = midi.set_learning(True)
+    assert third != first and midi.status()["learned"] is None
+    midi.set_learning(False)
+    assert midi.status()["learned"] is None and not midi.status()["learning"] and midi.status()["learn_id"] == third
+
+
+def test_learn_skips_releases_and_the_shift_buttons_of_the_draft():
+    midi, _ = build(MidiMapping(number=44, mode="shift"))  # the saved shift button is CC 44
+    cc(midi, 9, 100)  # a button held from before Learn
+    draft_shift = [("cc", 60, 1)]  # the draft has another shift button, not saved yet
+    midi.set_learning(True, draft_shift)
+    cc(midi, 9, 0)  # its release
+    cc(midi, 60, 127)  # the draft's shift button
+    assert midi.status()["learned"] is None
+    cc(midi, 45, 127)  # a real control, with the draft's shift held
+    assert midi.status()["learned"]["number"] == 45 and midi.status()["learned"]["shift"] is True
+
+
+def test_learn_order_click_then_shift_then_button_gives_with_shift_for_an_unsaved_shift_button():
+    midi, _ = build()  # an empty draft: nothing is saved
+    midi.set_learning(True, [("cc", 60, 1)])
+    cc(midi, 60, 127)
+    cc(midi, 45, 127)
+    assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "cc", "number": 45, "channel": 1, "shift": True}
+
+
+def test_shift_held_before_learn_and_let_go_before_the_press_is_not_with_shift():
+    midi, _ = build()
+    cc(midi, 60, 127)  # held from before Learn
+    midi.set_learning(True, [("cc", 60, 1)])
+    cc(midi, 60, 0)
+    cc(midi, 45, 127)
+    assert midi.status()["learned"]["shift"] is False
+
+
+def test_the_shift_row_learns_a_shift_button_without_with_shift():
+    midi, _ = build()
+    midi.set_learning(True, [("cc", 60, 1)], for_shift=True)
+    cc(midi, 60, 127)
+    assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "cc", "number": 60, "channel": 1, "shift": False}
+
+
+def test_learn_captures_notes_and_the_channel():
+    midi, _ = build()
+    midi.set_learning(True)
+    note(midi, 36, 100, channel=9)
+    assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "note", "number": 36, "channel": 10, "shift": False}
+
+
 # --------------------------------------------------------------------------- files
 
 
