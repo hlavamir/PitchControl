@@ -155,6 +155,22 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     (a.mode === 'shift') === (b.mode === 'shift')
   const mappingLabel = (m: MidiMappingEntry) => (m.mode === 'shift' ? 'shift' : labelOf(m.macro ?? '?'))
 
+  // a mapping on the same control (kind, number, channel) as a shift button never fires: the shift button wins
+  const dead = useMemo(() => {
+    const out = new Map<number, string>()
+    const ms = draft?.mappings ?? []
+    ms.forEach((a, i) =>
+      ms.forEach((b, j) => {
+        if (i === j || b.mode !== 'shift' || a.type !== b.type || a.number !== b.number || channelOf(a) !== channelOf(b)) return
+        if (a.mode === 'shift') return
+        out.set(i, 'never fires: this control is the shift button')
+        out.set(j, `${out.get(j) ? out.get(j) + ', ' : 'also mapped to '}${mappingLabel(a)} (never fires)`)
+      }),
+    )
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, defs, dimmerNames])
+
   // controls used twice where their pages and shift settings overlap ("any" overlaps with everything): a warning only. Where both apply,
   // the more specific one (a page or a shift setting) wins, otherwise the first in the list.
   const clashes = useMemo(() => {
@@ -204,7 +220,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     if (!learning || !draft) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
     // the Shift row takes a shift button; every other row skips shift buttons and the let-go of buttons
-    const e = (midi?.recent ?? []).find((x: MidiEvent) => x.seq > learnFrom.current && x.kind && (base.mode === 'shift' ? !x.release : x.learnable))
+    // the engine knows only the saved shift button: the draft's (not saved yet) is skipped here, too
+    const draftShift = draft.mappings.filter((m) => m.mode === 'shift')
+    const isDraftShift = (x: MidiEvent) => draftShift.some((s) => s.type === x.kind && s.number === x.number && channelOf(s) === x.channel)
+    const e = (midi?.recent ?? []).find(
+      (x: MidiEvent) => x.seq > learnFrom.current && x.kind && (base.mode === 'shift' ? !x.release : x.learnable && !isDraftShift(x)),
+    )
     if (!e || !e.kind) return
     const proposal: MidiMappingEntry = {
       ...base,
@@ -298,6 +319,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     const m = i !== null && draft ? draft.mappings[i] : null
     const waiting = learning !== null && learning.index === i && (i !== null || (learning.template.macro === template.macro && learning.template.mode === template.mode))
     const others = i !== null ? clashes.get(i) : undefined
+    const deadText = i !== null ? dead.get(i) : undefined
     const special = m?.mode === 'shift' || template.mode === 'shift'
     const modes = d ? modesFor(d) : []
     return (
@@ -310,6 +332,11 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
       >
         <span className="truncate" title={label}>
           {label}
+          {deadText && (
+            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip="A shift button always wins on its control, so nothing else mapped to the same CC / note and channel ever fires. Give the macro another control or change the shift button">
+              ⚠ {deadText}
+            </span>
+          )}
           {others && (
             <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} where the page and shift settings overlap ("any" overlaps with everything). When both apply, the one with a page or shift setting wins, otherwise the first in the list`}>
               ⚠ also {others[0]}

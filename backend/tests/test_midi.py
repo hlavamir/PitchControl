@@ -392,6 +392,16 @@ def test_a_fader_at_rest_is_learnable_but_a_button_held_from_before_is_not_when_
     assert [e["learnable"] for e in midi.recent] == [True, True, True, False, True]
 
 
+def test_a_macro_on_the_shift_button_never_fires_and_the_load_says_so(caplog):
+    with caplog.at_level("WARNING", logger="pitchcontrol.io.midi_in"):
+        midi, macros = build(MidiMapping(number=44, mode="shift"), MidiMapping(number=44, macro="Fog Machine", mode="momentary"), MidiMapping(number=44, macro="Strobo", channel=3))
+    assert [r.message for r in caplog.records if "shift button" in r.message] == [
+        "controller 't': cc 44 on channel 1 is the shift button, so 'Fog Machine' mapped to it never fires"
+    ]  # the one on another channel is a different control
+    cc(midi, 44, 127)
+    assert not macros.on("Fog Machine") and midi.shift  # the reproduced case: the shift mapping wins
+
+
 # --------------------------------------------------------------------------- learn mode
 
 

@@ -91,6 +91,14 @@ class MidiInput:
                 self.by_control.setdefault((m.type, m.number), []).append(m)
                 if m.macro is not None and m.macro not in macros.defs:
                     log.warning("controller '%s': %s %d mapped to unknown macro '%s'", controller.name, m.type, m.number, m.macro)
+            # a shift button always wins on its control: whatever else is mapped there never fires
+            shifts = {(m.type, m.number, m.channel or controller.channel) for m in controller.mappings if m.mode == "shift"}
+            for m in controller.mappings:
+                if m.mode != "shift" and (m.type, m.number, m.channel or controller.channel) in shifts:
+                    log.warning(
+                        "controller '%s': %s %d on channel %d is the shift button, so '%s' mapped to it never fires",
+                        controller.name, m.type, m.number, m.channel or controller.channel, m.macro,
+                    )
 
     # -- port
     def start(self) -> None:
