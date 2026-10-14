@@ -164,6 +164,21 @@ def _normalised(path: Path, model: type[BaseModel]) -> dict | None:
     return out
 
 
+def _had_page_knob(path: Path | None) -> bool:
+    """Does a controller file still have the page knob of 1.4 (the ``page_knob`` key or a mapping with that mode)?"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path else None
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    mappings = list(data.get("mappings") or [])
+    if isinstance(data.get("pages"), dict):
+        for items in data["pages"].values():
+            mappings += items or []
+    return "page_knob" in data or any(isinstance(m, dict) and m.get("mode") == "page_knob" for m in mappings)
+
+
 # --------------------------------------------------------------------------- the store
 
 
@@ -645,6 +660,12 @@ class ConfigStore:
             self.controller = self._load_layered(CONTROLLERS, name, Controller, name=name)
             if self.controller is None:
                 self.notice(f"The MIDI controller mapping “{name}” was not found; no controller is used.")
+            elif _had_page_knob(self.find(CONTROLLERS, name)):
+                self.notice(
+                    f"The MIDI controller mapping “{name}” has a page knob, which no longer exists: it is ignored. "
+                    "Switch the control page with the Page General / Page Dimmers macros (map a button or knob to "
+                    "them) or on screen. Saving the mapping writes it without the page knob."
+                )
 
     def load_controller_file(self, name: str) -> Controller | None:
         return self._load_layered(CONTROLLERS, name, Controller, name=name)

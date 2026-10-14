@@ -145,7 +145,7 @@ def test_fog_machines_move_from_settings_into_the_rigs(layered):
     assert any("Fog machines are now part of each rig" in n for n in layered.notices)
     layered.notices.clear()
     layered.load_all()  # once only
-    assert layered.notices == []
+    assert not any("Fog machines" in n for n in layered.notices)
 
 
 def test_fog_page_writes_only_the_fog_machines(layered):
@@ -285,3 +285,26 @@ def test_controller_list_shows_the_name_from_the_file_or_the_file_name(layered):
     assert labels["Blank"] == "Blank"  # no name inside the file: the file name
     client.put("/api/controllers/Blank", json={"name": "Akai APC40 (mine)", "mappings": []})
     assert client.get("/api/controllers").json()["labels"]["Blank"] == "Akai APC40 (mine)"
+
+
+def test_a_controller_file_with_a_page_knob_gets_a_notice(layered):
+    layered.controllers_dir.mkdir(parents=True, exist_ok=True)
+    old = {"name": "mine", "page_knob": 13, "pages": {"general": [{"cc": 29, "macro": "Strobo Decay"}]}}
+    (layered.controllers_dir / "mine.json").write_text(json.dumps(old), encoding="utf-8")
+    layered.load_controller("mine")
+    assert [m.macro for m in layered.controller.mappings] == ["Strobo Decay"]  # it still loads, without the knob
+    assert sum("page knob" in n and "“mine”" in n for n in layered.notices) == 1
+    layered.load_controller("mine")
+    assert sum("“mine”" in n for n in layered.notices) == 1  # not repeated
+
+    layered.notices.clear()
+    (layered.controllers_dir / "mine.json").write_text(
+        json.dumps({"name": "mine", "mappings": [{"number": 13, "mode": "page_knob"}, {"number": 1, "macro": "Strobo"}]}), encoding="utf-8"
+    )
+    layered.load_controller("mine")
+    assert any("mine" in n and "page knob" in n for n in layered.notices)
+
+    layered.notices.clear()
+    layered.save_controller("mine", layered.controller)  # saving writes the new form
+    layered.load_controller("mine")
+    assert layered.notices == []  # (the shipped LCXL3 gives none either: test_shipped_config_loads)

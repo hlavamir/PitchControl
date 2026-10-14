@@ -31,14 +31,13 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     records when and with which PitchControl version it was last edited. The Controller mapping list shows the name
     from the file.
 - Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
-  (they used to be dropped silently).
+  (they used to be dropped silently). Choosing a controller on the Inputs page keeps edits you haven't saved yet (audio
+  device, MIDI port) and the controller list of the Controller setting follows a controller created below it.
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
   top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
   01-08 on knob row 1 and CC 52 as the shift button.
 
 ### Changed
-- "Use this controller" no longer throws away unsaved changes on the Inputs page (audio device, MIDI port): they stay,
-  still marked as unsaved. The controller list of the Controller setting follows a controller created or chosen below it.
 - MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
   show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
@@ -46,7 +45,15 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   the range together. Tapping shift (or changing the page) only starts it over for the controls whose mapping changes;
   a fader that does the same in both layers stays 1:1.
 - Controller files are a flat list of mappings now (`mappings`, with `page` and `shift` per mapping); files in the old
-  form (`pages`, `page_knob`, `cc`) still load and are written in the new form when saved.
+  form (`pages`, `cc`) still load and are written in the new form when saved.
+
+### Removed
+- **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are
+  switched with the Page General / Page Dimmers macros (map a button or knob to them) or on screen. A controller file that
+  still has a page knob loads without it and shows a notice naming the file until it is saved.
+- **The old Launch Control XL 3 layout**: its knob CC 13 no longer switches pages (Dimmer 01-08 are on that knob row
+  now), and the button rows have mappings. A copy of the old file in your own data folder is not touched: use Reset
+  (shipped controllers) or take over what you need from the new layout.
 
 ## 1.4.1 — 2026-10-13
 
