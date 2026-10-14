@@ -75,6 +75,9 @@ class MidiInput:
         self.error: str | None = None
         self.by_control: dict[tuple[str, int], list[MidiMapping]] = {}
         self.shift_controls: set[tuple[str, int, int]] = set()  # (kind, number, channel) of the shift buttons held down
+        # (kind, number, channel) of a held button -> the momentary mapping that got its press: the release goes
+        # there, whatever shift state or control page is current when the button is let go
+        self._held: dict[tuple[str, int, int], MidiMapping] = {}
         self._takeover: dict[str, _Takeover] = {}
         self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover state belongs to
         self._learn_until = 0.0
@@ -107,7 +110,18 @@ class MidiInput:
             self.error = str(exc)
             log.error("MIDI input failed: %s", exc)
 
+    def release_all(self) -> None:
+        """Let go of everything the controller still holds: a momentary macro (fog!) must not stay on when the input
+        is closed or the mapping is swapped while a button is down."""
+        held, self._held = self._held, {}
+        for m in held.values():
+            if m.macro in self.macros.defs:
+                self.macros.set(m.macro, 1.0 if m.invert else 0.0)
+        self.shift_controls.clear()
+        self._takeover.clear()
+
     def stop(self) -> None:
+        self.release_all()
         if self.port is not None:
             try:
                 self.port.close()
@@ -148,27 +162,26 @@ class MidiInput:
             "value": value,
             "macro": None,
             "note": "",
+            "shift": self.shift,  # whether a shift button was held when this arrived (Learn pre-fills "with shift")
         }
         self.recent.append(entry)
         if kind is None:
             entry["note"] = "not a CC or note message"
             return
-        if self.learning:
-            entry["note"] = "learning: not applied"
-            return
         if self.controller is None:
             entry["note"] = "no controller selected"
             return
 
+        learning = self.learning  # Learn: new presses and fader moves are shown but muted; shift and releases still count
         candidates = self.by_control.get((kind, number), [])
         label = "CC" if kind == "cc" else "note"
         if not candidates:
-            entry["note"] = f"{label} {number} not mapped"
+            entry["note"] = "learning: not applied" if learning else f"{label} {number} not mapped"
             return
         here = [m for m in candidates if (m.channel or self.controller.channel) == channel]
         if not here:
             expected = candidates[0].channel or self.controller.channel
-            entry["note"] = f"channel {channel}, mapping expects {expected}"
+            entry["note"] = "learning: not applied" if learning else f"channel {channel}, mapping expects {expected}"
             if channel not in self._ignored_channels:
                 self._ignored_channels.add(channel)
                 log.warning("MIDI: ignoring %s on channel %d (controller '%s' maps it on channel %d)", label, channel, self.controller.name, expected)
@@ -185,6 +198,16 @@ class MidiInput:
                     self._takeover.clear()
                 return
 
+        key = (kind, number, channel)
+        if not pressed and key in self._held:  # the release goes to the mapping that got the press
+            m = self._held.pop(key)
+            entry["macro"] = m.macro
+            self.macros.set(m.macro, 1.0 if m.invert else 0.0)
+            return
+        if learning:
+            entry["note"] = "learning: not applied"
+            return
+
         page = self.macros.control_page
         if self._layer != (page, self.shift):  # a new layer: the hardware no longer matches the macros
             self._layer = (page, self.shift)
@@ -196,6 +219,8 @@ class MidiInput:
             return
         m = max(fitting, key=lambda m: (m.page is not None) + (m.shift is not None))
         self._apply(m, kind, value, pressed, entry)
+        if m.mode == "momentary" and pressed and entry["macro"]:
+            self._held[key] = m
 
     def _apply(self, m: MidiMapping, kind: str, value: int, pressed: bool, entry: dict) -> None:
         name = m.macro

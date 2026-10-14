@@ -11,7 +11,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
   control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what other
   buttons do (for example scene load / save on the same button). A control used twice in the same layer is only
-  warned about. Learn notices when the controller sends on another channel than the file says and offers to change it.
+  warned about. A button's release always goes to the mapping that got its press (letting go of shift or changing the
+  page while a fog button is held no longer leaves the fog on), also while Learn is on or when the mapping is saved;
+  learning a control while holding the shift button fills in "with shift". Learn notices when the controller sends on another channel than the file says and offers to change it.
   Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back), and
   can be created, duplicated and deleted. A controller file also has an author, description and contact, and records
   when and with which PitchControl version it was last edited. The Controller mapping list shows the name from the file.

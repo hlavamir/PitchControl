@@ -205,7 +205,14 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     const e = (midi?.recent ?? []).find((x: MidiEvent) => x.seq > learnFrom.current && x.kind)
     if (!e || !e.kind) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
-    const proposal: MidiMappingEntry = { ...base, type: e.kind, number: e.number, channel: e.channel === draft.channel ? null : e.channel }
+    const proposal: MidiMappingEntry = {
+      ...base,
+      type: e.kind,
+      number: e.number,
+      channel: e.channel === draft.channel ? null : e.channel,
+      // learned while holding the shift button: it is the 'with shift' variant
+      shift: e.shift && base.mode !== 'shift' ? 'on' : base.shift,
+    }
     stopLearning()
     // the first control that is not on the controller's channel: probably the controller is set to the wrong one
     if (e.channel !== draft.channel && draft.mappings.every((m) => !m.channel)) setAsk({ proposal, index: learning.index, channel: e.channel })

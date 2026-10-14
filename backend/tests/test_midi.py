@@ -64,7 +64,7 @@ def test_trigger_presses_a_button_macro_and_selects_a_radio():
     cc(midi, 40, 0)
     assert macros.take_buttons() == {"Scene 3 Load"}
     cc(midi, 41, 127)
-    assert macros.on("Preset A") and not macros.on("Preset B")
+    assert macros.on("Preset A") and not macros.on("Preset C")
 
 
 def test_notes_work_like_buttons():
@@ -286,6 +286,78 @@ def test_unmapped_on_this_page_is_reported():
     midi, macros = build(fader(29, "Dimmer 01", page="dimmers"))
     cc(midi, 29, 10)
     assert "not mapped on page 'general'" in midi.recent[-1]["note"]
+
+
+# --------------------------------------------------------------------------- releases (Miles' notes, items 1 and 2)
+
+
+def fog_and_preset():
+    return build(
+        MidiMapping(number=44, mode="shift"),
+        MidiMapping(number=38, macro="Fog Machine", mode="momentary", shift="off"),
+        MidiMapping(number=38, macro="Preset C", mode="trigger", shift="on"),
+        MidiMapping(number=37, macro="Manual Strobo", mode="momentary", page="general"),
+    )
+
+
+def test_release_goes_to_the_mapping_that_got_the_press():
+    midi, macros = fog_and_preset()
+    cc(midi, 38, 127)  # fog on
+    assert macros.on("Fog Machine")
+    cc(midi, 44, 127)  # shift pressed while the fog button is down
+    cc(midi, 38, 0)  # fog button released: it belongs to Fog Machine, not to Preset C
+    assert not macros.on("Fog Machine")
+    assert not macros.on("Preset C")
+    cc(midi, 44, 0)
+    assert not midi.shift
+
+
+def test_a_momentary_button_held_across_a_page_change_is_released():
+    midi, macros = fog_and_preset()
+    cc(midi, 37, 127)
+    assert macros.on("Manual Strobo")
+    macros.set_control_page("dimmers")  # the mapping is for the General page only
+    cc(midi, 37, 0)
+    assert not macros.on("Manual Strobo")
+
+
+def test_closing_the_input_lets_go_of_held_buttons():
+    midi, macros = fog_and_preset()
+    cc(midi, 38, 127)
+    cc(midi, 44, 127)
+    midi.stop()  # a save of the active controller restarts the input while the button is down
+    assert not macros.on("Fog Machine") and not midi.shift
+
+
+def test_shift_and_releases_still_count_while_learning():
+    midi, macros = fog_and_preset()
+    cc(midi, 38, 127)  # fog held
+    cc(midi, 44, 127)  # shift held
+    midi.set_learning(True)
+    cc(midi, 44, 0)  # shift let go during Learn
+    cc(midi, 38, 0)  # and the fog button
+    midi.set_learning(False)
+    assert not midi.shift
+    assert not macros.on("Fog Machine")
+
+
+def test_learning_still_mutes_new_presses():
+    midi, macros = fog_and_preset()
+    midi.set_learning(True)
+    cc(midi, 38, 127)
+    assert not macros.on("Fog Machine")
+    cc(midi, 38, 0)  # the release of a press that was never applied changes nothing
+    midi.set_learning(False)
+    assert not macros.on("Fog Machine")
+
+
+def test_monitor_entries_say_whether_shift_was_held():
+    midi, _ = fog_and_preset()
+    cc(midi, 37, 127)
+    cc(midi, 44, 127)
+    cc(midi, 37, 0)
+    cc(midi, 40, 10)
+    assert [e["shift"] for e in midi.recent] == [False, False, True, True]
 
 
 # --------------------------------------------------------------------------- learn mode

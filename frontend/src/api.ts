@@ -41,6 +41,7 @@ export interface MidiEvent {
   value: number
   macro: string | null
   note: string
+  shift: boolean // a shift button was held when it arrived
 }
 
 export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'
