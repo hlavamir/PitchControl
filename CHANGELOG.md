@@ -31,8 +31,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     records when and with which PitchControl version it was last edited. The Controller mapping list shows the name
     from the file.
 - Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
-  (they used to be dropped silently). Choosing a controller on the Inputs page keeps edits you haven't saved yet (audio
-  device, MIDI port) and the controller list of the Controller setting follows a controller created below it.
+  (they used to be dropped silently). The controller in use is chosen in one place on the Inputs page, section 03
+  ("Use this controller"); section 02 only shows which one it is and keeps the MIDI port. Choosing a controller keeps
+  edits you haven't saved yet (audio device, MIDI port).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
   top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
   01-08 on knob row 1 and CC 52 as the shift button.

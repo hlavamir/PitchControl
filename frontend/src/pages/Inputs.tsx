@@ -15,7 +15,6 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const { settings, update, applySaved, save, dirty, reload, message } = useSettings()
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [midiPorts, setMidiPorts] = useState<string[]>([])
-  const [controllers, setControllers] = useState<string[]>([])
   const [controllerLabels, setControllerLabels] = useState<Record<string, string>>({})
   const [bands, setBands] = useState<BandInfo | null>(null)
 
@@ -23,7 +22,6 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     api.get<AudioDevice[]>('/api/devices/audio').then(setAudioDevices)
     api.get<string[]>('/api/devices/midi').then(setMidiPorts)
     api.get<{ available: string[]; labels: Record<string, string> }>('/api/controllers').then((c) => {
-      setControllers(c.available)
       setControllerLabels(c.labels)
     })
     api.get<BandInfo>('/api/audio/bands').then(setBands)
@@ -114,15 +112,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         }
         tip="The hardware controller (e.g. Launch Control XL 3) that drives the macros: faders, knobs and buttons"
       >
-        <Row label="Controller mapping" hint="Which controller file maps MIDI controls to macros (shipped with the app, or controllers/ in your data folder); none = no controller">
-          <select value={settings.active_controller ?? ''} onChange={(e) => update((s) => (s.active_controller = e.target.value || null))}>
-            <option value="">none</option>
-            {controllers.map((c) => (
-              <option key={c} value={c}>
-                {controllerLabels[c] ?? c}
-              </option>
-            ))}
-          </select>
+        <Row label="Controller mapping" hint="The controller file in use. It is chosen in section 03 below (Use this controller); controller files are shipped with the app or live in controllers/ in your data folder" plain>
+          <span className="truncate">{settings.active_controller ? controllerLabels[settings.active_controller] ?? settings.active_controller : 'none'}</span>
+          <span className="text-[11px] text-dim">change it in section 03 below</span>
         </Row>
         <Row label="MIDI port" hint="MIDI input to listen to; 'from controller file' picks the port by the name stored in the mapping">
           <select value={settings.midi_input ?? ''} onChange={(e) => update((s) => (s.midi_input = e.target.value || null))}>
