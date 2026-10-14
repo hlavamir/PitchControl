@@ -44,10 +44,10 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
   show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
-  scene load or a change on screen), the macro follows the fader proportionally instead of jumping: both reach the end of
-  the range together; if you move the fader across the macro's value (even in one fast move) it takes over from there, 1:1.
-  Tapping shift (or changing the page) only starts it over for the controls whose mapping changes;
-  a fader that does the same in both layers stays 1:1.
+  scene load or a change on screen), the macro doesn't jump while you move slowly: it follows the fader proportionally,
+  and both reach the end of the range together. A fast move across the macro's value picks the macro up where the
+  fader lands (a jump), and it follows the fader 1:1 from there. Tapping shift (or changing the page) only starts it
+  over for the controls whose mapping changes; a fader that does the same in both layers stays 1:1.
 - Controller files are a flat list of mappings now (`mappings`, with `page` and `shift` per mapping); files in the old
   form (`pages`, `cc`) still load and are written in the new form when saved.
 - **The mask macros are renamed:** the four presets are now **Mask A–D** (Gradient, Back & Forth, Rotating Line, Noise)
