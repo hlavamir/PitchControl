@@ -185,7 +185,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   }, [draft, defs, dimmerNames])
 
   // controls used twice where their pages and shift settings overlap ("any" overlaps with everything): a warning only. Where both apply,
-  // the more specific one (a page or a shift setting) wins, otherwise the first in the list.
+  // shift is checked first, then page: with shift and page > with shift only > page only > neither; the same settings: the first in the list.
   const clashes = useMemo(() => {
     const out = new Map<number, string[]>()
     const ms = draft?.mappings ?? []
@@ -408,7 +408,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
             </span>
           )}
           {others && (
-            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} where the page and shift settings overlap ("any" overlaps with everything). When both apply, the one with a page or shift setting wins, otherwise the first in the list`}>
+            <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip={`Also used by ${others.join(', ')} where the page and shift settings overlap ("any" overlaps with everything). When both apply, the one with a shift setting wins, then the one with a page setting; with the same settings the first in the list`}>
               ⚠ also {others[0]}
               {others.length > 1 ? ` +${others.length - 1}` : ''}
             </span>

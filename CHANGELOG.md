@@ -11,7 +11,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
   control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what other
   buttons do (for example scene load / save on the same button). A control used twice where the page and shift settings
-  overlap is only warned about. A macro on the same control as the shift button can never fire; both rows say so.
+  overlap is warned about; the shift setting is checked first, then the page (shift and page, shift only, page only,
+  neither), and the first in the list wins between identical settings. A macro on the same control as the shift button can never fire; both rows say so.
   - A button's release always goes to the mapping that got its press, so letting go of shift or changing the page while
     a button is held releases it properly (a fog button is switched off). Closing the input, for example when the
     mapping is saved, lets go of everything that is held.

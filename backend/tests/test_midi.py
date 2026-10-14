@@ -593,3 +593,22 @@ def test_shipped_controllers_have_no_redundant_channels():
         ctrl = Controller.model_validate(json.loads(path.read_text(encoding="utf-8")))
         redundant = [m.number for m in ctrl.mappings if m.channel == ctrl.channel]
         assert redundant == [], f"{path.name}: mappings with the controller's own channel {ctrl.channel}: {redundant}"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_shift_beats_page_whatever_the_order_in_the_file(reverse):
+    page_only = MidiMapping(number=5, macro="Manual Strobo", mode="momentary", page="general")
+    shift_only = MidiMapping(number=5, macro="Fog Machine", mode="momentary", shift="on")
+    both = MidiMapping(number=6, macro="Fog Machine", mode="momentary", page="general", shift="on")
+    only_page = MidiMapping(number=6, macro="Manual Strobo", mode="momentary", page="general")
+    order = [page_only, shift_only, both, only_page]
+    midi, macros = build(*(order[::-1] if reverse else order), MidiMapping(number=44, mode="shift"))
+    cc(midi, 5, 127)  # no shift: only the page mapping fits
+    assert macros.on("Manual Strobo") and not macros.on("Fog Machine")
+    cc(midi, 5, 0)
+    cc(midi, 44, 127)  # shift held: both fit, the shift mapping wins over the page mapping
+    cc(midi, 5, 127)
+    assert macros.on("Fog Machine") and not macros.on("Manual Strobo")
+    cc(midi, 5, 0)
+    cc(midi, 6, 127)  # shift and page beats page only
+    assert macros.on("Fog Machine") and not macros.on("Manual Strobo")

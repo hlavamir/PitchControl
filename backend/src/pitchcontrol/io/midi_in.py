@@ -2,8 +2,10 @@
 
 A message is matched to a mapping by its kind (CC / note), number and channel. Several mappings can
 share a control when they differ in the control page or in the shift state (the same physical fader
-drives other macros on the Dimmers page; a button saves a scene while shift is held); the most
-specific one wins.
+drives other macros on the Dimmers page; a button saves a scene while shift is held). Where several
+fit, the shift setting is checked first and the page second: shift and page > shift only > page only >
+neither. Only mappings with identical settings can tie (the first in the file wins), and the app warns
+about every such overlap.
 
 Faders and knobs use *value scaling* (soft takeover): while the hardware position and the macro's
 value differ, the macro follows the fader proportionally, so both reach the end of the range together
@@ -279,14 +281,14 @@ class MidiInput:
             self._held[key] = m
 
     def _pick(self, key: tuple[str, int, int], page: str, shift_on: bool) -> MidiMapping | None:
-        """The mapping that wins on this control in this layer: the most specific one that fits the page and shift."""
+        """The mapping that wins on this control in this layer: shift set first, then page set (see the module docstring)."""
         kind, number, channel = key
         shift = "on" if shift_on else "off"
         fitting = [
             m for m in self.by_control.get((kind, number), [])
             if (m.channel or self.controller.channel) == channel and m.page in (None, page) and m.shift in (None, shift)
         ]
-        return max(fitting, key=lambda m: (m.page is not None) + (m.shift is not None), default=None)
+        return max(fitting, key=lambda m: (m.shift is not None, m.page is not None), default=None)
 
     def _apply(self, m: MidiMapping, key: tuple[str, int, int], kind: str, value: int, pressed: bool, entry: dict) -> None:
         name = m.macro
