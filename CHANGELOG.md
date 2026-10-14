@@ -37,6 +37,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   01-08 on knob row 1 and CC 52 as the shift button.
 
 ### Changed
+- "Use this controller" no longer throws away unsaved changes on the Inputs page (audio device, MIDI port): they stay,
+  still marked as unsaved. The controller list of the Controller setting follows a controller created or chosen below it.
 - MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
   show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a

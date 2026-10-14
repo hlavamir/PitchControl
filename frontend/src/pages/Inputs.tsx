@@ -12,7 +12,7 @@ interface BandInfo {
 }
 
 export function Inputs({ engine }: { engine: EngineConnection }) {
-  const { settings, update, save, dirty, reload, message } = useSettings()
+  const { settings, update, applySaved, save, dirty, reload, message } = useSettings()
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [midiPorts, setMidiPorts] = useState<string[]>([])
   const [controllers, setControllers] = useState<string[]>([])
@@ -156,7 +156,11 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         </div>
       </Section>
 
-      <MidiMappingSection engine={engine} midiPorts={midiPorts} onActiveChanged={reload} />
+      <MidiMappingSection engine={engine} midiPorts={midiPorts} onActiveChanged={(name) => {
+          applySaved((s) => (s.active_controller = name))
+          refresh() // the controller list of section 02 may not know a file created in section 03 yet
+        }}
+      />
     </div>
   )
 }

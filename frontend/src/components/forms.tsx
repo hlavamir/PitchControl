@@ -382,6 +382,16 @@ export function useSettings() {
     setDirty(true)
   }, [])
 
+  /** Something else already saved this change to the server: mirror it in the draft without marking it unsaved or touching other edits. */
+  const applySaved = useCallback((fn: (s: Settings) => void) => {
+    setSettings((prev) => {
+      if (!prev) return prev
+      const next = structuredClone(prev)
+      fn(next)
+      return next
+    })
+  }, [])
+
   const save = useCallback(async () => {
     if (!settings) return true
     let ok = true
@@ -398,7 +408,7 @@ export function useSettings() {
   }, [settings])
   useLeaveGuard('settings', dirty, save)
 
-  return { settings, update, save, dirty, reload, message }
+  return { settings, update, applySaved, save, dirty, reload, message }
 }
 
 export function SaveBar({

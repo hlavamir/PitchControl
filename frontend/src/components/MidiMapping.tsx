@@ -74,7 +74,7 @@ interface ChannelAsk {
 
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
 
-export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: () => void }) {
+export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: (name: string) => void }) {
   const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string>; labels: Record<string, string> } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [saved, setSaved] = useState<ControllerFile | null>(null)
@@ -368,7 +368,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
       const s = await api.get<Record<string, unknown>>('/api/settings')
       await api.put('/api/settings', { ...s, active_controller: selected })
       await loadList(selected)
-      onActiveChanged()
+      onActiveChanged(selected)
       return true
     } catch (e) {
       fail(e)
