@@ -16,7 +16,8 @@ Layout of the defaults and the user folder::
 and of this computer's folder::
 
     machine.json              per-computer settings (audio input, MIDI port, outputs, UI)
-    state/macros.json         auto-saved macro values (crash recovery)
+    last_version              the app version of the last start (for upgrade notices)
+    state/macros.json        auto-saved macro values (crash recovery)
     state/overrides.json      Control Desk overrides
 
 Missing keys are filled with defaults. Unknown keys (usually typos) are reported to the log and never
@@ -48,6 +49,8 @@ M = TypeVar("M", bound=BaseModel)
 Origin = Literal["default", "user", "modified"]
 
 VERSION_KEY = "app_version"
+# 1.5.0 replaced the shipped LCXL3 layout (see ConfigStore.upgrade_notice)
+NEW_LCXL3_VERSION = (1, 5, 0)
 TYPES, RIGS, CONTROLLERS, SCENES = "fixtures/types", "rigs", "controllers", "scenes"
 DEFAULT_RIG = "Default"
 
@@ -162,6 +165,12 @@ def _normalised(path: Path, model: type[BaseModel]) -> dict | None:
         return None
     out.pop("name", None)
     return out
+
+
+def _version_tuple(text: str | None) -> tuple[int, int, int] | None:
+    """``1.5.0`` (or ``v1.5.0``, ``1.5.0-dev``) as a tuple; None if it isn't a version."""
+    m = re.match(r"\s*v?(\d+)\.(\d+)\.(\d+)", text or "")
+    return (int(m[1]), int(m[2]), int(m[3])) if m else None
 
 
 def _had_page_knob(path: Path | None) -> bool:
@@ -301,11 +310,57 @@ class ConfigStore:
 
     # -- loading
     def load_all(self) -> None:
+        fresh = self._is_fresh_install()  # before anything is written
         self.load_settings()
         self.load_fixture_types()
         self.move_fog_into_rigs()
         self.load_rig(self.settings.active_rig)
         self.load_controller(self.settings.active_controller)
+        self.upgrade_notice(fresh)
+
+    @property
+    def last_version_path(self) -> Path:
+        return self.machine_root / "last_version"
+
+    def _is_fresh_install(self) -> bool:
+        """Nothing of the user's yet: an empty data folder (hidden entries, such as a portable ``.machine``,
+        don't count) and no ``machine.json`` or ``state/`` of an earlier run."""
+        try:
+            if any(not p.name.startswith(".") for p in self.root.iterdir()):
+                return False
+        except OSError:  # no folder yet
+            pass
+        return not (self.machine_path.exists() or self.state_dir.exists())
+
+    def upgrade_notice(self, fresh: bool) -> None:
+        """Once, when the app has been updated to 1.5.0 or later: users of the shipped Launch Control XL 3
+        mapping (no copy of their own, so nothing else tells them) get the new layout explained. The version
+        of the last start is kept per computer in ``last_version``."""
+        current = _version_tuple(__version__)
+        if current is None:
+            return
+        try:
+            text = self.last_version_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            text = ""
+        recorded = _version_tuple(text)
+        name = self.settings.active_controller or ""
+        shipped_lcxl3 = (
+            name.lower() == "lcxl3" and self.user_file(CONTROLLERS, name) is None and self.default_file(CONTROLLERS, name) is not None
+        )
+        if (recorded is None or recorded < NEW_LCXL3_VERSION) and current >= NEW_LCXL3_VERSION and not fresh and shipped_lcxl3:
+            self.notice(
+                "The shipped Launch Control XL 3 mapping has a new layout. The knob that switched the control pages is gone "
+                "(use the Page General / Page Dimmers macros or switch on screen); the top knob row is unused and the middle "
+                "knob row is Dimmer 01-08. The buttons now act: the bottom button row saves scenes 1-7 (with shift it loads "
+                "them) and the Fog button fogs. See Inputs → MIDI mapping."
+            )
+        if text != __version__:
+            try:
+                self.last_version_path.parent.mkdir(parents=True, exist_ok=True)
+                self.last_version_path.write_text(__version__ + "\n", encoding="utf-8")
+            except OSError as exc:
+                log.warning("cannot record the app version: %s", exc)
 
     def move_fog_into_rigs(self) -> None:
         """Up to 1.4 the fog machines were in settings.json; now each rig has its own. Once: every rig

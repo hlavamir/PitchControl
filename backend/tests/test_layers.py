@@ -308,3 +308,79 @@ def test_a_controller_file_with_a_page_knob_gets_a_notice(layered):
     layered.save_controller("mine", layered.controller)  # saving writes the new form
     layered.load_controller("mine")
     assert layered.notices == []  # (the shipped LCXL3 gives none either: test_shipped_config_loads)
+
+
+# --- the shipped LCXL3 layout changed in 1.5.0: users of the shipped mapping get one notice
+
+
+def upgrade_store(tmp_path: Path, monkeypatch, version: str, recorded: str | None = None, used: bool = True) -> ConfigStore:
+    """A store (not loaded yet) that runs as ``version``; ``recorded`` is the version of the last start, ``used`` says
+    whether the user folder holds anything (an earlier run of 1.4.1)."""
+    monkeypatch.setattr("pitchcontrol.config.loader.__version__", version)
+    defaults = tmp_path / "defaults"
+    if not defaults.exists():
+        shutil.copytree(CONFIG, defaults, ignore=shutil.ignore_patterns("state", "scenes"))
+    store = ConfigStore(tmp_path / "user", defaults=defaults, machine=tmp_path / "machine")
+    if used:
+        store.root.mkdir(parents=True, exist_ok=True)
+        (store.root / "settings.json").write_text("{}", encoding="utf-8")
+    if recorded is not None:
+        store.machine.mkdir(parents=True, exist_ok=True)
+        (store.machine / "last_version").write_text(recorded + "\n", encoding="utf-8")
+    return store
+
+
+def layout_notices(store: ConfigStore) -> list[str]:
+    return [n for n in store.notices if "new layout" in n]
+
+
+@pytest.mark.parametrize("recorded", [None, "1.4.1"])  # 1.4.1 itself recorded nothing; later builds record their version
+def test_upgrade_with_the_shipped_lcxl3_gives_one_notice(tmp_path, monkeypatch, recorded):
+    store = upgrade_store(tmp_path, monkeypatch, "1.5.0", recorded)
+    store.load_all()
+    notice = layout_notices(store)
+    assert len(notice) == 1
+    for part in ("page", "top knob row is unused", "middle knob row is Dimmer 01-08", "scenes 1-7", "Fog", "MIDI mapping"):
+        assert part in notice[0]
+    assert (store.machine / "last_version").read_text(encoding="utf-8").strip() == "1.5.0"
+    store.notices.clear()
+    store.load_all()  # the same session
+    assert layout_notices(store) == []
+    again = upgrade_store(tmp_path, monkeypatch, "1.5.0")  # the next start
+    again.load_all()
+    assert layout_notices(again) == []
+
+
+def test_a_fresh_install_gets_no_lcxl3_notice(tmp_path, monkeypatch):
+    store = upgrade_store(tmp_path, monkeypatch, "1.5.0", used=False)
+    (store.root / ".machine").mkdir(parents=True)  # a portable data folder has this before the first load
+    store.load_all()
+    assert layout_notices(store) == []
+    assert (store.machine / "last_version").read_text(encoding="utf-8").strip() == "1.5.0"
+
+
+def test_a_machine_with_an_earlier_run_but_an_empty_data_folder_counts_as_an_upgrade(tmp_path, monkeypatch):
+    store = upgrade_store(tmp_path, monkeypatch, "1.5.0", used=False)
+    (store.machine / "state").mkdir(parents=True)  # the macro autosave of an earlier run
+    store.load_all()
+    assert len(layout_notices(store)) == 1
+
+
+def test_an_own_copy_of_lcxl3_gets_only_the_page_knob_notice(tmp_path, monkeypatch):
+    store = upgrade_store(tmp_path, monkeypatch, "1.5.0", "1.4.1")
+    (store.root / "controllers").mkdir(parents=True)
+    old = {"name": "lcxl3", "page_knob": 13, "mappings": [{"number": 5, "macro": "Audio Reactivity"}]}
+    (store.root / "controllers" / "lcxl3.json").write_text(json.dumps(old), encoding="utf-8")
+    store.load_all()
+    assert layout_notices(store) == []
+    assert sum("page knob" in n for n in store.notices) == 1
+
+
+def test_no_lcxl3_notice_before_1_5_0_or_after_it_was_shown(tmp_path, monkeypatch):
+    dev = upgrade_store(tmp_path, monkeypatch, "1.4.1", "1.4.1")  # a build before the release
+    dev.load_all()
+    assert layout_notices(dev) == []
+    done = upgrade_store(tmp_path, monkeypatch, "1.5.1", "1.5.0")  # already past it
+    done.load_all()
+    assert layout_notices(done) == []
+    assert (done.machine / "last_version").read_text(encoding="utf-8").strip() == "1.5.1"

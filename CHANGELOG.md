@@ -53,7 +53,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   still has a page knob loads without it and shows a notice naming the file until it is saved.
 - **The old Launch Control XL 3 layout**: its knob CC 13 no longer switches pages (Dimmer 01-08 are on that knob row
   now), and the button rows have mappings. A copy of the old file in your own data folder is not touched: use Reset
-  (shipped controllers) or take over what you need from the new layout.
+  (shipped controllers) or take over what you need from the new layout. If you use the shipped mapping (no copy of
+  your own), one notice at the first start after the update explains the new layout; PitchControl keeps the version of
+  the last start per computer for this.
 
 ## 1.4.1 — 2026-10-13
 
