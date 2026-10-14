@@ -17,7 +17,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     mapping is saved, lets go of everything that is held.
   - While Learn waits, the shift button and the buttons you let go keep working. Learn never takes a shift button or the
     release of a button as the control; a control learned while the shift button is held gets "with shift" filled in.
-  - Learn notices when the controller sends on another channel than the file says and offers to change it.
+  - Learn notices when the controller sends on another channel than the file says and offers to change it. Changing
+    the controller's channel on the Controller tab asks about controls that name the old channel themselves.
   - Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back),
     and can be created, duplicated and deleted. A controller file also has an author, description and contact, and
     records when and with which PitchControl version it was last edited. The Controller mapping list shows the name

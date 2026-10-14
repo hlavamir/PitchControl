@@ -14,18 +14,15 @@
     },
     {
       "number": 30,
-      "macro": "Idle Attack",
-      "channel": 13
+      "macro": "Idle Attack"
     },
     {
       "number": 31,
-      "macro": "Shader Speed",
-      "channel": 13
+      "macro": "Shader Speed"
     },
     {
       "number": 32,
-      "macro": "Shader Param",
-      "channel": 13
+      "macro": "Shader Param"
     },
     {
       "number": 33,
@@ -33,8 +30,7 @@
     },
     {
       "number": 35,
-      "macro": "Hue B",
-      "channel": 13
+      "macro": "Hue B"
     },
     {
       "number": 5,
@@ -42,87 +38,72 @@
     },
     {
       "number": 6,
-      "macro": "Strobo",
-      "channel": 13
+      "macro": "Strobo"
     },
     {
       "number": 7,
-      "macro": "Strobo Brightness",
-      "channel": 13
+      "macro": "Strobo Brightness"
     },
     {
       "number": 8,
-      "macro": "Idle Brightness",
-      "channel": 13
+      "macro": "Idle Brightness"
     },
     {
       "number": 9,
-      "macro": "Strobo Bright. A",
-      "channel": 13
+      "macro": "Strobo Bright. A"
     },
     {
       "number": 10,
-      "macro": "Idle Bright. A",
-      "channel": 13
+      "macro": "Idle Bright. A"
     },
     {
       "number": 11,
-      "macro": "Strobo Bright. B",
-      "channel": 13
+      "macro": "Strobo Bright. B"
     },
     {
       "number": 12,
-      "macro": "Idle Bright. B",
-      "channel": 13
+      "macro": "Idle Bright. B"
     },
     {
       "number": 34,
-      "macro": "Saturation A",
-      "channel": 13
+      "macro": "Saturation A"
     },
     {
       "number": 36,
-      "macro": "Saturation B",
-      "channel": 13
+      "macro": "Saturation B"
     },
     {
       "number": 42,
       "macro": "Swap Colors",
-      "mode": "toggle",
-      "channel": 13
+      "mode": "toggle"
     },
     {
       "number": 41,
       "macro": "Auto Color Change",
-      "mode": "toggle",
-      "channel": 13
+      "mode": "toggle"
     },
     {
       "number": 40,
       "macro": "Vertical Symmetry",
       "mode": "toggle",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 39,
       "macro": "Invert Discoball",
       "mode": "toggle",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 38,
       "macro": "Fog Machine",
       "mode": "momentary",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 37,
       "macro": "Manual Strobo",
       "mode": "momentary",
-      "channel": 13,
       "shift": "off"
     },
     {
@@ -137,86 +118,72 @@
     },
     {
       "number": 22,
-      "macro": "Dimmer 02",
-      "channel": 13
+      "macro": "Dimmer 02"
     },
     {
       "number": 23,
-      "macro": "Dimmer 03",
-      "channel": 13
+      "macro": "Dimmer 03"
     },
     {
       "number": 24,
-      "macro": "Dimmer 04",
-      "channel": 13
+      "macro": "Dimmer 04"
     },
     {
       "number": 25,
-      "macro": "Dimmer 05",
-      "channel": 13
+      "macro": "Dimmer 05"
     },
     {
       "number": 26,
-      "macro": "Dimmer 06",
-      "channel": 13
+      "macro": "Dimmer 06"
     },
     {
       "number": 27,
-      "macro": "Dimmer 07",
-      "channel": 13
+      "macro": "Dimmer 07"
     },
     {
       "number": 28,
-      "macro": "Dimmer 08",
-      "channel": 13
+      "macro": "Dimmer 08"
     },
     {
       "number": 45,
       "macro": "Scene 1 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 46,
       "macro": "Scene 2 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 47,
       "macro": "Scene 3 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 48,
       "macro": "Scene 4 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 49,
       "macro": "Scene 5 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 50,
       "macro": "Scene 6 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {
       "number": 51,
       "macro": "Scene 7 Save",
       "mode": "trigger",
-      "channel": 13,
       "shift": "off"
     },
     {

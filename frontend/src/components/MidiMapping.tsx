@@ -82,6 +82,8 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   const [tab, setTab] = useState<Tab>('general')
   const [learning, setLearning] = useState<Learning | null>(null)
   const [ask, setAsk] = useState<ChannelAsk | null>(null)
+  // the controller's channel was changed while some mappings carry the old one as their own
+  const [moveAsk, setMoveAsk] = useState<{ from: number; to: number; count: number } | null>(null)
   const [prompt, setPrompt] = useState<Prompt>(null)
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -237,7 +239,8 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     }
     stopLearning()
     // the first control that is not on the controller's channel: probably the controller is set to the wrong one
-    if (e.channel !== draft.channel && draft.mappings.every((m) => !m.channel)) setAsk({ proposal, index: learning.index, channel: e.channel })
+    // (explicit channels that already equal the learned one count as none: "Yes" removes them)
+    if (e.channel !== draft.channel && draft.mappings.every((m) => !m.channel || m.channel === e.channel)) setAsk({ proposal, index: learning.index, channel: e.channel })
     else commit(learning.index, proposal)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [midi?.recent, learning])
@@ -478,6 +481,20 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     if (!draft) return null
     const shift = draft.mappings.findIndex((m) => m.mode === 'shift')
     const set = <K extends keyof ControllerFile>(k: K, v: ControllerFile[K]) => edit((c) => void (c[k] = v))
+    // the controller's channel: controls that follow it move along; ones that name the new channel themselves now follow it;
+    // ones that name the old channel themselves are asked about
+    const changeChannel = (to: number) => {
+      const from = draft.channel
+      if (to === from) return
+      const own = draft.mappings.filter((m) => m.channel === from).length
+      edit((c) => {
+        c.channel = to
+        c.mappings.forEach((m) => {
+          if (m.channel === to) m.channel = null
+        })
+      })
+      setMoveAsk(own > 0 ? { from, to, count: own } : null)
+    }
     const shiftTemplate = newMapping({ mode: 'shift' })
     return (
       <div className="flex flex-col gap-3">
@@ -506,7 +523,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
             </datalist>
           </Row>
           <Row label="Channel" hint="The MIDI channel the controls send on (a single control can use another one)">
-            <select value={draft.channel} onChange={(e) => set('channel', Number(e.target.value))}>
+            <select value={draft.channel} onChange={(e) => changeChannel(Number(e.target.value))}>
               {Array.from({ length: 16 }, (_, c) => (
                 <option key={c} value={c + 1}>
                   {c + 1}
@@ -577,6 +594,31 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
           <Button onClick={() => setPrompt(null)}>Cancel</Button>
         </div>
       )}
+      {moveAsk && (
+        <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
+          <span className="text-[11px]">
+            {moveAsk.count} control{moveAsk.count > 1 ? 's' : ''} {moveAsk.count > 1 ? 'have' : 'has'} channel {moveAsk.from} as {moveAsk.count > 1 ? 'their' : 'its'} own, the old channel of the controller. Move {moveAsk.count > 1 ? 'them' : 'it'} to channel{' '}
+            {moveAsk.to} too?
+          </span>
+          <Button
+            primary
+            onClick={() => {
+              edit((c) =>
+                c.mappings.forEach((m) => {
+                  if (m.channel === moveAsk.from) m.channel = null
+                }),
+              )
+              setMoveAsk(null)
+            }}
+            tip="They follow the controller's channel from now on"
+          >
+            Move {moveAsk.count > 1 ? 'them' : 'it'}
+          </Button>
+          <Button onClick={() => setMoveAsk(null)} tip={`They stay on channel ${moveAsk.from}`}>
+            Leave {moveAsk.count > 1 ? 'them' : 'it'}
+          </Button>
+        </div>
+      )}
       {ask && (
         <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
           <span className="text-[11px]">
@@ -585,7 +627,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
           <Button
             primary
             onClick={() => {
-              edit((c) => void (c.channel = ask.channel))
+              edit((c) => {
+                c.channel = ask.channel
+                c.mappings.forEach((m) => {
+                  if (m.channel === ask.channel) m.channel = null // follows the controller now
+                })
+              })
               commit(ask.index, { ...ask.proposal, channel: null })
               setAsk(null)
             }}

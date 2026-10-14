@@ -1,3 +1,4 @@
+import json
 import time
 
 import mido
@@ -6,6 +7,8 @@ import pytest
 from pitchcontrol.config.models import Controller, MidiMapping
 from pitchcontrol.engine.macros import MacroBank
 from pitchcontrol.io.midi_in import MidiInput, decode_step, scale
+
+from conftest import SHIPPED_CONFIG
 
 
 def cc(midi, control, value, channel=0):
@@ -449,3 +452,11 @@ def test_shipped_lcxl3_mapping_matches_ui_layout(store):
     dimmers = [m for m in ctrl.mappings if m.page == "dimmers"]
     assert general[5].macro == "Saturation A"
     assert dimmers[8].number == 5 and dimmers[8].macro == "Dimmer 09"
+
+
+def test_shipped_controllers_have_no_redundant_channels():
+    # a mapping that repeats the controller's channel doesn't follow it when the channel is changed in the app
+    for path in sorted((SHIPPED_CONFIG / "controllers").glob("*.json")):
+        ctrl = Controller.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        redundant = [m.number for m in ctrl.mappings if m.channel == ctrl.channel]
+        assert redundant == [], f"{path.name}: mappings with the controller's own channel {ctrl.channel}: {redundant}"
