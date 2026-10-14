@@ -4,7 +4,8 @@ Folders (see ``paths.py``): the shipped defaults are read-only inside the app, t
 ``~/Documents/PitchControl`` (or ``--data`` / ``data_folder.txt``), and this computer's files
 (``machine.json``, the macro autosave, the logs) are in the OS app-data folder.
 
-Closing the window stops the engine.
+Closing the window stops the engine; it asks first when an output is live or a page has unsaved edits
+(``quitguard.py``).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import uvicorn
 from .engine.engine import Engine
 from .logsetup import setup_logging
 from .paths import APP_NAME, open_store, resolve_paths
+from .quitguard import confirm_quit, quit_reasons
 from .server.app import create_app
 from .version import version_label
 
@@ -150,9 +152,22 @@ def main() -> None:
     window = webview.create_window(
         APP_NAME, url, width=1440, height=900, min_size=(1000, 700), background_color="#0e0f12", maximized=True
     )
-    # on macOS, Quit (Cmd+Q) fires "closing" and then ends the process without returning
-    # from webview.start(); pywebview waits for "closing" handlers, so stop the engine there
-    window.events.closing += shutdown
+    def on_closing() -> bool | None:
+        # Cmd+Q on macOS and the window's close button both end up here; returning False keeps the window and the engine
+        try:
+            reasons = quit_reasons(engine.ui_unsaved, engine.outputs.status())
+        except Exception:  # noqa: BLE001
+            log.exception("checking whether to ask before quitting failed: asking")
+            reasons = ["PitchControl couldn't check whether the lights are live or a page has unsaved edits."]
+        if reasons and not confirm_quit(reasons):
+            log.info("quit cancelled (%s)", "; ".join(reasons))
+            return False
+        # on macOS, Quit (Cmd+Q) ends the process after "closing" without returning from webview.start(),
+        # so the engine is stopped here
+        shutdown()
+        return None
+
+    window.events.closing += on_closing
     window.events.closed += shutdown
 
     from .fullscreen import Fullscreen

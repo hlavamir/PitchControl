@@ -42,6 +42,7 @@ class Engine:
         self.store = store
         self.enable_hardware = enable_hardware
         self.lock = threading.RLock()
+        self.ui_unsaved: list[str] | None = None  # labels of the pages with unsaved edits, as the page last reported (None: not yet)
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()

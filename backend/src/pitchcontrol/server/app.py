@@ -73,6 +73,10 @@ class SceneName(BaseModel):
     name: str | None = None
 
 
+class UnsavedReport(BaseModel):
+    pages: list[str]
+
+
 def describe_validation_error(exc: ValidationError, limit: int = 5) -> str:
     """The problems of a rejected file as one readable line: ``mappings[3]: a mapping needs a macro; …``."""
     problems = []
@@ -109,6 +113,12 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         return JSONResponse(status_code=422, content={"detail": detail})
 
     # ------------------------------------------------------------------ app info
+    @app.post("/api/ui/unsaved")
+    def ui_unsaved(report: UnsavedReport):
+        """The pages report which of them have unsaved edits; the desktop app asks before quitting (``quitguard.py``)."""
+        engine.ui_unsaved = report.pages
+        return {"ok": True}
+
     @app.get("/api/app-info")
     def app_info():
         fs = (desktop or {}).get("fullscreen")

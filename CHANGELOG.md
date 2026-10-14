@@ -55,6 +55,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   and Shader Speed and Shader Param are **Mask Param A** and **Mask Param B**; "shader" and "preset" are gone from the
   app. Scenes, controller mappings, the autosave, fixture types, rigs and fog settings from earlier versions still load:
   the old names are read as the new ones, and a file gets the new names when it is next saved.
+- The desktop app asks before it quits when an output is live (quitting stops the engine, so the lights freeze on their
+  last frame) or a page has unsaved edits. Cancel keeps the window and the output running.
 - Saving content that doesn't fit (a controller mapping without a macro, a rig or fixture type with a wrong value) says
   what is wrong (`mappings[3]: a mapping needs a macro`) instead of "Internal Server Error".
 

@@ -114,7 +114,24 @@ export default function App() {
       return () => void guards.current.delete(g)
     },
   }))
-  // closing the browser tab or window with unsaved edits asks first (the desktop app's own window isn't covered)
+  // the pages with unsaved edits are reported to the engine, so the desktop app can ask before it quits (it can't ask the
+  // page itself while it closes); reported again when a report didn't get through
+  useEffect(() => {
+    let sent: string | null = null
+    const report = () => {
+      const pages = [...guards.current].filter((g) => g.dirty()).map((g) => g.label)
+      const now = JSON.stringify(pages)
+      if (now === sent) return
+      sent = now
+      api.post('/api/ui/unsaved', { pages }).catch(() => {
+        sent = null
+      })
+    }
+    report()
+    const timer = window.setInterval(report, 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+  // closing the browser tab or window with unsaved edits asks first (the desktop app asks through the report above)
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if ([...guards.current].some((g) => g.dirty())) {
