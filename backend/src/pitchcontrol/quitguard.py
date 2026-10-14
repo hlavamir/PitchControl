@@ -6,7 +6,7 @@ the question with the system's own dialog.
 
 The question is not asked through pywebview: its ``closing`` handlers run on the window's UI thread, where pywebview's
 confirmation dialog waits for that same thread (macOS) and the page can't be asked for its state (``evaluate_js``).
-So the page reports its unsaved edits to the engine as they change (``Engine.ui_unsaved``), and the dialogs are the
+So every page reports its unsaved edits to the engine (``UnsavedReports``, once a second), and the dialogs are the
 operating system's: a message box on Windows, ``osascript`` on macOS.
 """
 
@@ -15,10 +15,39 @@ from __future__ import annotations
 import logging
 import subprocess
 import sys
+import threading
+import time
 
 log = logging.getLogger(__name__)
 
 TITLE = "Quit PitchControl?"
+REPORT_MAX_AGE_S = 3.0  # a page that hasn't reported for this long is gone (a closed tab) or stuck
+
+
+class UnsavedReports:
+    """What the open pages say about their unsaved edits. Each page load (the desktop window, a browser tab, a reload)
+    has its own id and reports every second; the answer is the union of the fresh reports, so one page's ``[]`` doesn't
+    hide another's edits and a closed tab's last report doesn't stay."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._reports: dict[str, tuple[float, list[str]]] = {}
+
+    def report(self, client: str, pages: list[str], now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            self._reports[client] = (now, list(pages))
+            for old in [c for c, (t, _) in self._reports.items() if now - t > 60]:
+                del self._reports[old]
+
+    def pages(self, now: float | None = None) -> list[str] | None:
+        """The pages with unsaved edits on any page that reported lately; None when none did (unknown)."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            fresh = [pages for t, pages in self._reports.values() if now - t <= REPORT_MAX_AGE_S]
+        if not fresh:
+            return None
+        return sorted({p for pages in fresh for p in pages})
 
 
 def live_outputs(outputs: dict | None) -> bool:

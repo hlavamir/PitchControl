@@ -114,18 +114,14 @@ export default function App() {
       return () => void guards.current.delete(g)
     },
   }))
-  // the pages with unsaved edits are reported to the engine, so the desktop app can ask before it quits (it can't ask the
-  // page itself while it closes); reported again when a report didn't get through
+  // the pages with unsaved edits are reported to the engine every second, so the desktop app can ask before it quits (it
+  // can't ask the page itself while it closes). Every page load has its own id: the engine combines the reports of the
+  // windows and tabs that are open, so one of them saying "nothing" doesn't hide the edits in another
   useEffect(() => {
-    let sent: string | null = null
+    const client = Math.random().toString(36).slice(2) + Date.now().toString(36)
     const report = () => {
       const pages = [...guards.current].filter((g) => g.dirty()).map((g) => g.label)
-      const now = JSON.stringify(pages)
-      if (now === sent) return
-      sent = now
-      api.post('/api/ui/unsaved', { pages }).catch(() => {
-        sent = null
-      })
+      api.post('/api/ui/unsaved', { client, pages }).catch(() => undefined)
     }
     report()
     const timer = window.setInterval(report, 1000)

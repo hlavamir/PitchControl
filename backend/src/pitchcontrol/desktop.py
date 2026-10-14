@@ -155,7 +155,7 @@ def main() -> None:
     def on_closing() -> bool | None:
         # Cmd+Q on macOS and the window's close button both end up here; returning False keeps the window and the engine
         try:
-            reasons = quit_reasons(engine.ui_unsaved, engine.outputs.status())
+            reasons = quit_reasons(engine.ui_unsaved.pages(), engine.outputs.status())
         except Exception:  # noqa: BLE001
             log.exception("checking whether to ask before quitting failed: asking")
             reasons = ["PitchControl couldn't check whether the lights are live or a page has unsaved edits."]

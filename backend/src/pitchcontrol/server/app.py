@@ -74,6 +74,7 @@ class SceneName(BaseModel):
 
 
 class UnsavedReport(BaseModel):
+    client: str  # one per page load: a second window or tab doesn't overwrite the first one's report
     pages: list[str]
 
 
@@ -116,7 +117,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     @app.post("/api/ui/unsaved")
     def ui_unsaved(report: UnsavedReport):
         """The pages report which of them have unsaved edits; the desktop app asks before quitting (``quitguard.py``)."""
-        engine.ui_unsaved = report.pages
+        engine.ui_unsaved.report(report.client, report.pages)
         return {"ok": True}
 
     @app.get("/api/app-info")

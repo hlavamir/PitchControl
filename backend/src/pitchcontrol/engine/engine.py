@@ -19,6 +19,7 @@ from ..config.models import Scene
 from ..io.audio_in import AudioInput
 from ..io.midi_in import MidiInput
 from ..io.outputs import OutputManager
+from ..quitguard import UnsavedReports
 from .audio_analysis import AudioFeatures, SpectrumAnalyzer, trigger_weights
 from .colors import GroupColors, hsv_to_rgb
 from .fixtures import Fixture, GroupBrightness
@@ -42,7 +43,7 @@ class Engine:
         self.store = store
         self.enable_hardware = enable_hardware
         self.lock = threading.RLock()
-        self.ui_unsaved: list[str] | None = None  # labels of the pages with unsaved edits, as the page last reported (None: not yet)
+        self.ui_unsaved = UnsavedReports()  # what the open pages say about their unsaved edits (asked when the desktop app quits)
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()

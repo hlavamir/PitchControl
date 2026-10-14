@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from pitchcontrol.engine.engine import Engine
-from pitchcontrol.quitguard import live_outputs, quit_reasons
+from pitchcontrol.quitguard import REPORT_MAX_AGE_S, UnsavedReports, live_outputs, quit_reasons
 from pitchcontrol.server.app import create_app
 
 OFF = {"enttec": [None], "artnet": None, "pitchpls_v2": None}
@@ -36,9 +36,37 @@ def test_not_knowing_whether_there_are_unsaved_edits_asks_anyway():
 
 def test_the_pages_report_their_unsaved_edits_to_the_engine(store):
     engine = Engine(store, enable_hardware=False)
-    assert engine.ui_unsaved is None  # nothing reported yet
+    assert engine.ui_unsaved.pages() is None  # nothing reported yet
     client = TestClient(create_app(engine))
-    assert client.post("/api/ui/unsaved", json={"pages": ["Inputs"]}).json()["ok"]
-    assert engine.ui_unsaved == ["Inputs"]
-    client.post("/api/ui/unsaved", json={"pages": []})
-    assert engine.ui_unsaved == []
+    assert client.post("/api/ui/unsaved", json={"client": "window", "pages": ["Inputs"]}).json()["ok"]
+    assert engine.ui_unsaved.pages() == ["Inputs"]
+    client.post("/api/ui/unsaved", json={"client": "window", "pages": []})
+    assert engine.ui_unsaved.pages() == []
+
+
+def test_one_pages_report_does_not_hide_anothers():
+    reports = UnsavedReports()
+    reports.report("window", ["MIDI mapping"], now=100.0)
+    reports.report("tab", [], now=100.5)  # e.g. "Open in browser", or a reload
+    assert reports.pages(now=101.0) == ["MIDI mapping"]
+    reports.report("tab", ["Fog"], now=101.0)
+    assert reports.pages(now=101.5) == ["Fog", "MIDI mapping"]
+    assert quit_reasons(reports.pages(now=101.5), OFF) != []
+
+
+def test_a_page_that_stopped_reporting_is_ignored():
+    reports = UnsavedReports()
+    reports.report("tab", ["Fog"], now=100.0)
+    reports.report("window", [], now=104.0)
+    assert reports.pages(now=104.5) == []  # the tab's last report is 4.5 s old: it was closed
+    reports.report("window", ["Inputs"], now=105.0)
+    assert reports.pages(now=105.5) == ["Inputs"]
+
+
+def test_no_fresh_report_means_unknown_and_asks():
+    reports = UnsavedReports()
+    assert reports.pages(now=100.0) is None
+    reports.report("window", [], now=100.0)
+    assert reports.pages(now=101.0) == []
+    assert reports.pages(now=100.0 + REPORT_MAX_AGE_S + 0.1) is None  # the page stopped reporting (stuck)
+    assert len(quit_reasons(reports.pages(now=110.0), OFF)) == 1
