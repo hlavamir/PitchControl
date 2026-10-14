@@ -122,10 +122,10 @@ def test_fader_in_sync_follows_one_to_one():
 def test_fader_away_from_the_macro_scales_to_both_ends_together():
     midi, macros = build(fader())
     macros.set("Strobo", 0.5)
-    cc(midi, 5, 32)  # hardware at 0.25, macro at 0.5: nothing moves
+    cc(midi, 5, 10)  # hardware at 0.08, macro at 0.5: nothing moves
     assert macros.control("Strobo") == 0.5
-    cc(midi, 5, 80)  # hardware 0.63 is half way up: the macro is half way from 0.5 to 1
-    assert macros.control("Strobo") == pytest.approx(0.5 + (80 / 127 - 32 / 127) / (1 - 32 / 127) * 0.5)
+    cc(midi, 5, 60)  # hardware 0.47 is half way up: the macro is half way from 0.5 to 1 (and still above the fader)
+    assert macros.control("Strobo") == pytest.approx(0.5 + (60 / 127 - 10 / 127) / (1 - 10 / 127) * 0.5)
     cc(midi, 5, 127)
     assert macros.control("Strobo") == 1.0
     cc(midi, 5, 100)  # arrived at the top: now 1:1
@@ -143,6 +143,35 @@ def test_scaling_is_continuous_when_the_direction_changes():
     assert values[0] < values[1] < values[2] and values[2] > values[3] > values[4]
     assert values[5] == pytest.approx(0.8)  # back at the first position: the macro is where it was
     assert values[-1] == 0.0
+
+
+def test_one_fast_move_across_the_macro_value_couples_the_fader():
+    midi, macros = build(fader())
+    macros.set("Strobo", 0.5)
+    cc(midi, 5, 20)  # hardware at 0.16, macro at 0.5: scaling starts, nothing moves
+    assert macros.control("Strobo") == 0.5
+    cc(midi, 5, 100)  # one move from below the macro's value to above it: the fader picks it up
+    assert macros.control("Strobo") == pytest.approx(100 / 127)
+    cc(midi, 5, 90)  # and stays 1:1 from then on
+    assert macros.control("Strobo") == pytest.approx(90 / 127)
+
+
+def test_a_fast_move_downwards_across_the_macro_value_couples_too():
+    midi, macros = build(fader())
+    macros.set("Strobo", 0.4)
+    cc(midi, 5, 120)
+    cc(midi, 5, 10)
+    assert macros.control("Strobo") == pytest.approx(10 / 127)
+
+
+def test_a_move_that_does_not_reach_the_macro_value_stays_scaled():
+    midi, macros = build(fader())
+    macros.set("Strobo", 0.5)
+    cc(midi, 5, 10)
+    cc(midi, 5, 60)  # hardware 0.47 stays below the macro's 0.5: scaled, not coupled
+    assert macros.control("Strobo") == pytest.approx(0.5 + (60 / 127 - 10 / 127) / (1 - 10 / 127) * 0.5)
+    cc(midi, 5, 50)
+    assert macros.control("Strobo") != pytest.approx(50 / 127)
 
 
 def test_a_macro_changed_elsewhere_starts_a_new_takeover():
@@ -293,10 +322,10 @@ def test_a_fader_whose_mapping_changes_with_shift_starts_over_in_both_directions
 def test_a_fader_that_wins_on_its_own_in_both_layers_keeps_its_takeover_across_a_page_change():
     midi, macros = build(fader(5, "Strobo"), fader(29, "Strobo Decay", page="general"), fader(29, "Dimmer 01", page="dimmers"))
     macros.set("Strobo", 0.5)
-    cc(midi, 5, 32)  # scaling started: the macro stays at 0.5
+    cc(midi, 5, 10)  # scaling started: the macro stays at 0.5
     macros.set_control_page("dimmers")
-    cc(midi, 5, 80)  # the same mapping on the new page: the scaling goes on, it doesn't start from here
-    assert macros.control("Strobo") == pytest.approx(0.5 + (80 / 127 - 32 / 127) / (1 - 32 / 127) * 0.5)
+    cc(midi, 5, 60)  # the same mapping on the new page: the scaling goes on, it doesn't start from here
+    assert macros.control("Strobo") == pytest.approx(0.5 + (60 / 127 - 10 / 127) / (1 - 10 / 127) * 0.5)
 
 
 def test_a_mapping_for_the_page_beats_one_for_every_page():

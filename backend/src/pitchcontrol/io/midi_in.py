@@ -68,6 +68,7 @@ class _Takeover:
     last: float  # the value this module wrote last: if the macro differs, something else changed it
     h0: float | None = None  # hardware position and macro value where the scaling started (None: 1:1)
     s0: float = 0.0
+    h_last: float | None = None  # the previous hardware position: a move from there to the next one may cross the macro's value
 
 
 class MidiInput:
@@ -349,8 +350,10 @@ class MidiInput:
             value = h
         else:
             value = scale(h, state.h0, state.s0)
-            if abs(value - h) <= SYNC_TOLERANCE:  # arrived at the end: from here on 1:1
+            crossed = state.h_last is not None and min(state.h_last, h) <= current <= max(state.h_last, h)
+            if crossed or abs(value - h) <= SYNC_TOLERANCE:  # the fader passed the macro's value, or arrived at the end: from here on 1:1
                 value, state.h0 = h, None
+        state.h_last = h
         state.last = min(max(value, 0.0), 1.0)
         self._put(name, macro_def, value)
 
