@@ -74,7 +74,7 @@ interface ChannelAsk {
 
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
 
-export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: (name: string) => void }) {
+export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: (name: string | null) => void }) {
   const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string>; labels: Record<string, string> } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [saved, setSaved] = useState<ControllerFile | null>(null)
@@ -362,18 +362,24 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     setLearnBlock(null)
     say('Ready: click Learn again')
   }
-  const useIt = async (): Promise<boolean> => {
-    if (!selected) return true
+  // the active controller is set through the settings (GET and PUT, so unsaved edits in sections 01/02 aren't touched);
+  // null closes the MIDI port, so another program can open it
+  const setActive = async (name: string | null): Promise<boolean> => {
     try {
       const s = await api.get<Record<string, unknown>>('/api/settings')
-      await api.put('/api/settings', { ...s, active_controller: selected })
-      await loadList(selected)
-      onActiveChanged(selected)
+      await api.put('/api/settings', { ...s, active_controller: name })
+      await loadList(name ?? undefined)
+      onActiveChanged(name)
       return true
     } catch (e) {
       fail(e)
       return false
     }
+  }
+  const useIt = async (): Promise<boolean> => (selected ? setActive(selected) : true)
+  const stopUsing = async () => {
+    stopLearning()
+    if (await setActive(null)) say('No controller is used: the MIDI port is closed')
   }
 
   // -- rows
@@ -761,6 +767,11 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
         {selected && !isActive && (
           <Button onClick={useIt} disabled={dirty} tip="Make this the controller that is listened to (saves the setting)">
             Use this controller
+          </Button>
+        )}
+        {selected && isActive && (
+          <Button onClick={stopUsing} tip="Stop listening to this controller and close its MIDI port, so another program can open it (saves the setting)">
+            Stop using it
           </Button>
         )}
         <span className="flex-1" />

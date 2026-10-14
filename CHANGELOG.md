@@ -32,8 +32,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     from the file.
 - Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
   (they used to be dropped silently). The controller in use is chosen in one place on the Inputs page, section 03
-  ("Use this controller"); section 02 only shows which one it is and keeps the MIDI port. Choosing a controller keeps
-  edits you haven't saved yet (audio device, MIDI port).
+  ("Use this controller", or "Stop using it" to use none and free the MIDI port for another program); section 02 only
+  shows which one it is and keeps the MIDI port. Choosing a controller keeps edits you haven't saved yet (audio device,
+  MIDI port).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
   top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
   01-08 on knob row 1 and CC 52 as the shift button.

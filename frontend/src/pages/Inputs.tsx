@@ -112,7 +112,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         }
         tip="The hardware controller (e.g. Launch Control XL 3) that drives the macros: faders, knobs and buttons"
       >
-        <Row label="Controller mapping" hint="The controller file in use. It is chosen in section 03 below (Use this controller); controller files are shipped with the app or live in controllers/ in your data folder" plain>
+        <Row label="Controller mapping" hint="The controller file in use. It is chosen in section 03 below (Use this controller / Stop using it); controller files are shipped with the app or live in controllers/ in your data folder" plain>
           <span className="truncate">{settings.active_controller ? controllerLabels[settings.active_controller] ?? settings.active_controller : 'none'}</span>
           <span className="text-[11px] text-dim">change it in section 03 below</span>
         </Row>
