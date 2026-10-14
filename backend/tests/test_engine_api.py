@@ -293,3 +293,46 @@ def test_frame_rate_is_a_setting_the_engine_follows(store):
     assert client.put("/api/settings", json=settings).json() == {"ok": True}
     assert client.get("/api/settings").json()["fps"] == 25.0
     assert store.settings.fps == 25.0
+
+
+def test_a_slow_midi_restart_does_not_hold_up_the_frames_and_restarts_run_one_by_one(store, monkeypatch):
+    import threading
+    import time
+
+    from pitchcontrol.engine import engine as engine_module
+
+    log, open_ports, overlap = [], [0], [False]
+
+    class SlowMidi:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            if open_ports[0]:
+                overlap[0] = True  # the previous port is still open: two restarts ran at the same time
+            open_ports[0] += 1
+            time.sleep(0.4)
+            log.append("started")
+
+        def stop(self):
+            time.sleep(0.2)
+            open_ports[0] -= 1
+
+        def status(self):
+            return {}
+
+    monkeypatch.setattr(engine_module, "MidiInput", SlowMidi)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    engine.tick(1 / 40)
+    restarts = [threading.Thread(target=engine.restart_midi) for _ in range(2)]
+    for t in restarts:
+        t.start()
+    time.sleep(0.1)  # a restart is now closing or opening the port
+    t0 = time.perf_counter()
+    engine.tick(1 / 40)
+    engine.state()
+    assert time.perf_counter() - t0 < 0.1  # the frame didn't wait for the driver
+    for t in restarts:
+        t.join()
+    assert log == ["started", "started"] and not overlap[0] and open_ports[0] == 1 and isinstance(engine.midi, SlowMidi)

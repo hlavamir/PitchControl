@@ -42,6 +42,7 @@ class Engine:
         self.store = store
         self.enable_hardware = enable_hardware
         self.lock = threading.RLock()
+        self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()
         self.overrides = Overrides()  # Control Desk: manual DMX channel values, saved across restarts
@@ -126,14 +127,19 @@ class Engine:
         self.audio.start()
 
     def restart_midi(self) -> None:
-        with self.lock:  # two restarts at once would open the same (exclusive) port twice
-            if self.midi is not None:
-                self.midi.stop()
-            self.midi = None
+        # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
+        # only held to swap ``self.midi``: closing and opening a port is up to the driver and must not stop the frames.
+        with self._midi_restart:
+            with self.lock:
+                old, self.midi = self.midi, None
+            if old is not None:
+                old.stop()
             if not self.enable_hardware:
                 return
-            self.midi = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned)
-            self.midi.start()
+            new = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned)
+            new.start()
+            with self.lock:
+                self.midi = new
 
     # ------------------------------------------------------------------ frame
     def tick(self, dt: float) -> None:
