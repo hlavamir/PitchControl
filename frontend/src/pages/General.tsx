@@ -8,7 +8,7 @@ import { useMacroNav } from '../macroNav'
 import type { EngineConnection } from '../useEngine'
 import { useGridNav, type NavGrid, type NavItem } from '../useGridNav'
 
-// same order as the LCXL3: knob row 3, then the faders
+// same order as the LCXL3: the bottom knob row, then the faders
 const FADERS = [
   'Strobo Decay',
   'Idle Attack',
@@ -138,7 +138,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
         <Section
           index="01"
           title="Macros"
-          right="knob row 3 · faders — LCXL3"
+          right="bottom knob row · faders — LCXL3"
           className="min-h-[24rem] flex-1"
           bodyClassName="p-0"
           tip="The sixteen macros that shape the show; they are the knobs and faders of the Launch Control XL 3 too"

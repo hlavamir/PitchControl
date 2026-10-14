@@ -37,7 +37,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   MIDI port).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
   top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
-  01-08 on knob row 1 and CC 52 as the shift button.
+  01-08 on the middle knob row (the top knob row is unused) and CC 52 as the shift button.
 
 ### Changed
 - MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
@@ -53,8 +53,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are
   switched with the Page General / Page Dimmers macros (map a button or knob to them) or on screen. A controller file that
   still has a page knob loads without it and shows a notice naming the file until it is saved.
-- **The old Launch Control XL 3 layout**: its knob CC 13 no longer switches pages (Dimmer 01-08 are on that knob row
-  now), and the button rows have mappings. A copy of the old file in your own data folder is not touched: use Reset
+- **The old Launch Control XL 3 layout**: its knob CC 13 (top knob row) no longer switches pages and does nothing now
+  (Dimmer 01-08 are on the middle knob row), and the button rows have mappings. A copy of the old file in your own data folder is not touched: use Reset
   (shipped controllers) or take over what you need from the new layout. If you use the shipped mapping (no copy of
   your own), one notice at the first start after the update explains the new layout; PitchControl keeps the version of
   the last start per computer for this.

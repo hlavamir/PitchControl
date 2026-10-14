@@ -44,7 +44,7 @@ export function Dimmers({ engine, defs }: { engine: EngineConnection; defs: Reco
       <Section
         index="01"
         title="Dimmers"
-        right={`${used.size} in use · knob row 3 · faders — LCXL3`}
+        right={`${used.size} in use · LCXL3: dimmers 1–8 on the middle knob row`}
         className="min-h-[24rem] flex-1"
         bodyClassName="p-0"
         tip="Sixteen dimmers: each fader sets the brightness of the fixtures that follow it (Rig → Dimmer); also on the controller's faders"
