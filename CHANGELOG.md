@@ -41,7 +41,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
   scene load or a change on screen), the macro follows the fader proportionally instead of jumping: both reach the end of
-  the range together.
+  the range together. Tapping shift (or changing the page) only starts it over for the controls whose mapping changes;
+  a fader that does the same in both layers stays 1:1.
 - Controller files are a flat list of mappings now (`mappings`, with `page` and `shift` per mapping); files in the old
   form (`pages`, `page_knob`, `cc`) still load and are written in the new form when saved.
 

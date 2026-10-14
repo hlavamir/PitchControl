@@ -258,6 +258,47 @@ def test_unshifted_fader_still_works_with_shift_held():
     assert macros.control("Strobo") == pytest.approx(100 / 127)
 
 
+def test_shift_tap_doesnt_decouple_an_unshifted_fader():
+    midi, macros = shifted_controller()
+    macros.set("Strobo", 120 / 127)
+    cc(midi, 5, 120)  # in sync
+    cc(midi, 44, 127)  # shift tapped: the fader's mapping is the same in both layers
+    cc(midi, 44, 0)
+    cc(midi, 5, 112)
+    assert macros.control("Strobo") == pytest.approx(112 / 127)  # still 1:1, not scaled
+    cc(midi, 44, 127)
+    cc(midi, 5, 96)
+    assert macros.control("Strobo") == pytest.approx(96 / 127)
+
+
+def test_a_fader_whose_mapping_changes_with_shift_starts_over_in_both_directions():
+    midi, macros = build(
+        MidiMapping(number=44, mode="shift"),
+        fader(5, "Strobo", shift="off"),
+        fader(5, "Strobo Decay", shift="on"),
+    )
+    macros.set("Strobo", 100 / 127)
+    macros.set("Strobo Decay", 0.0)
+    cc(midi, 5, 100)
+    cc(midi, 44, 127)
+    cc(midi, 5, 100)  # the fader stands at 0.79, Strobo Decay at 0: nothing moves
+    assert macros.control("Strobo Decay") == 0.0 and macros.control("Strobo") == pytest.approx(100 / 127)
+    cc(midi, 5, 127)
+    assert macros.control("Strobo Decay") == 1.0
+    cc(midi, 44, 0)
+    cc(midi, 5, 50)  # back to Strobo, which is at 0.79: scaled again, no jump to 0.39
+    assert macros.control("Strobo") == pytest.approx(100 / 127)
+
+
+def test_a_fader_that_wins_on_its_own_in_both_layers_keeps_its_takeover_across_a_page_change():
+    midi, macros = build(fader(5, "Strobo"), fader(29, "Strobo Decay", page="general"), fader(29, "Dimmer 01", page="dimmers"))
+    macros.set("Strobo", 0.5)
+    cc(midi, 5, 32)  # scaling started: the macro stays at 0.5
+    macros.set_control_page("dimmers")
+    cc(midi, 5, 80)  # the same mapping on the new page: the scaling goes on, it doesn't start from here
+    assert macros.control("Strobo") == pytest.approx(0.5 + (80 / 127 - 32 / 127) / (1 - 32 / 127) * 0.5)
+
+
 def test_a_mapping_for_the_page_beats_one_for_every_page():
     midi, macros = build(fader(29, "Strobo Decay"), fader(29, "Dimmer 01", page="dimmers"))
     macros.set("Strobo Decay", 0.0)

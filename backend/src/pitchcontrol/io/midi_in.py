@@ -62,6 +62,7 @@ def scale(h: float, h0: float, s0: float) -> float:
 
 @dataclass
 class _Takeover:
+    mapping: MidiMapping  # the mapping this state belongs to: a layer change that picks another one drops the state
     last: float  # the value this module wrote last: if the macro differs, something else changed it
     h0: float | None = None  # hardware position and macro value where the scaling started (None: 1:1)
     s0: float = 0.0
@@ -83,8 +84,8 @@ class MidiInput:
         self._held: dict[tuple[str, int, int], MidiMapping] = {}
         # controls whose last message was a press (CC above 63, note on): a CC of 0 from one of them is a release
         self._down: set[tuple[str, int, int]] = set()
-        self._takeover: dict[str, _Takeover] = {}
-        self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover state belongs to
+        self._takeover: dict[tuple[str, int, int], _Takeover] = {}  # per physical control: (kind, number, channel)
+        self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover states were last checked against
         self._learn_until = 0.0
         self.learn_id: int | None = None  # the Learn that was started last
         self.learned: dict | None = None  # what that Learn captured: {id, kind, number, channel, shift}
@@ -251,11 +252,8 @@ class MidiInput:
         pressed = value > 63 if kind == "cc" else value > 0
         for m in here:  # the shift buttons first: they change which layer the other mappings are in
             if m.mode == "shift":
-                before = self.shift
                 (self.shift_controls.add if pressed else self.shift_controls.discard)(key)
                 entry["note"] = "shift " + ("on" if self.shift else "off")
-                if before != self.shift:
-                    self._takeover.clear()
                 return
 
         if not pressed and key in self._held:  # the release goes to the mapping that got the press
@@ -268,20 +266,29 @@ class MidiInput:
             return
 
         page = self.macros.control_page
-        if self._layer != (page, self.shift):  # a new layer: the hardware no longer matches the macros
+        if self._layer != (page, self.shift):  # a new layer: only a control whose mapping changed no longer matches its macro
             self._layer = (page, self.shift)
-            self._takeover.clear()
-        shift = "on" if self.shift else "off"
-        fitting = [m for m in here if m.page in (None, page) and m.shift in (None, shift)]
-        if not fitting:
+            for k in [k for k, state in self._takeover.items() if self._pick(k, page, self.shift) is not state.mapping]:
+                del self._takeover[k]
+        m = self._pick(key, page, self.shift)
+        if m is None:
             entry["note"] = f"{label} {number} is not mapped on page '{page}'" + (" with shift" if self.shift else "")
             return
-        m = max(fitting, key=lambda m: (m.page is not None) + (m.shift is not None))
-        self._apply(m, kind, value, pressed, entry)
+        self._apply(m, key, kind, value, pressed, entry)
         if m.mode == "momentary" and pressed and entry["macro"]:
             self._held[key] = m
 
-    def _apply(self, m: MidiMapping, kind: str, value: int, pressed: bool, entry: dict) -> None:
+    def _pick(self, key: tuple[str, int, int], page: str, shift_on: bool) -> MidiMapping | None:
+        """The mapping that wins on this control in this layer: the most specific one that fits the page and shift."""
+        kind, number, channel = key
+        shift = "on" if shift_on else "off"
+        fitting = [
+            m for m in self.by_control.get((kind, number), [])
+            if (m.channel or self.controller.channel) == channel and m.page in (None, page) and m.shift in (None, shift)
+        ]
+        return max(fitting, key=lambda m: (m.page is not None) + (m.shift is not None), default=None)
+
+    def _apply(self, m: MidiMapping, key: tuple[str, int, int], kind: str, value: int, pressed: bool, entry: dict) -> None:
         name = m.macro
         entry["macro"] = name
         if self.ignored(name):
@@ -295,7 +302,7 @@ class MidiInput:
             return
         flip = (lambda x: 1.0 - x) if m.invert else (lambda x: x)
         if m.mode == "absolute":
-            self._absolute(name, macro_def, flip(value / 127.0))
+            self._absolute(m, key, macro_def, flip(value / 127.0))
         elif m.mode == "relative":
             step = decode_step(value, m.encoder) * (-1 if m.invert else 1)
             if step:
@@ -324,17 +331,18 @@ class MidiInput:
         else:
             self.macros.set(name, value)
 
-    def _absolute(self, name: str, macro_def, h: float) -> None:
+    def _absolute(self, m: MidiMapping, key: tuple[str, int, int], macro_def, h: float) -> None:
+        name = m.macro
         if macro_def.kind != "fader":  # toggles and buttons have no position to take over
             self._put(name, macro_def, h)
             return
         current = self._current(name, macro_def)
-        state = self._takeover.get(name)
-        if state is None or abs(current - state.last) > 1e-6:  # first message, or something else moved the macro
-            state = _Takeover(last=current)
+        state = self._takeover.get(key)
+        if state is None or state.mapping is not m or abs(current - state.last) > 1e-6:  # first message, or something else moved the macro
+            state = _Takeover(mapping=m, last=current)
             if abs(h - current) > SYNC_TOLERANCE:
                 state.h0, state.s0 = h, current
-            self._takeover[name] = state
+            self._takeover[key] = state
         if state.h0 is None:
             value = h
         else:
