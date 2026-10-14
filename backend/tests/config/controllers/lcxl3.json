@@ -16,11 +16,11 @@
       },
       {
         "cc": 31,
-        "macro": "Shader Speed"
+        "macro": "Mask Param A"
       },
       {
         "cc": 32,
-        "macro": "Shader Param"
+        "macro": "Mask Param B"
       },
       {
         "cc": 33,

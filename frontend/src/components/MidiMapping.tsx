@@ -29,7 +29,7 @@ const MODE_TIP: Record<MidiMode, string> = {
   relative: 'An endless encoder: every step turns the value up or down',
   toggle: 'Every press flips the switch on or off',
   momentary: 'On while the button is held; also right for buttons that toggle themselves on the controller',
-  trigger: 'One press does it (scene buttons, shader presets)',
+  trigger: 'One press does it (scene buttons, the masks A–D)',
   shift: '',
 }
 

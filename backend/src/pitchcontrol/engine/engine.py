@@ -160,10 +160,10 @@ class Engine:
 
             params = MaskParams(
                 preset=m.radio_index("preset"),
-                shader_param=m.control("Shader Param"),
+                shader_param=m.control("Mask Param B"),
                 line_falloff=s.masks.line_falloff,
             )
-            self.masks.update(dt, params.preset, m.value("Shader Speed"), params.shader_param, on_peak)
+            self.masks.update(dt, params.preset, m.value("Mask Param A"), params.shader_param, on_peak)
             self.peaks.update(self.features.peak, self.features.peak_score, m.control("Audio Reactivity"))
             self.colors.update(on_peak, m, s.auto_colors)
             symmetry = m.on("Vertical Symmetry")

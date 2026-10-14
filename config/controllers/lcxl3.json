@@ -2,7 +2,7 @@
   "app_version": "1.4.1",
   "name": "Novation Launch Control XL 3",
   "author": "Miroslav Hlava",
-  "description": "Faders and the bottom knob row (CC 5-12, 29-36) drive the general macros, the middle knob row (CC 21-28) Dimmer 01-08; the top knob row (CC 13-20) is unused. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select the shader presets A-D. Bottom button row: CC 45-51 save scenes 1-7, with shift they load them. CC 52 is the shift button.",
+  "description": "Faders and the bottom knob row (CC 5-12, 29-36) drive the general macros, the middle knob row (CC 21-28) Dimmer 01-08; the top knob row (CC 13-20) is unused. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select Mask A-D. Bottom button row: CC 45-51 save scenes 1-7, with shift they load them. CC 52 is the shift button.",
   "contact": "pitchcontrol.eu",
   "modified": "2026-10-13T22:18:21+02:00",
   "port_match": "LCXL3",
@@ -18,11 +18,11 @@
     },
     {
       "number": 31,
-      "macro": "Shader Speed"
+      "macro": "Mask Param A"
     },
     {
       "number": 32,
-      "macro": "Shader Param"
+      "macro": "Mask Param B"
     },
     {
       "number": 33,
@@ -108,7 +108,7 @@
     },
     {
       "number": 37,
-      "macro": "Preset A",
+      "macro": "Mask A",
       "mode": "trigger",
       "shift": "on"
     },
@@ -192,19 +192,19 @@
     },
     {
       "number": 38,
-      "macro": "Preset B",
+      "macro": "Mask B",
       "mode": "trigger",
       "shift": "on"
     },
     {
       "number": 39,
-      "macro": "Preset C",
+      "macro": "Mask C",
       "mode": "trigger",
       "shift": "on"
     },
     {
       "number": 40,
-      "macro": "Preset D",
+      "macro": "Mask D",
       "mode": "trigger",
       "shift": "on"
     },

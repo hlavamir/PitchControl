@@ -74,8 +74,8 @@ export function macroHint(def: MacroDef): HintKind {
 export const MACRO_TIPS: Record<string, string> = {
   'Strobo Decay': 'How long the strobo flash takes to fade after a peak (seconds)',
   'Idle Attack': 'How long the idle colours take to fade back in after the strobo (seconds)',
-  'Shader Speed': 'Speed and direction of the mask animation',
-  'Shader Param': 'Preset parameter: Gradient = direction · Back & Forth = angle · Rotating Line = thickness · Noise = drift',
+  'Mask Param A': 'Speed and direction of the mask animation',
+  'Mask Param B': 'Mask parameter: Gradient = direction · Back & Forth = angle · Rotating Line = thickness · Noise = drift',
   'Hue A': 'Colour of group A (applied on release)',
   'Hue B': 'Colour of group B (applied on release)',
   'Saturation A': 'Colour saturation of group A (applied on release)',
@@ -94,10 +94,10 @@ export const MACRO_TIPS: Record<string, string> = {
   'Vertical Symmetry': 'Mirrors the mask left ↔ right',
   'Auto Color Change': 'Picks new group colours from the palette after a random number of strobo flashes',
   'Swap Colors': 'Swaps the colours of groups A and B',
-  'Preset A': 'Mask preset: a gradient',
-  'Preset B': 'Mask preset: a band moving back and forth',
-  'Preset C': 'Mask preset: a rotating line',
-  'Preset D': 'Mask preset: drifting noise',
+  'Mask A': 'A gradient',
+  'Mask B': 'A band moving back and forth',
+  'Mask C': 'A rotating line',
+  'Mask D': 'Drifting noise',
 }
 
 /** The kind of an unmarked control, from what it is. */

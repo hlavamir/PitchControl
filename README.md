@@ -17,8 +17,8 @@ Keys 1–9 switch between the pages. Everything can be operated from the keyboar
 ![General page](screenshots/general.png)
 
 The page for playing the show:
-- **Macros:** 16 faders for strobo decay, idle attack, shader speed and parameter, the two group colours (hue / saturation), audio reactivity and the strobo / idle brightness of each group. They map to the Launch Control XL's knob row 3 and faders.
-- **Functions and shader presets:** manual strobo, fog, invert discoball, vertical symmetry, auto colour, swap colours, and the four mask presets Gradient, Back & Forth, Rotating Line and Noise.
+- **Macros:** 16 faders for strobo decay, idle attack, the two mask parameters, the two group colours (hue / saturation), audio reactivity and the strobo / idle brightness of each group. They map to the Launch Control XL's knob row 3 and faders.
+- **Functions and masks:** manual strobo, fog, invert discoball, vertical symmetry, auto colour, swap colours, and the four masks A–D: Gradient, Back & Forth, Rotating Line and Noise.
 - **Scenes:** the 8 scenes. ⏎ loads one, Shift + ⏎ (or save mode) stores the current macros into it, delete mode empties a slot. An empty slot loads the default values; no scenes ship with the app.
 - **Scene:** a live preview of the mask with every fixture pixel in the colour it is sending. Below it, the phase bar: strobo drains it after each peak, idle fills it back. Then the final colours of groups A and B.
 - **Audio:** the 32 frequency bands with the peaks map that triggers the strobo.

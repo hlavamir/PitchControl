@@ -1,8 +1,15 @@
+import json
+import shutil
+from pathlib import Path
+
 import numpy as np
 from fastapi.testclient import TestClient
 
+from pitchcontrol.config.models import Scene
 from pitchcontrol.engine.engine import Engine
 from pitchcontrol.server.app import create_app
+
+OLD_NAMES = Path(__file__).resolve().parent / "old_names"  # files as 1.4 wrote them
 
 
 def test_engine_tick_produces_universe(store):
@@ -211,7 +218,7 @@ def test_first_start_uses_the_macro_defaults(store):
     assert m.control("Strobo Brightness") == m.control("Idle Brightness") == m.control("Dimmer 01") == 1.0
     assert m.control("Strobo") == m.control("Audio Reactivity") == 0.0
     assert round(m.value("Strobo Decay"), 2) == 1.49 and round(m.value("Idle Attack"), 2) == 2.45
-    assert m.control("Shader Speed") == m.control("Shader Param") == 64 / 127
+    assert m.control("Mask Param A") == m.control("Mask Param B") == 64 / 127
     assert m.radio_index("preset") == 1 and m.on("Vertical Symmetry") and not m.on("Auto Color Change")
 
 
@@ -221,6 +228,30 @@ def test_saved_macro_values_win_over_the_defaults(store):
     first._autosave_macros(force=True)
     again = Engine(store, enable_hardware=False)
     assert again.macros.control("Strobo Brightness") == 0.25
+
+
+def test_scene_and_autosave_with_the_1_4_macro_names_load_on_the_renamed_macros(store, tmp_path):
+    shutil.copy(OLD_NAMES / "scene_1.4.json", store.scenes_dir / "scene_4.json")
+    old = json.loads((OLD_NAMES / "scene_1.4.json").read_text(encoding="utf-8"))["values"]
+    engine = Engine(store, enable_hardware=False)
+    assert engine.load_scene(3)
+    m = engine.macros
+    assert m.control("Mask Param A") == old["Shader Speed"] and m.control("Mask Param B") == old["Shader Param"]
+    assert m.radio_index("preset") == 1 and m.on("Mask B") and not m.on("Mask A")  # Preset B was on
+    engine.save_scene(3)  # the file gets the new names when it is next saved
+    saved = json.loads((store.scenes_dir / "scene_4.json").read_text(encoding="utf-8"))["values"]
+    assert saved["Mask Param A"] == old["Shader Speed"] and saved["Mask B"] == 1.0
+    assert not [k for k in saved if k.startswith(("Shader", "Preset"))]
+    # the crash-recovery file is read the same way
+    store.state_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(OLD_NAMES / "scene_1.4.json", store.state_dir / "macros.json")
+    again = Engine(store, enable_hardware=False)  # restores the macros on start
+    assert again.macros.control("Mask Param B") == old["Shader Param"] and again.macros.on("Mask B")
+
+
+def test_a_name_in_both_forms_takes_the_new_one():
+    assert Scene(values={"Preset A": 0.2, "Mask A": 0.7}).values == {"Mask A": 0.7}
+    assert Scene(values={"Shader Speed": 0.2}).values == {"Mask Param A": 0.2}
 
 
 def test_empty_scene_slot_means_the_defaults(store):

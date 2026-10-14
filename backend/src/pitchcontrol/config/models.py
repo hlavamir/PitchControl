@@ -37,6 +37,32 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
+# Macros that were renamed in 1.5. Files written before (controller mappings, scenes, state/macros.json) still use the
+# old names; every model that stores a macro name reads them through here, and a file gets the new names when it is
+# next saved. Add to this table when a macro is renamed again, so older files keep loading.
+MACRO_RENAMES = {
+    "Shader Speed": "Mask Param A",
+    "Shader Param": "Mask Param B",
+    "Preset A": "Mask A",
+    "Preset B": "Mask B",
+    "Preset C": "Mask C",
+    "Preset D": "Mask D",
+}
+
+
+def current_macro_name(name: str) -> str:
+    return MACRO_RENAMES.get(name, name)
+
+
+def current_macro_names(values: dict[str, Any]) -> dict[str, Any]:
+    """``values`` with the renamed macros under their new names; a new name already there wins over an old one."""
+    out = {k: v for k, v in values.items() if k not in MACRO_RENAMES}
+    for old, new in MACRO_RENAMES.items():
+        if old in values:
+            out.setdefault(new, values[old])
+    return out
+
+
 # --------------------------------------------------------------------------- colours
 
 
@@ -382,7 +408,7 @@ class FogSettings(Model):
 
 class MaskSettings(Model):
     line_falloff: float = 0.12  # soft edge width of the line masks, in UV units
-    transition_s: float = 2.5  # preset crossfade time
+    transition_s: float = 2.5  # mask crossfade time
 
 
 def _default_palette() -> list[HSB]:
@@ -442,6 +468,11 @@ class MidiMapping(Model):
     sensitivity: float = Field(default=1.0, gt=0)  # relative mode: 1 = 127 steps for the whole range
     note: str = ""
 
+    @field_validator("macro", mode="before")
+    @classmethod
+    def _renamed_macro(cls, v: Any) -> Any:
+        return current_macro_name(v) if isinstance(v, str) else v
+
     @model_validator(mode="before")
     @classmethod
     def _legacy_cc(cls, data: Any) -> Any:
@@ -495,3 +526,8 @@ class Controller(Model):
 class Scene(Model):
     name: str = ""
     values: dict[str, float] = Field(default_factory=dict)  # macro name -> control value (0..1)
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _renamed_macros(cls, v: Any) -> Any:
+        return current_macro_names(v) if isinstance(v, dict) else v

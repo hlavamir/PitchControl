@@ -86,8 +86,8 @@ def stage(data_src: Path | None, data: Path, machine: Path) -> None:
     if not list(scenes.glob("scene_*.json")):
         looks = [
             ("Warm-up", macro_values(**{"Audio Reactivity": 0.4, "Strobo": 0.3})),
-            ("Peak time", macro_values(**{"Audio Reactivity": 0.9, "Strobo": 0.8, "Preset C": 1.0, "Preset B": 0.0, "Strobo Decay": 0.3})),
-            ("Chill-out", macro_values(**{"Preset D": 1.0, "Preset B": 0.0, "Shader Speed": 0.35, "Idle Attack": 0.4})),
+            ("Peak time", macro_values(**{"Audio Reactivity": 0.9, "Strobo": 0.8, "Mask C": 1.0, "Mask B": 0.0, "Strobo Decay": 0.3})),
+            ("Chill-out", macro_values(**{"Mask D": 1.0, "Mask B": 0.0, "Mask Param A": 0.35, "Idle Attack": 0.4})),
         ]
         for i, (name, values) in enumerate(looks):
             write_json(scenes / f"scene_{i + 1}.json", {"name": name, "values": values})

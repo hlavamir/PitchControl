@@ -21,7 +21,7 @@ type Page = (typeof PAGES)[number]
 
 /** Footer tip of each page tab. */
 const PAGE_TIPS: Record<Page, string> = {
-  General: 'Macros, functions, shader presets, scenes, the scene preview and the audio meters: the live page',
+  General: 'Macros, functions, masks, scenes, the scene preview and the audio meters: the live page',
   Dimmers: 'The sixteen dimmer faders: the brightness of the fixtures assigned to each',
   Fixtures: 'Fixture types: pixels, channel layout, gamma and defaults of each kind of light',
   Rig: 'The rig: which lights exist, where they are, their DMX address and per-fixture settings',

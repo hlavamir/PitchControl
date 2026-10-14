@@ -47,7 +47,7 @@ export function Dimmers({ engine, defs }: { engine: EngineConnection; defs: Reco
         right={`${used.size} in use · LCXL3: dimmers 1–8 on the middle knob row`}
         className="min-h-[24rem] flex-1"
         bodyClassName="p-0"
-        tip="Sixteen dimmers: each fader sets the brightness of the fixtures that follow it (Rig → Dimmer); also on the controller's faders"
+        tip="Sixteen dimmers: each fader sets the brightness of the fixtures that follow it (Rig → Dimmer); the shipped Launch Control XL 3 mapping has Dimmer 01–08 on the middle knob row"
       >
         <div className="grid min-h-0 flex-1 grid-cols-8 grid-rows-2 gap-px bg-edge">
           {dimmers.map((d, i) => (

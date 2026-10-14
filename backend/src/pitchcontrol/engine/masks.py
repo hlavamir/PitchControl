@@ -73,13 +73,13 @@ class MaskGenerator:
             self.time_offset = self.rng.uniform(0.0, 64.0)
         else:
             self.time += dt * (2.0**speed_exponent)
-        offset_speed = -1.0 + 2.0 * shader_param  # lerp(-1, 1, Shader Param)
+        offset_speed = -1.0 + 2.0 * shader_param  # lerp(-1, 1, Mask Param B)
         self.noise_offset += dt * offset_speed * 0.2
 
     # -- generators
     def evaluate_preset(self, preset: int, u: np.ndarray, v: np.ndarray, p: MaskParams) -> np.ndarray:
         t = self.time
-        if preset == 0:  # Gradient: along v, along u when Shader Param > 0.5
+        if preset == 0:  # Gradient: along v, along u when Mask Param B > 0.5
             return np.clip(u if p.shader_param > 0.5 else v, 0.0, 1.0).astype(np.float64)
         if preset == 1:  # Back and Forth: a 1/3-wide band sliding ±0.25 along its normal
             orientation = -0.5 + p.shader_param  # lerp(-0.5, 0.5)

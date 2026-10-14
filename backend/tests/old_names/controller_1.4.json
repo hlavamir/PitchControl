@@ -1,0 +1,12 @@
+{
+  "name": "mine (1.4 macro names)",
+  "mappings": [
+    {"number": 31, "macro": "Shader Speed"},
+    {"number": 32, "macro": "Shader Param"},
+    {"number": 37, "macro": "Preset A", "mode": "trigger"},
+    {"number": 38, "macro": "Preset B", "mode": "trigger"},
+    {"number": 39, "macro": "Preset C", "mode": "trigger"},
+    {"number": 40, "macro": "Preset D", "mode": "trigger"},
+    {"number": 29, "macro": "Strobo Decay"}
+  ]
+}

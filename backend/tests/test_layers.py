@@ -287,6 +287,20 @@ def test_controller_list_shows_the_name_from_the_file_or_the_file_name(layered):
     assert client.get("/api/controllers").json()["labels"]["Blank"] == "Akai APC40 (mine)"
 
 
+def test_a_controller_file_with_the_1_4_macro_names_loads_on_the_renamed_macros(layered):
+    layered.controllers_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).parent / "old_names" / "controller_1.4.json", layered.controllers_dir / "mine.json")
+    layered.notices.clear()
+    layered.load_controller("mine")
+    assert [m.macro for m in layered.controller.mappings] == [
+        "Mask Param A", "Mask Param B", "Mask A", "Mask B", "Mask C", "Mask D", "Strobo Decay",
+    ]
+    assert layered.notices == []
+    layered.save_controller("mine", layered.controller)  # saving writes the new names
+    assert "Shader" not in (layered.controllers_dir / "mine.json").read_text(encoding="utf-8")
+    assert "Preset" not in (layered.controllers_dir / "mine.json").read_text(encoding="utf-8")
+
+
 def test_a_controller_file_with_a_page_knob_gets_a_notice(layered):
     layered.controllers_dir.mkdir(parents=True, exist_ok=True)
     old = {"name": "mine", "page_knob": 13, "pages": {"general": [{"cc": 29, "macro": "Strobo Decay"}]}}

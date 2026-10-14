@@ -63,8 +63,8 @@ def test_macro_range_and_quantise():
 
 def test_radio_group():
     m = MacroBank()
-    m.set("Preset C", 1)
-    assert m.radio_index("preset") == 2 and not m.on("Preset A")
+    m.set("Mask C", 1)
+    assert m.radio_index("preset") == 2 and not m.on("Mask A")
 
 
 def test_legacy_values_mapping():

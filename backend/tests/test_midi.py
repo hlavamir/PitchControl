@@ -62,12 +62,12 @@ def test_momentary_follows_the_button_and_invert_flips_it():
 
 
 def test_trigger_presses_a_button_macro_and_selects_a_radio():
-    midi, macros = build(MidiMapping(number=40, macro="Scene 3 Load", mode="trigger"), MidiMapping(number=41, macro="Preset A", mode="trigger"))
+    midi, macros = build(MidiMapping(number=40, macro="Scene 3 Load", mode="trigger"), MidiMapping(number=41, macro="Mask A", mode="trigger"))
     cc(midi, 40, 127)
     cc(midi, 40, 0)
     assert macros.take_buttons() == {"Scene 3 Load"}
     cc(midi, 41, 127)
-    assert macros.on("Preset A") and not macros.on("Preset C")
+    assert macros.on("Mask A") and not macros.on("Mask C")
 
 
 def test_notes_work_like_buttons():
@@ -194,23 +194,23 @@ def test_decode_step(encoder, values, steps):
 
 
 def test_relative_encoder_moves_the_value_by_steps():
-    midi, macros = build(fader(14, "Shader Speed", mode="relative", sensitivity=2.0))
-    macros.set("Shader Speed", 0.5)
+    midi, macros = build(fader(14, "Mask Param A", mode="relative", sensitivity=2.0))
+    macros.set("Mask Param A", 0.5)
     cc(midi, 14, 1)
     cc(midi, 14, 1)
-    assert macros.control("Shader Speed") == pytest.approx(0.5 + 4 / 127)
+    assert macros.control("Mask Param A") == pytest.approx(0.5 + 4 / 127)
     cc(midi, 14, 127)  # one step down (two's complement)
-    assert macros.control("Shader Speed") == pytest.approx(0.5 + 2 / 127)
+    assert macros.control("Mask Param A") == pytest.approx(0.5 + 2 / 127)
     for _ in range(100):
         cc(midi, 14, 100)  # a big step down, clamped at 0
-    assert macros.control("Shader Speed") == 0.0
+    assert macros.control("Mask Param A") == 0.0
 
 
 def test_relative_invert_and_offset_encoder():
-    midi, macros = build(fader(14, "Shader Speed", mode="relative", encoder="offset_64", invert=True))
-    macros.set("Shader Speed", 0.5)
+    midi, macros = build(fader(14, "Mask Param A", mode="relative", encoder="offset_64", invert=True))
+    macros.set("Mask Param A", 0.5)
     cc(midi, 14, 65)  # +1, inverted
-    assert macros.control("Shader Speed") == pytest.approx(0.5 - 1 / 127)
+    assert macros.control("Mask Param A") == pytest.approx(0.5 - 1 / 127)
 
 
 # --------------------------------------------------------------------------- shift and pages
@@ -339,7 +339,7 @@ def fog_and_preset():
     return build(
         MidiMapping(number=44, mode="shift"),
         MidiMapping(number=38, macro="Fog Machine", mode="momentary", shift="off"),
-        MidiMapping(number=38, macro="Preset C", mode="trigger", shift="on"),
+        MidiMapping(number=38, macro="Mask C", mode="trigger", shift="on"),
         MidiMapping(number=37, macro="Manual Strobo", mode="momentary", page="general"),
     )
 
@@ -349,9 +349,9 @@ def test_release_goes_to_the_mapping_that_got_the_press():
     cc(midi, 38, 127)  # fog on
     assert macros.on("Fog Machine")
     cc(midi, 44, 127)  # shift pressed while the fog button is down
-    cc(midi, 38, 0)  # fog button released: it belongs to Fog Machine, not to Preset C
+    cc(midi, 38, 0)  # fog button released: it belongs to Fog Machine, not to Mask C
     assert not macros.on("Fog Machine")
-    assert not macros.on("Preset C")
+    assert not macros.on("Mask C")
     cc(midi, 44, 0)
     assert not midi.shift
 

@@ -36,7 +36,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   shows which one it is and keeps the MIDI port. Choosing a controller keeps edits you haven't saved yet (audio device,
   MIDI port).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
-  top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
+  top button row (with shift Mask A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
   01-08 on the middle knob row (the top knob row is unused) and CC 52 as the shift button.
 
 ### Changed
@@ -48,6 +48,10 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   a fader that does the same in both layers stays 1:1.
 - Controller files are a flat list of mappings now (`mappings`, with `page` and `shift` per mapping); files in the old
   form (`pages`, `cc`) still load and are written in the new form when saved.
+- **The mask macros are renamed:** the four presets are now **Mask A–D** (Gradient, Back & Forth, Rotating Line, Noise)
+  and Shader Speed and Shader Param are **Mask Param A** and **Mask Param B**; "shader" and "preset" are gone from the
+  app. Scenes, controller mappings and the autosave from earlier versions still load: the old names are read as the new
+  ones, and a file gets the new names when it is next saved.
 
 ### Removed
 - **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are

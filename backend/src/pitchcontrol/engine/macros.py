@@ -74,8 +74,8 @@ def _defs() -> list[MacroDef]:
         MacroDef("Idle Bright. A", legacy_index=17, default=1.0),
         MacroDef("Strobo Bright. B", legacy_index=18, default=1.0),
         MacroDef("Idle Bright. B", legacy_index=19, default=1.0),
-        MacroDef("Shader Speed", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
-        MacroDef("Shader Param", legacy_index=21, default=_step(64)),
+        MacroDef("Mask Param A", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
+        MacroDef("Mask Param B", legacy_index=21, default=_step(64)),
         MacroDef("Invert Discoball", steps=2, kind="toggle", legacy_index=29),
         MacroDef("Fog Machine", steps=2, kind="momentary", legacy_index=30),
         MacroDef("Manual Strobo", steps=2, kind="momentary", legacy_index=31),
@@ -83,7 +83,7 @@ def _defs() -> list[MacroDef]:
     for i, letter in enumerate("ABCD"):
         d.append(
             MacroDef(
-                f"Preset {letter}",
+                f"Mask {letter}",
                 steps=2,
                 kind="radio",
                 radio_group="preset",

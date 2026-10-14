@@ -12,8 +12,8 @@ import { useGridNav, type NavGrid, type NavItem } from '../useGridNav'
 const FADERS = [
   'Strobo Decay',
   'Idle Attack',
-  'Shader Speed',
-  'Shader Param',
+  'Mask Param A',
+  'Mask Param B',
   'Hue A',
   'Saturation A',
   'Hue B',
@@ -35,11 +35,11 @@ const BUTTONS: [string, string, string][] = [
   ['Auto Color Change', 'TGL', 'Auto color'],
   ['Swap Colors', 'TGL', 'Swap colors'],
 ]
-const PRESETS: [string, string, string][] = [
-  ['Preset A', 'Gradient', 'A'],
-  ['Preset B', 'Back & Forth', 'B'],
-  ['Preset C', 'Rotating Line', 'C'],
-  ['Preset D', 'Noise', 'D'],
+const MASKS: [string, string, string][] = [
+  ['Mask A', 'Gradient', 'A'],
+  ['Mask B', 'Back & Forth', 'B'],
+  ['Mask C', 'Rotating Line', 'C'],
+  ['Mask D', 'Noise', 'D'],
 ]
 
 const pad8 = <T,>(items: T[]): (T | null)[] => [...items, ...Array<null>(Math.max(0, 8 - items.length)).fill(null)]
@@ -103,7 +103,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
     FADERS.slice(0, 8).map((n) => item(n)),
     FADERS.slice(8).map((n) => item(n)),
     pad8(BUTTONS.map(([n, , label]) => item(n, label))),
-    pad8(PRESETS.map(([n, label]) => item(n, label))),
+    pad8(MASKS.map(([n, label]) => item(n, label))),
     pad8(sceneItems),
   ]
   const { selectedId, select } = useGridNav('General', grid)
@@ -148,10 +148,10 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
 
         <Section
           index="02"
-          title="Functions · shader preset"
+          title="Functions · mask"
           right="button rows — LCXL3"
           bodyClassName="p-0"
-          tip="Functions: hold or toggle buttons. Shader preset: which mask animation plays (one of A–D)"
+          tip="Functions: hold or toggle buttons. Mask: which mask animation plays (one of A–D)"
         >
           <div className="grid grid-cols-8 gap-px border-b border-edge bg-edge">
             {BUTTONS.map(([name, tag, label]) =>
@@ -171,7 +171,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
             {empty(8 - BUTTONS.length)}
           </div>
           <div className="grid grid-cols-8 gap-px bg-edge">
-            {PRESETS.map(([name, label, tag]) =>
+            {MASKS.map(([name, label, tag]) =>
               defs[name] ? (
                 <MacroControl
                   key={name}
@@ -185,7 +185,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
                 />
               ) : null,
             )}
-            {empty(8 - PRESETS.length)}
+            {empty(8 - MASKS.length)}
           </div>
         </Section>
 
