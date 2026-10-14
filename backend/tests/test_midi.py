@@ -408,6 +408,13 @@ def test_a_macro_on_the_shift_button_never_fires_and_the_load_says_so(caplog):
 # --------------------------------------------------------------------------- learn mode
 
 
+def test_status_names_the_port_override():
+    midi, _ = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
+    assert midi.status()["port_override"] is None
+    midi.port_override = "APC40"
+    assert midi.status()["port_override"] == "APC40"
+
+
 def test_learning_shows_messages_without_applying_them():
     midi, macros = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
     midi.set_learning(True)

@@ -84,6 +84,7 @@ export interface IoStatus {
   level?: number
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   port?: string | null
+  port_override?: string | null // the MIDI port set in Settings, which wins over the controller file's
   controller?: string | null
   channel?: number | null
   received?: number

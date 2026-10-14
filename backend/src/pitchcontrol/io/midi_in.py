@@ -313,6 +313,7 @@ class MidiInput:
     def status(self) -> dict:
         return {
             "port": self.port_name,
+            "port_override": self.port_override or None,  # section 02's MIDI port; wins over the controller file's
             "error": self.error,
             "controller": self.controller.name if self.controller else None,
             "channel": self.controller.channel if self.controller else None,

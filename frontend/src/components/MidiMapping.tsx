@@ -94,6 +94,8 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
 
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const midi = engine.state?.io.midi
+  const midiRef = useRef(midi) // the Learn timeout reads the state as it is when it fires, not when Learn started
+  midiRef.current = midi
   const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
   const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
 
@@ -204,8 +206,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
       const now = list?.active ? `the active controller (${list.labels?.[list.active] ?? list.active})` : 'no controller'
       return { why: `This controller isn't the active one, so its MIDI port isn't open: Learn would listen to ${now}.`, fix: 'use' }
     }
-    if (dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
-    if (!midi?.port) return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that the MIDI port on the Controller tab matches its name.`, fix: null }
+    // an override in Settings (section 02) decides the port, so the controller file's port doesn't matter
+    if (!midi?.port_override && dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
+    if (!midi?.port) {
+      const where = midi?.port_override ? `the MIDI port in Settings (section 02: "${midi.port_override}")` : 'the MIDI port on the Controller tab'
+      return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that ${where} matches its name.`, fix: null }
+    }
     return null
   }
 
@@ -223,7 +229,8 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     if (!learning) return
     const timer = window.setTimeout(() => {
       stopLearning()
-      say(midi?.port ? `Learn: the port "${midi.port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
+      const port = midiRef.current?.port
+      say(port ? `Learn: the port "${port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
     }, LEARN_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -324,19 +331,21 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   }
   const saveAndUse = async () => {
     if (dirty && !(await save())) return
-    if (!isActive) await useIt()
+    if (!isActive && !(await useIt())) return
     setLearnBlock(null)
     say('Ready: click Learn again')
   }
-  const useIt = async () => {
-    if (!selected) return
+  const useIt = async (): Promise<boolean> => {
+    if (!selected) return true
     try {
       const s = await api.get<Record<string, unknown>>('/api/settings')
       await api.put('/api/settings', { ...s, active_controller: selected })
       await loadList(selected)
       onActiveChanged()
+      return true
     } catch (e) {
       fail(e)
+      return false
     }
   }
 
