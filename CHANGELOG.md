@@ -9,10 +9,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Added
 - **MIDI mapping in the app** (Inputs page, section 03): one row per macro with the control that drives it, a **Learn**
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
-  control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what other
-  buttons do (for example scene load / save on the same button). A control used twice where the page and shift settings
-  overlap is warned about; the shift setting is checked first, then the page (shift and page, shift only, page only,
-  neither), and the first in the list wins between identical settings. A macro on the same control as the shift button can never fire; both rows say so.
+  control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what
+  other buttons do (for example scene load / save on the same button). A control used twice where the page and shift
+  settings overlap is warned about; the shift setting is checked first, then the page (shift and page, shift only, page
+  only, neither), and the first in the list wins between identical settings. A macro on the same control as the shift
+  button can never fire; both rows say so.
   - A button's release always goes to the mapping that got its press, so letting go of shift or changing the page while
     a button is held releases it properly (a fog button is switched off). Closing the input, for example when the
     mapping is saved, lets go of everything that is held.
@@ -32,17 +33,17 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
     records when and with which PitchControl version it was last edited. The Controller mapping list shows the name
     from the file.
 - Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
-  (they used to be dropped silently). The controller in use is chosen in one place on the Inputs page, section 03
-  ("Use this controller", or "Stop using it" to use none and free the MIDI port for another program); section 02 only
-  shows which one it is and keeps the MIDI port. Choosing a controller keeps edits you haven't saved yet (audio device,
-  MIDI port).
+  (they used to be dropped silently); closing the browser tab asks too (not the desktop window). The controller in use
+  is chosen in one place on the Inputs page, section 03 ("Use this controller", or "Stop using it" to use none and free
+  the MIDI port for another program); section 02 only shows which one it is and keeps the MIDI port. Choosing a
+  controller keeps edits you haven't saved yet (audio device, MIDI port).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
   top button row (with shift Mask A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
   01-08 on the middle knob row (the top knob row is unused) and CC 52 as the shift button.
 
 ### Changed
-- MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
-  show the raw message, which counts from 0 (channel 13 appeared as 12).
+- MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used
+  to show the raw message, which counts from 0 (channel 13 appeared as 12).
 - **Value scaling for faders and knobs:** when a fader's position and the macro's value differ (after a page change, a
   scene load or a change on screen), the macro doesn't jump while you move slowly: it follows the fader proportionally,
   and both reach the end of the range together. A fast move across the macro's value picks the macro up where the
@@ -52,20 +53,20 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   form (`pages`, `cc`) still load and are written in the new form when saved.
 - **The mask macros are renamed:** the four presets are now **Mask A–D** (Gradient, Back & Forth, Rotating Line, Noise)
   and Shader Speed and Shader Param are **Mask Param A** and **Mask Param B**; "shader" and "preset" are gone from the
-  app. Scenes, controller mappings, the autosave, fixture types, rigs and fog settings from earlier versions still load: the old names are read as the new
-  ones, and a file gets the new names when it is next saved.
+  app. Scenes, controller mappings, the autosave, fixture types, rigs and fog settings from earlier versions still load:
+  the old names are read as the new ones, and a file gets the new names when it is next saved.
 - Saving content that doesn't fit (a controller mapping without a macro, a rig or fixture type with a wrong value) says
   what is wrong (`mappings[3]: a mapping needs a macro`) instead of "Internal Server Error".
 
 ### Removed
 - **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are
-  switched with the Page General / Page Dimmers macros (map a button or knob to them) or on screen. A controller file that
-  still has a page knob loads without it and shows a notice naming the file until it is saved.
+  switched with the Page General / Page Dimmers macros (map a button or knob to them) or on screen. A controller file
+  that still has a page knob loads without it and shows a notice naming the file until it is saved.
 - **The old Launch Control XL 3 layout**: its knob CC 13 (top knob row) no longer switches pages and does nothing now
-  (Dimmer 01-08 are on the middle knob row), and the button rows have mappings. A copy of the old file in your own data folder is not touched: use Reset
-  (shipped controllers) or take over what you need from the new layout. If you use the shipped mapping (no copy of
-  your own), one notice at the first start after the update explains the new layout; PitchControl keeps the version of
-  the last start per computer for this.
+  (Dimmer 01-08 are on the middle knob row), and the button rows have mappings. A copy of the old file in your own data
+  folder is not touched: use Reset (shipped controllers) or take over what you need from the new layout. If you use the
+  shipped mapping (no copy of your own), one notice at the first start after the update explains the new layout;
+  PitchControl keeps the version of the last start per computer for this.
 
 ## 1.4.1 — 2026-10-13
 

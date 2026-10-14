@@ -412,3 +412,29 @@ def test_no_lcxl3_notice_before_1_5_0_or_after_it_was_shown(tmp_path, monkeypatc
     done.load_all()
     assert layout_notices(done) == []
     assert (done.machine / "last_version").read_text(encoding="utf-8").strip() == "1.5.1"
+
+
+def test_saving_a_shipped_controller_unchanged_is_not_a_modification(layered):
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    data = client.get("/api/controllers/lcxl3").json()
+    saved = client.put("/api/controllers/lcxl3", json=data).json()
+    assert saved["modified"]  # the edit time is recorded ...
+    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "default"}  # ... but it isn't a change
+
+
+def test_a_validation_error_in_the_servers_own_code_shows_in_the_log(layered, caplog):
+    from pydantic import ValidationError
+
+    from pitchcontrol.config.models import Controller
+
+    engine = Engine(layered, enable_hardware=False)
+    app = create_app(engine)
+
+    @app.get("/api/_boom")
+    def boom():
+        Controller.model_validate({"mappings": [{"number": 1}]})
+
+    with caplog.at_level("WARNING"):
+        res = TestClient(app).get("/api/_boom")
+    assert res.status_code == 422
+    assert any("/api/_boom" in r.getMessage() and "a mapping needs a macro" in r.getMessage() for r in caplog.records)

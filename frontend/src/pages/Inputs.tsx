@@ -150,7 +150,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
 
       <MidiMappingSection engine={engine} midiPorts={midiPorts} onActiveChanged={(name) => {
           applySaved((s) => (s.active_controller = name))
-          refresh() // the controller list of section 02 may not know a file created in section 03 yet
+          refresh() // the labels section 02 shows (the controller's name) may not know a file created in section 03 yet
         }}
       />
     </div>

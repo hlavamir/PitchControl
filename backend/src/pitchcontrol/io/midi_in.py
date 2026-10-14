@@ -158,11 +158,11 @@ class MidiInput:
         *draft* being edited, which may not be the saved controller; ``for_shift``: the Shift row is learning, so it
         takes a shift button. Returns the id of the new Learn, which ``status()`` reports with the result."""
         self.learned = None
-        self._learn_until = time.monotonic() + LEARN_SECONDS if on else 0.0
+        if on:
+            self.learn_id = next(_learn_ids)  # before Learn is on: a message in between can't be captured under the old id
         self._learn_shifts = {(k, n, c) for k, n, c in shifts}
         self._learn_for_shift = for_shift
-        if on:
-            self.learn_id = next(_learn_ids)
+        self._learn_until = time.monotonic() + LEARN_SECONDS if on else 0.0
         return self.learn_id if on else None
 
     @property

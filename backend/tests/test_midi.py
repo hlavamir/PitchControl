@@ -641,3 +641,17 @@ def test_shift_beats_page_whatever_the_order_in_the_file(reverse):
     cc(midi, 5, 0)
     cc(midi, 6, 127)  # shift and page beats page only
     assert macros.on("Fog Machine") and not macros.on("Manual Strobo")
+
+
+def test_settings_that_mean_nothing_are_set_right(caplog):
+    with caplog.at_level("WARNING"):
+        note_encoder = MidiMapping(type="note", number=36, macro="Strobo", mode="relative")
+        shift = MidiMapping(number=44, mode="shift", page="dimmers", shift="on", invert=True)
+        fast = MidiMapping(number=14, macro="Strobo", mode="relative", sensitivity=5000)
+    assert note_encoder.mode == "absolute"
+    assert (shift.page, shift.shift, shift.invert) == (None, None, False) and shift.mode == "shift"
+    assert fast.sensitivity == 127.0
+    assert len(caplog.records) == 5
+    with caplog.at_level("WARNING"):
+        Controller(name="two", mappings=[MidiMapping(number=44, mode="shift"), MidiMapping(number=45, mode="shift")])
+    assert "2 shift buttons" in caplog.records[-1].getMessage()

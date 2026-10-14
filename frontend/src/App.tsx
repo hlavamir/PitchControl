@@ -114,6 +114,17 @@ export default function App() {
       return () => void guards.current.delete(g)
     },
   }))
+  // closing the browser tab or window with unsaved edits asks first (the desktop app's own window isn't covered)
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if ([...guards.current].some((g) => g.dirty())) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
   // a page change that waits for the answer to "unsaved changes: save, discard or stay?"
   const [leave, setLeave] = useState<{ to: Page; dirty: Guard[]; error?: string } | null>(null)
 

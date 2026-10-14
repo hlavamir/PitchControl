@@ -131,6 +131,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
         setDraft(structuredClone(c))
         setLearning(null)
         setAsk(null)
+        setMoveAsk(null)
         setLearnBlock(null)
       })
       .catch(fail)
@@ -225,6 +226,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     setLearnBlock(block)
     if (block || !draft) return
     setAsk(null)
+    setMoveAsk(null)
     learnSeen.current = false
     setLearning({ ...l, id: null, seconds: 20 }) // waiting for the engine's answer
     // the engine judges what is learnable against the mapping being edited, which may not be saved yet
@@ -271,6 +273,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     }
     learnSeen.current = true
     const e = midi.learned
+    if (e && e.id !== learning.id) {
+      // a control captured under another Learn than the one waiting (the ids are set before Learn starts, so this is not expected)
+      stopLearning()
+      say('Learn: try again')
+      return
+    }
     if (!e) {
       if (!midi.learning) {
         setLearning(null)
@@ -515,7 +523,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
                 <option value="sign_bit">sign bit</option>
                 <option value="offset_64">offset 64</option>
               </select>
-              <NumberInput value={m.sensitivity} min={0.05} className="w-14" tip="Steps per message: 1 = 127 steps cover the whole range" onChange={(v) => i !== null && patch(i, { sensitivity: v })} />
+              <NumberInput value={m.sensitivity} min={0.05} className="w-14" max={127} tip="Steps per message: 1 = 127 steps cover the whole range" onChange={(v) => i !== null && patch(i, { sensitivity: v })} />
             </>
           )}
         </span>
@@ -790,7 +798,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
             Delete
           </Button>
         )}
-        <Button onClick={() => { if (saved) setDraft(structuredClone(saved)); stopLearning(); setAsk(null) }} disabled={!dirty} tip="Discard the unsaved changes">
+        <Button onClick={() => { if (saved) setDraft(structuredClone(saved)); stopLearning(); setAsk(null); setMoveAsk(null) }} disabled={!dirty} tip="Discard the unsaved changes">
           Revert
         </Button>
         <Button primary onClick={save} disabled={!dirty} tip="Write the mapping to your copy of the controller file; it applies at once if this is the active controller">

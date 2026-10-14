@@ -102,9 +102,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         return JSONResponse(status_code=500, content={"detail": f"can't write the file{where}: {exc.strerror or exc}"})
 
     @app.exception_handler(ValidationError)
-    async def invalid_content(_request: Request, exc: ValidationError):
+    async def invalid_content(request: Request, exc: ValidationError):
         # a saved settings / rig / fixture type / controller that doesn't fit its model: say which entries are wrong
-        return JSONResponse(status_code=422, content={"detail": describe_validation_error(exc)})
+        detail = describe_validation_error(exc)
+        log.warning("%s %s refused: %s", request.method, request.url.path, detail)  # also shows a ValidationError of the server's own code
+        return JSONResponse(status_code=422, content={"detail": detail})
 
     # ------------------------------------------------------------------ app info
     @app.get("/api/app-info")

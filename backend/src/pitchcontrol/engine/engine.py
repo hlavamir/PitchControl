@@ -126,13 +126,14 @@ class Engine:
         self.audio.start()
 
     def restart_midi(self) -> None:
-        if self.midi is not None:
-            self.midi.stop()
-        self.midi = None
-        if not self.enable_hardware:
-            return
-        self.midi = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned)
-        self.midi.start()
+        with self.lock:  # two restarts at once would open the same (exclusive) port twice
+            if self.midi is not None:
+                self.midi.stop()
+            self.midi = None
+            if not self.enable_hardware:
+                return
+            self.midi = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned)
+            self.midi.start()
 
     # ------------------------------------------------------------------ frame
     def tick(self, dt: float) -> None:
@@ -329,6 +330,7 @@ class Engine:
 
     def state(self) -> dict:
         with self.lock:
+            midi = self.midi  # read once
             fixtures = []
             for fx in self.fixtures:
                 fixtures.append(
@@ -370,7 +372,7 @@ class Engine:
                 "io": {
                     "outputs": self.outputs.status(),
                     "audio": self.audio.status() if self.audio else None,
-                    "midi": self.midi.status() if self.midi else None,
+                    "midi": midi.status() if midi else None,
                 },
             }
 

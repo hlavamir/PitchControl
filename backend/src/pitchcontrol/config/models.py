@@ -38,9 +38,9 @@ class Model(BaseModel):
 
 
 # Macros that were renamed in 1.5. Files written before (controller mappings, scenes, state/macros.json) still use the
-# old names; every model that stores a macro name (a mapping, a scene, a fixture type's macro channel and idle mask range, the fog
-# setting) reads them through here, and a file gets the new names when it is next saved. Add to this table when a macro is
-# renamed again, so older files keep loading.
+# old names; every model that stores a macro name (a mapping, a scene, a fixture type's macro channel, the idle mask range
+# of a rig's fixture, the fog setting) reads them through here, and a file gets the new names when it is next saved. Add
+# to this table when a macro is renamed again, so older files keep loading.
 MACRO_RENAMES = {
     "Shader Speed": "Mask Param A",
     "Shader Param": "Mask Param B",
@@ -465,6 +465,7 @@ MidiKind = Literal["cc", "note"]
 # absolute: a fader or knob (value/127) · relative: an encoder, each message turns the value up or down ·
 # toggle: flips on every press · momentary: on while pressed (also right for buttons that toggle themselves
 # on the controller) · trigger: one press, for scene buttons and the like · shift: the modifier button
+MAX_SENSITIVITY = 127.0  # relative mode: one message covers the whole range
 MidiMode = Literal["absolute", "relative", "toggle", "momentary", "trigger", "shift"]
 Encoder = Literal["twos_complement", "sign_bit", "offset_64"]
 
@@ -498,10 +499,32 @@ class MidiMapping(Model):
             data["number"] = data.pop("cc")
         return data
 
+    @field_validator("sensitivity", mode="after")
+    @classmethod
+    def _sensitivity_in_range(cls, v: float) -> float:
+        if v > MAX_SENSITIVITY:  # one message already covers the whole range
+            log.warning("MIDI mapping: sensitivity %s is more than %s (the whole range in one step): using %s", v, MAX_SENSITIVITY, MAX_SENSITIVITY)
+            return MAX_SENSITIVITY
+        return v
+
     @model_validator(mode="after")
     def _macro_needed(self) -> "MidiMapping":
         if self.mode != "shift" and not self.macro:
             raise ValueError("a mapping needs a macro (except shift)")
+        return self
+
+    @model_validator(mode="after")
+    def _sensible_settings(self) -> "MidiMapping":
+        # settings that mean nothing are set right (and reported to the log) instead of stopping the file from loading
+        where = f"MIDI mapping {self.type} {self.number}"
+        if self.type == "note" and self.mode == "relative":
+            log.warning("%s: a note can't be an encoder (relative): used as absolute", where)
+            self.mode = "absolute"
+        if self.mode == "shift":
+            for field, unset in (("page", None), ("shift", None), ("invert", False)):
+                if getattr(self, field) != unset:
+                    log.warning("%s: the shift button has no '%s' setting: ignored", where, field)
+                    setattr(self, field, unset)
         return self
 
 
@@ -514,6 +537,13 @@ class Controller(Model):
     port_match: str = ""  # substring of the MIDI port name
     channel: int = Field(default=1, ge=1, le=16)  # 1-based MIDI channel of the controls (a mapping can use another)
     mappings: list[MidiMapping] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _one_shift_button(self) -> "Controller":
+        shifts = [m for m in self.mappings if m.mode == "shift"]
+        if len(shifts) > 1:  # the engine takes them all, the mapping editor shows the first only
+            log.warning("controller '%s' has %d shift buttons: the app shows only the first, %s %d", self.name, len(shifts), shifts[0].type, shifts[0].number)
+        return self
 
     @model_validator(mode="before")
     @classmethod

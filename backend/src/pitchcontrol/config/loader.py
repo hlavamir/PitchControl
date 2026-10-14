@@ -17,7 +17,7 @@ and of this computer's folder::
 
     machine.json              per-computer settings (audio input, MIDI port, outputs, UI)
     last_version              the app version of the last start (for upgrade notices)
-    state/macros.json        auto-saved macro values (crash recovery)
+    state/macros.json         auto-saved macro values (crash recovery)
     state/overrides.json      Control Desk overrides
 
 Missing keys are filled with defaults. Unknown keys (usually typos) are reported to the log and never
@@ -154,16 +154,18 @@ def save_model(path: Path, obj: BaseModel) -> None:
 
 
 def _normalised(path: Path, model: type[BaseModel]) -> dict | None:
-    """A file's content as the model sees it (defaults filled in), without its name and version."""
+    """A file's content as the model sees it (defaults filled in), without its name, version and edit time."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             data.pop(VERSION_KEY, None)
             data.pop("name", None)
+            data.pop("modified", None)
         out = model.model_validate(data).model_dump(mode="json", exclude_none=True)
     except (OSError, ValueError, ValidationError):
         return None
     out.pop("name", None)
+    out.pop("modified", None)  # a save that changes nothing else is not a modification
     return out
 
 
