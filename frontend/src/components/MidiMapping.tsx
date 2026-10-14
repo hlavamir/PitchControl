@@ -202,9 +202,10 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   // a control arrived while learning
   useEffect(() => {
     if (!learning || !draft) return
-    const e = (midi?.recent ?? []).find((x: MidiEvent) => x.seq > learnFrom.current && x.kind)
-    if (!e || !e.kind) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
+    // the Shift row takes a shift button; every other row skips shift buttons and the let-go of buttons
+    const e = (midi?.recent ?? []).find((x: MidiEvent) => x.seq > learnFrom.current && x.kind && (base.mode === 'shift' ? !x.release : x.learnable))
+    if (!e || !e.kind) return
     const proposal: MidiMappingEntry = {
       ...base,
       type: e.kind,

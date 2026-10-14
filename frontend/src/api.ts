@@ -42,6 +42,9 @@ export interface MidiEvent {
   macro: string | null
   note: string
   shift: boolean // a shift button was held when it arrived
+  release: boolean // a button let go
+  shift_button: boolean // a message from a shift button
+  learnable: boolean // what Learn may pick: neither a release nor a shift button
 }
 
 export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'

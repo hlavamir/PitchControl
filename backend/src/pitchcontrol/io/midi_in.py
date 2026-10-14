@@ -78,6 +78,8 @@ class MidiInput:
         # (kind, number, channel) of a held button -> the momentary mapping that got its press: the release goes
         # there, whatever shift state or control page is current when the button is let go
         self._held: dict[tuple[str, int, int], MidiMapping] = {}
+        # controls whose last message was a press (CC above 63, note on): a CC of 0 from one of them is a release
+        self._down: set[tuple[str, int, int]] = set()
         self._takeover: dict[str, _Takeover] = {}
         self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover state belongs to
         self._learn_until = 0.0
@@ -118,6 +120,7 @@ class MidiInput:
             if m.macro in self.macros.defs:
                 self.macros.set(m.macro, 1.0 if m.invert else 0.0)
         self.shift_controls.clear()
+        self._down.clear()
         self._takeover.clear()
 
     def stop(self) -> None:
@@ -163,11 +166,27 @@ class MidiInput:
             "macro": None,
             "note": "",
             "shift": self.shift,  # whether a shift button was held when this arrived (Learn pre-fills "with shift")
+            # what Learn may pick: not the let-go of a button (it would learn a button held from before Learn) and not
+            # a shift button (it would learn the shift button onto the row); the Shift row itself may take a shift button
+            "release": False,
+            "shift_button": False,
+            "learnable": kind is not None,
         }
         self.recent.append(entry)
         if kind is None:
             entry["note"] = "not a CC or note message"
             return
+        key = (kind, number, channel)
+        entry["release"] = value == 0 and (kind == "note" or key in self._down)
+        if value > (63 if kind == "cc" else 0):
+            self._down.add(key)
+        else:
+            self._down.discard(key)
+        if self.controller is not None:
+            entry["shift_button"] = any(
+                m.mode == "shift" and (m.channel or self.controller.channel) == channel for m in self.by_control.get((kind, number), [])
+            )
+        entry["learnable"] = not entry["release"] and not entry["shift_button"]
         if self.controller is None:
             entry["note"] = "no controller selected"
             return
@@ -190,7 +209,6 @@ class MidiInput:
         pressed = value > 63 if kind == "cc" else value > 0
         for m in here:  # the shift buttons first: they change which layer the other mappings are in
             if m.mode == "shift":
-                key = (kind, number, channel)
                 before = self.shift
                 (self.shift_controls.add if pressed else self.shift_controls.discard)(key)
                 entry["note"] = "shift " + ("on" if self.shift else "off")
@@ -198,7 +216,6 @@ class MidiInput:
                     self._takeover.clear()
                 return
 
-        key = (kind, number, channel)
         if not pressed and key in self._held:  # the release goes to the mapping that got the press
             m = self._held.pop(key)
             entry["macro"] = m.macro

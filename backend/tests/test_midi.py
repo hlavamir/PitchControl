@@ -360,6 +360,38 @@ def test_monitor_entries_say_whether_shift_was_held():
     assert [e["shift"] for e in midi.recent] == [False, False, True, True]
 
 
+def learnable(midi):
+    return [(e["learnable"], e["release"], e["shift_button"]) for e in midi.recent]
+
+
+def test_learn_picks_neither_shift_buttons_nor_releases():
+    midi, _ = fog_and_preset()
+    cc(midi, 44, 127)  # shift pressed
+    cc(midi, 38, 127)  # a button
+    cc(midi, 38, 0)  # let go of it
+    cc(midi, 44, 0)  # let go of shift
+    note(midi, 60)
+    note(midi, 60, 0)
+    assert learnable(midi) == [
+        (False, False, True),  # shift press: the Shift row may take it, other rows not
+        (True, False, False),
+        (False, True, False),
+        (False, True, True),
+        (True, False, False),
+        (False, True, False),
+    ]
+
+
+def test_a_fader_at_rest_is_learnable_but_a_button_held_from_before_is_not_when_released():
+    midi, _ = fog_and_preset()
+    cc(midi, 7, 0)  # a fader sitting at 0 that moves: learnable
+    cc(midi, 7, 3)
+    cc(midi, 9, 100)  # a control that went to 100 (button or fader) ...
+    cc(midi, 9, 0)  # ... and back to 0: counts as a release
+    cc(midi, 9, 5)  # moving again is learnable
+    assert [e["learnable"] for e in midi.recent] == [True, True, True, False, True]
+
+
 # --------------------------------------------------------------------------- learn mode
 
 

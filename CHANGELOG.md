@@ -10,17 +10,23 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - **MIDI mapping in the app** (Inputs page, section 03): one row per macro with the control that drives it, a **Learn**
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
   control, "page" (the same fader drives other macros on the Dimmers page) and a **shift** button that changes what other
-  buttons do (for example scene load / save on the same button). A control used twice in the same layer is only
-  warned about. A button's release always goes to the mapping that got its press (letting go of shift or changing the
-  page while a fog button is held no longer leaves the fog on), also while Learn is on or when the mapping is saved;
-  learning a control while holding the shift button fills in "with shift". Learn notices when the controller sends on another channel than the file says and offers to change it.
-  Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back), and
-  can be created, duplicated and deleted. A controller file also has an author, description and contact, and records
-  when and with which PitchControl version it was last edited. The Controller mapping list shows the name from the file.
+  buttons do (for example scene load / save on the same button). A control used twice where the page and shift settings
+  overlap is only warned about.
+  - A button's release always goes to the mapping that got its press, so letting go of shift or changing the page while
+    a button is held releases it properly (a fog button is switched off). Closing the input, for example when the
+    mapping is saved, lets go of everything that is held.
+  - While Learn waits, the shift button and the buttons you let go keep working. Learn never takes a shift button or the
+    release of a button as the control; a control learned while the shift button is held gets "with shift" filled in.
+  - Learn notices when the controller sends on another channel than the file says and offers to change it.
+  - Mappings are saved as your own copy of the controller file (the shipped one stays untouched; Reset brings it back),
+    and can be created, duplicated and deleted. A controller file also has an author, description and contact, and
+    records when and with which PitchControl version it was last edited. The Controller mapping list shows the name
+    from the file.
 - Changing the page with unsaved edits on Inputs, Outputs, Fog or the MIDI mapping asks whether to save, discard or stay
   (they used to be dropped silently).
 - The shipped **Launch Control XL 3** mapping is the author's own current one: the faders and knobs, the switches on the
-  top button row, scene saving on the bottom row, Dimmer 01-08 on knob row 1 and CC 52 as the shift button.
+  top button row (with shift the shader presets A-D), scenes 1-7 saved on the bottom row (with shift loaded), Dimmer
+  01-08 on knob row 1 and CC 52 as the shift button.
 
 ### Changed
 - MIDI channels are counted from 1 to 16 everywhere, as on the controllers and in most software; the MIDI monitor used to
