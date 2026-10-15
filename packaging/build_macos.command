@@ -12,6 +12,7 @@ cd "$ROOT"
 # Everything the steps print, errors included, also goes to build-macos.log in the repo root (the latest run only),
 # which is what to send when a build fails or warns. The script runs itself once more with its output through tee:
 # the Terminal still shows everything, the prompt below still reads from the keyboard, and the exit code is kept.
+# It starts itself by its absolute path, because $0 can be relative and the script has changed folder (cd above).
 # CI keeps the output on the console as well; "--check" writes no log, so it doesn't replace the last build's.
 if [ -z "${PC_BUILD_LOGGING:-}" ] && [ "${1:-}" != "--check" ]; then
     LOG="$ROOT/build-macos.log"
@@ -28,7 +29,7 @@ if [ -z "${PC_BUILD_LOGGING:-}" ] && [ "${1:-}" != "--check" ]; then
         echo
     } 2>&1 | tee "$LOG"
     set +e
-    PC_BUILD_LOGGING=1 /bin/bash "$0" "$@" 2>&1 | tee -a "$LOG"
+    PC_BUILD_LOGGING=1 /bin/bash "$ROOT/packaging/build_macos.command" "$@" 2>&1 | tee -a "$LOG"
     RC="${PIPESTATUS[0]}"
     set -e
     if [ "$RC" -ne 0 ]; then
