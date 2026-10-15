@@ -34,6 +34,11 @@ log = logging.getLogger(__name__)
 
 PREVIEW_SIZE = 256
 AUDIO_WATCH_S = 2.0  # how often the audio input is looked at when it isn't on the saved device (item 30)
+# The device list is read by starting a child process (0.3 s on the Mac, unmeasured on Windows). A cable stepped on is
+# plugged back within seconds, so the first minute is looked at every AUDIO_WATCH_S; a device that has been away longer
+# (the interface left at home, the stand-in running all night) is looked for every AUDIO_SLOW_WATCH_S only.
+AUDIO_FAST_PHASE_S = 60.0
+AUDIO_SLOW_WATCH_S = 10.0
 AUDIO_RETRY_S = 10.0  # after a reconnect that didn't work (the device is listed but won't open), wait this long
 
 
@@ -59,6 +64,8 @@ class Engine:
         self._audio_back_device: str | None = None  # the device it runs on after (differs with no saved device)
         self._audio_link_device: str | None = None  # the saved device the two times above are about
         self._audio_retry_at = 0.0
+        self._audio_problem_since = 0.0  # time.monotonic() the current problem was first seen
+        self._audio_next_list = 0.0  # no device list before this time (monotonic)
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()
@@ -172,15 +179,18 @@ class Engine:
         up to ``audio_in.LIST_TIMEOUT_S``, so never from the audio callback or the event loop."""
         if not self.enable_hardware:
             return
-        audio, saved = self.audio, self.store.settings.audio.device
-        if audio is None:
+        # Read under the restart lock: a restart that runs right now (Save, Find new devices) has stopped the old input
+        # and not yet opened the new one, which would look like a drop. The lock is held only during a restart.
+        with self._audio_restart:
+            audio, saved = self.audio, self.store.settings.audio.device
+            st = audio.status() if audio is not None else None
+        if audio is None or st is None:
             return
         if saved != self._audio_link_device:  # another device was saved: what happened to the old one is no longer news
             self._audio_lost = self._audio_back = None
             self._audio_lost_device = self._audio_back_device = None
             self._audio_problem = None
             self._audio_link_device = saved
-        st = audio.status()
         if st["running"] and not st["device_missing"]:
             if self._audio_problem is not None:
                 self._audio_back, self._audio_back_device = time.time(), st["device"]
@@ -190,6 +200,8 @@ class Engine:
         problem = "dead" if st["dead"] else "missing" if st["device_missing"] else "failed"
         if self._audio_problem != problem:
             if self._audio_problem is None:  # a new drop, not a change of what is wrong with it
+                self._audio_problem_since = time.monotonic()
+                self._audio_next_list = 0.0
                 self._audio_lost = audio.last_block_epoch() if problem == "dead" else None
                 self._audio_lost_device = st["device"] if problem == "dead" else None
                 self._audio_back = self._audio_back_device = None
@@ -200,13 +212,20 @@ class Engine:
                 "failed": f"audio input could not be opened: {st['error']}",
             }[problem]
             log.warning("%s; it reconnects by itself when the device is there", what)
-        if time.monotonic() < self._audio_retry_at:
+        now = time.monotonic()
+        if now < self._audio_retry_at or now < self._audio_next_list:
             return
         if saved and audio_in.match_device(saved, audio_in.list_input_devices_fresh()) is None:
-            return  # still not plugged in
+            # still not plugged in: look again soon for a minute, then every few seconds only (see AUDIO_FAST_PHASE_S)
+            away = time.monotonic() - self._audio_problem_since
+            self._audio_next_list = time.monotonic() + (AUDIO_WATCH_S if away < AUDIO_FAST_PHASE_S else AUDIO_SLOW_WATCH_S)
+            return
         with self._audio_restart:
             if self._stop.is_set() or self.audio is not audio or self.store.settings.audio.device != saved:
                 return  # stopped, restarted by someone else or another device saved while the list was read
+            cur = audio.status()
+            if cur["running"] and not cur["device_missing"]:
+                return  # it came back by itself while the list was read: no re-init cut for nothing
             log.info("audio input: %s again, restarting on it", f"'{saved}' is listed" if saved else "restarting")
             self.restart_audio(reinit=True)
             new = self.audio.status() if self.audio else None

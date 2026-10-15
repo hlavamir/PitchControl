@@ -416,6 +416,8 @@ def test_a_device_missing_at_the_start_is_switched_to_when_it_appears(monkeypatc
     engine.audio_check()  # not plugged in: nothing is touched
     assert fake.calls == [] and engine.audio.device == "MacBook Pro Microphone"
 
+    assert engine._audio_next_list > time.monotonic()  # it looks again in two seconds, not at once
+    engine._audio_next_list = 0.0  # ... which is now
     fake.devices.append(INTERFACE)
     engine.audio_check()
     st = engine.audio_status()
@@ -440,6 +442,7 @@ def test_a_dead_stream_shows_stopped_and_runs_again_when_the_device_is_back(monk
     assert fake.calls == [] and not engine.audio_status()["running"]
 
     fake.devices.append(INTERFACE)  # plugged in
+    engine._audio_next_list = 0.0  # the next look, two seconds later
     engine.audio_check()
     st = engine.audio_status()
     assert st["running"] and st["device"] == "Komplete Audio 6" and st["error"] is None
@@ -508,4 +511,79 @@ def test_the_drop_is_logged_once_not_at_every_look(monkeypatch, store, caplog):
         for _ in range(4):
             engine.audio_check()
     assert sum("stopped delivering audio" in r.message for r in caplog.records) == 1
+    engine.audio.stop()
+
+
+def test_a_restart_that_runs_while_the_watchdog_looks_is_not_taken_for_a_drop(monkeypatch, store, caplog):
+    import logging
+
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    stopped, release = threading.Event(), threading.Event()
+
+    def save_restart():  # what Save or Find new devices does: the old input is stopped, the new one opened a moment later
+        with engine._audio_restart:
+            engine.audio.stop()
+            stopped.set()
+            release.wait(2)
+            engine.restart_audio()
+
+    restarter = threading.Thread(target=save_restart)
+    restarter.start()
+    assert stopped.wait(2)
+    with caplog.at_level(logging.INFO):
+        looker = threading.Thread(target=engine.audio_check)
+        looker.start()
+        time.sleep(0.1)  # it waits for the restart instead of reading the stopped input
+        assert looker.is_alive()
+        release.set()
+        restarter.join()
+        looker.join()
+    assert engine._audio_problem is None and engine.audio_status()["reconnect"] is None
+    assert not [r for r in caplog.records if "audio input" in r.message and r.levelno >= logging.WARNING]
+    assert engine.audio_status()["running"]
+    engine.audio.stop()
+
+
+def test_a_stall_that_recovered_while_the_list_was_read_costs_no_reinit(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    make_dead(engine)
+    real_fresh = audio_in.list_input_devices_fresh
+
+    def fresh_and_recover():  # the callbacks come again while the child lists the devices
+        engine.audio._callback(np.zeros((4, 2), dtype="float32"), 4, None, None)
+        return real_fresh()
+
+    monkeypatch.setattr(audio_in, "list_input_devices_fresh", fresh_and_recover)
+    engine.audio_check()
+    assert fake.calls == [] and engine.audio_status()["running"]
+    engine.audio.stop()
+
+
+def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start: the stand-in runs
+    clock = [time.monotonic()]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    engine.audio.last_callback = clock[0]  # the stand-in is alive on the fake clock
+    lists: list[float] = []
+    real = audio_in.list_input_devices_fresh
+
+    def counted():
+        lists.append(clock[0])
+        return real()
+
+    monkeypatch.setattr(audio_in, "list_input_devices_fresh", counted)
+    t0 = clock[0]
+    for _ in range(90):  # 180 s of looks, one every two seconds
+        engine.audio._callback(np.zeros((4, 1), dtype="float32"), 4, None, None)  # the stand-in keeps running
+        engine.audio_check()
+        clock[0] += 2.0
+    early = [t for t in lists if t - t0 < 60]
+    late = [t for t in lists if t - t0 >= 60]
+    assert len(early) >= 29  # about every 2 s
+    assert 10 <= len(late) <= 13  # about every 10 s over the next 120 s
+    assert all(b - a >= 10 for a, b in zip(late, late[1:]))
+    fake.devices.append(INTERFACE)  # plugged in after all: found at the next look, however slow
+    clock[0] += 10.0
+    engine.audio_check()
+    assert engine.audio_status()["device"] == "Komplete Audio 6"
     engine.audio.stop()
