@@ -85,6 +85,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
           </select>
           <Button
             onClick={findAudioDevices}
+            className="shrink-0"
             tip="Looks for newly plugged-in audio devices. Restarts the audio input: the analysis stops for a moment"
           >
             Find new devices

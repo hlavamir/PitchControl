@@ -319,12 +319,14 @@ export function Button({
   primary,
   disabled,
   tip,
+  className = '',
 }: {
   children: ReactNode
   onClick: () => void
   primary?: boolean
   disabled?: boolean
   tip?: string // footer tip: what the button does
+  className?: string // e.g. shrink-0, for a button beside a field that has to give way
 }) {
   return (
     <button
@@ -333,7 +335,7 @@ export function Button({
       onClick={onClick}
       className={`lbl h-8 px-3 text-[11px] font-medium whitespace-nowrap disabled:opacity-35 ${
         primary ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge bg-panel text-ink'
-      }`}
+      } ${className}`}
     >
       {children}
     </button>
