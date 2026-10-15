@@ -173,6 +173,7 @@ export interface AudioDevice {
   hostapi: string
   label: string
   channels: number
+  default?: boolean // the device a stream opens when none is chosen
 }
 
 export interface FogMachine {

@@ -4,6 +4,7 @@ import type { EngineConnection } from '../useEngine'
 import { useLeaveGuard } from '../leaveGuard'
 import { clashes as findClashes, channelOf, deadMappings, defaultMode, newMapping } from '../midiMapping'
 import { midiNotice } from '../midiNotice'
+import { unchanged, usePolling } from '../usePolling'
 import { Button, Row, Section } from './forms'
 import { MidiMappingRow } from './MidiMappingRow'
 
@@ -69,12 +70,19 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
   }
   const fail = (e: unknown) => say(e instanceof Error ? e.message : String(e))
 
+  // The list of controller files is read again every few seconds while the page is open (item 34: a file added or
+  // removed outside the app shows up without a button). An answer that was overtaken by a later read is dropped, so
+  // that a slow poll can't undo the choice a "new" or "duplicate" just made.
+  const listRead = useRef(0)
   const loadList = useCallback(async (select?: string) => {
+    const mine = ++listRead.current
     const l = await api.get<NonNullable<typeof list>>('/api/controllers')
-    setList(l)
+    if (mine !== listRead.current) return l
+    setList((prev) => unchanged(prev, l))
     setSelected((cur) => select ?? (cur && l.available.includes(cur) ? cur : (l.active ?? l.available[0] ?? null)))
     return l
   }, [])
+  usePolling(() => loadList())
 
   useEffect(() => {
     loadList().catch(fail)

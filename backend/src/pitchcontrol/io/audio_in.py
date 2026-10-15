@@ -28,6 +28,10 @@ def list_input_devices() -> list[dict]:
     if sd is None:
         return []
     apis = sd.query_hostapis()
+    try:
+        default = sd.default.device[0]  # what a stream opens when no device is chosen
+    except Exception:  # noqa: BLE001 - the list matters more than which entry is the default
+        default = -1
     out = []
     for i, d in enumerate(sd.query_devices()):
         if d["max_input_channels"] > 0:
@@ -40,6 +44,7 @@ def list_input_devices() -> list[dict]:
                     "label": f"{d['name']} ({api})",
                     "channels": d["max_input_channels"],
                     "default_samplerate": d["default_samplerate"],
+                    "default": i == default,
                 }
             )
     return out

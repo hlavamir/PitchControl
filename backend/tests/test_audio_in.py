@@ -145,82 +145,59 @@ def test_restart_clears_the_warning(monkeypatch):
     assert st["warning"] is None and st["device"] == "Komplete Audio 6" and st["channels"] == [1, 2]
 
 
-def test_rescan_reinitialises_portaudio_only_for_an_input_that_isnt_on_the_saved_device(monkeypatch, store):
+def test_a_restart_reinitialises_portaudio_only_when_the_saved_device_isnt_listed(monkeypatch, store):
+    """The Inputs page lists the devices as they are now (item 34), so a device plugged in after the start can be picked
+    and saved before this process's PortAudio knows it: the restart that a save causes looks again, only then."""
     from pitchcontrol.engine.engine import Engine
 
     fake = FakeSd([MIC])
     monkeypatch.setattr(audio_in, "sd", fake)
     engine = Engine(store, enable_hardware=False)
-    engine.enable_hardware = True  # the engine is built without opening devices; the rescan checks the flag
+    engine.enable_hardware = True  # the engine is built without opening devices; the restart checks the flag
     store.settings.audio.device = "Komplete Audio 6"
     engine.restart_audio()
-    assert engine.audio.status()["device_missing"] and fake.calls == []
+    assert engine.audio.status()["device_missing"] and fake.calls == ["terminate", "initialize"]  # not listed: look again
 
-    # the interface is plugged in after the start: PortAudio doesn't list it until a rescan re-initialises it
-    fake.devices.append(INTERFACE)
-    engine.restart_audio()
-    assert engine.audio.status()["device_missing"] and fake.calls == []
+    fake.calls.clear()
+    fake.devices.append(INTERFACE)  # plugged in after the start
     first = engine.audio
-    st = engine.rescan_audio()
-    assert fake.calls == ["terminate", "initialize"]
-    assert engine.audio is not first and not first.stream
+    engine.restart_audio()  # the save that picks it
+    st = engine.audio.status()
+    assert fake.calls == ["terminate", "initialize"] and engine.audio is not first and not first.stream
     assert st["running"] and st["device"] == "Komplete Audio 6" and not st["device_missing"]
 
-    # a working input on the saved device is left alone
+    # a device PortAudio lists is opened without a re-init, a channel fallback included
     fake.calls.clear()
-    streams = len(fake.streams)
-    working = engine.audio
-    assert engine.rescan_audio()["running"]
-    assert fake.calls == [] and engine.audio is working and len(fake.streams) == streams
-
-    # a channel fallback is on the saved device: left alone as well
+    engine.restart_audio()
+    assert fake.calls == [] and engine.audio.status()["running"]
     store.settings.audio.channels = [9]
     engine.restart_audio()
-    assert engine.audio.status()["warning"] and not engine.audio.status()["device_missing"]
-    fake.calls.clear()
-    engine.rescan_audio()
-    assert fake.calls == []
+    assert engine.audio.status()["warning"] and not engine.audio.status()["device_missing"] and fake.calls == []
 
-    # an input that isn't running (the stream fails to open) is reopened
-    fake.fail = True
+    # no device saved: the system default, no re-init; an explicit re-init (the watchdog) always looks again
+    store.settings.audio.device = None
     engine.restart_audio()
-    assert not engine.audio.status()["running"]
-    fake.fail = False
-    engine.rescan_audio()
-    assert fake.calls == ["terminate", "initialize"] and engine.audio.status()["running"]
+    assert fake.calls == []
+    engine.restart_audio(reinit=True)
+    assert fake.calls == ["terminate", "initialize"]
     engine.audio.stop()
 
 
-def test_rescan_endpoint(store):
+def test_the_audio_device_list_names_the_default_and_comes_from_the_fresh_listing(monkeypatch, store):
     from fastapi.testclient import TestClient
 
-    from pitchcontrol.engine.engine import Engine
-    from pitchcontrol.server.app import create_app
-
-    engine = Engine(store, enable_hardware=False)  # no hardware: nothing to rescan
-    client = TestClient(create_app(engine))
-    r = client.post("/api/devices/audio/rescan")
-    assert r.status_code == 200 and r.json() is None
-
-
-def test_find_new_devices_reinitialises_even_while_the_input_runs(monkeypatch, store):
+    import pitchcontrol.server.app as app_module
     from pitchcontrol.engine.engine import Engine
 
-    fake = FakeSd([MIC])
-    monkeypatch.setattr(audio_in, "sd", fake)
-    engine = Engine(store, enable_hardware=False)
-    engine.enable_hardware = True
-    engine.restart_audio()
-    assert engine.audio.status()["running"] and fake.calls == []
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC, INTERFACE]))  # FakeSd.default.device is (0, 1): the input is MIC
+    assert [d["default"] for d in audio_in.list_input_devices()] == [True, False]
 
-    fake.devices.append(INTERFACE)  # plugged in while the microphone is listened to
-    assert "Komplete Audio 6" not in [d["label"].split(" (")[0] for d in audio_in.list_input_devices()]
-    old = engine.audio
-    st = engine.rescan_audio(force=True)
-    assert fake.calls == ["terminate", "initialize"] and engine.audio is not old and old.stream is None
-    assert st["running"]
-    assert "Komplete Audio 6" in [d["label"].split(" (")[0] for d in audio_in.list_input_devices()]
-    engine.audio.stop()
+    fresh = [dict(index=0, name="Komplete Audio 6", hostapi="Core Audio", label="Komplete Audio 6 (Core Audio)", channels=2, default_samplerate=48000.0, default=True)]
+    monkeypatch.setattr(app_module, "list_input_devices_fresh", lambda: fresh)
+    client = TestClient(app_module.create_app(Engine(store, enable_hardware=False)))
+    assert client.get("/api/devices/audio").json() == fresh
+    assert client.post("/api/devices/audio/rescan").status_code in (404, 405)  # the buttons and their endpoints are gone
+    assert client.post("/api/devices/midi/rescan").status_code in (404, 405)
 
 
 def test_audio_restarts_run_one_after_the_other(monkeypatch, store):
@@ -236,7 +213,7 @@ def test_audio_restarts_run_one_after_the_other(monkeypatch, store):
 
     def go(force):
         try:
-            engine.rescan_audio(force=force)
+            engine.restart_audio(reinit=force)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
@@ -263,28 +240,26 @@ def test_every_reinit_logs_the_device_list_and_whether_the_saved_device_was_foun
     store.settings.audio.device = "Komplete"
     engine = Engine(store, enable_hardware=False)
     engine.enable_hardware = True
-    engine.restart_audio()  # the interface is unplugged: the stand-in runs
     caplog.set_level(logging.INFO)
 
     def lines():
-        return [r.getMessage() for r in caplog.records if r.getMessage().startswith(("audio devices after re-init", "rescan devices"))]
+        return [r.getMessage() for r in caplog.records if r.getMessage().startswith("audio devices after re-init")]
 
-    engine.rescan_audio()  # "Rescan devices"
+    engine.restart_audio()  # the interface is unplugged: the stand-in runs, and the saved device isn't listed
     assert lines() == [
         "audio devices after re-init: 'MacBook Pro Microphone (Core Audio)'; saved device 'Komplete' NOT found"
     ]
     caplog.clear()
     fake.devices.append(INTERFACE)  # replugged
-    engine.rescan_audio(force=True)  # "Find new devices"
+    engine.restart_audio()  # the save that picks it: not listed in this process yet, so it looks again
     assert lines() == [
         "audio devices after re-init: 'MacBook Pro Microphone (Core Audio)', 'Komplete Audio 6 (Core Audio)'; "
         "saved device 'Komplete' found"
     ]
     caplog.clear()
-    engine.rescan_audio()  # runs on the saved device: left alone, and the log says so
-    assert lines() == ["rescan devices: the audio input runs on 'Komplete Audio 6', left alone"]
-    caplog.clear()
-    engine.restart_audio(reinit=True)  # what a settings save that changes the device does after a re-init
+    engine.restart_audio()  # listed now: no re-init, nothing logged
+    assert lines() == []
+    engine.restart_audio(reinit=True)  # what the watchdog does after a re-plug
     assert len(lines()) == 1 and lines()[0].endswith("saved device 'Komplete' found")
     engine.audio.stop()
 
@@ -412,6 +387,7 @@ def test_a_slow_first_block_is_not_dead(monkeypatch):
 def test_a_device_missing_at_the_start_is_switched_to_when_it_appears(monkeypatch, store):
     engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
     assert engine.audio.status()["device"] == "MacBook Pro Microphone" and engine.audio.device_missing
+    fake.calls.clear()  # the start looked again for the missing device (item 34); what the watchdog does is counted
 
     engine.audio_check()  # not plugged in: nothing is touched
     assert fake.calls == [] and engine.audio.device == "MacBook Pro Microphone"

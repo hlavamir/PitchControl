@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
-import { Button, NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
+import { NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
 import { reconnectLine } from '../reconnect'
+import { unchanged, usePolling } from '../usePolling'
 import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
 
@@ -20,33 +21,37 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const [controllerLabels, setControllerLabels] = useState<Record<string, string>>({})
   const [bands, setBands] = useState<BandInfo | null>(null)
 
+  // the three lists, as they are right now (item 34: no button to look again; the page reads them every few seconds)
+  const loadLists = useCallback(
+    () =>
+      Promise.all([
+        api.get<AudioDevice[]>('/api/devices/audio').then((d) => setAudioDevices((prev) => unchanged(prev, d))),
+        api.get<string[]>('/api/devices/midi').then((p) => setMidiPorts((prev) => unchanged(prev, p))),
+        api
+          .get<{ available: string[]; labels: Record<string, string> }>('/api/controllers')
+          .then((c) => setControllerLabels((prev) => unchanged(prev, c.labels))),
+      ]),
+    [],
+  )
   const refresh = () => {
-    api.get<AudioDevice[]>('/api/devices/audio').then(setAudioDevices)
-    api.get<string[]>('/api/devices/midi').then(setMidiPorts)
-    api.get<{ available: string[]; labels: Record<string, string> }>('/api/controllers').then((c) => {
-      setControllerLabels(c.labels)
-    })
-    api.get<BandInfo>('/api/audio/bands').then(setBands)
+    loadLists().catch(() => {})
   }
-  useEffect(refresh, [])
+  useEffect(() => {
+    refresh()
+    api.get<BandInfo>('/api/audio/bands').then(setBands)
+  }, [])
+  usePolling(loadLists)
   // a device that came back by itself is in the lists now: read them again, so the fields stop saying "(not found)"
   const audioBack = engine.state?.io?.audio?.reconnect?.back
   const midiBack = engine.state?.io?.midi?.reconnect?.back
   useEffect(() => {
     if (audioBack != null || midiBack != null) refresh()
   }, [audioBack, midiBack])
-  // "Rescan devices" also opens the audio and the MIDI input again when they have an error (not a working one)
-  const rescan = () => {
-    Promise.allSettled([api.post('/api/devices/audio/rescan'), api.post('/api/devices/midi/rescan')]).finally(refresh)
-  }
-  // "Find new devices": PortAudio looks again and the input restarts, also while it runs fine (a short cut)
-  const findAudioDevices = () => {
-    api.post('/api/devices/audio/rescan', { restart: true }).finally(refresh)
-  }
   if (!settings) return null
   const a = settings.audio
   const io = engine.state?.io
   const selected = audioDevices.find((d) => a.device && d.label.toLowerCase().includes(a.device.toLowerCase()))
+  const defaultDevice = audioDevices.find((d) => d.default)
   // what the running input really listens to (a device with fewer inputs than set runs on the channels it has)
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -62,10 +67,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   return (
     // sections take half the page width side by side, or the full width under each other
     <div className="grid gap-1.5 wide:grid-cols-2">
-      <div className="flex justify-between wide:col-span-2">
-        <Button onClick={rescan} tip="Looks for newly plugged-in MIDI ports and controller files, and reconnects the MIDI controller or the audio input if it isn't running. A new audio device isn't listed? Use Find new devices in the audio section.">
-          Rescan devices
-        </Button>
+      <div className="flex justify-end wide:col-span-2">
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
       </div>
 
@@ -84,7 +86,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
       >
         <Row label="Device" hint="Audio input device (a mixer's master out, a line input or a microphone); Save restarts the input">
           <select className="w-full" value={selected?.label ?? a.device ?? ''} onChange={(e) => update((s) => (s.audio.device = e.target.value || null))}>
-            <option value="">System default</option>
+            <option value="">System default{defaultDevice ? ` (${defaultDevice.name})` : ''}</option>
             {a.device && !selected && <option value={a.device}>{a.device} (not found)</option>}
             {audioDevices.map((d) => (
               <option key={d.index} value={d.label}>
@@ -92,13 +94,6 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
               </option>
             ))}
           </select>
-          <Button
-            onClick={findAudioDevices}
-            className="shrink-0"
-            tip="Looks for newly plugged-in audio devices. Restarts the audio input: the analysis stops for a moment"
-          >
-            Find new devices
-          </Button>
         </Row>
         <Row label="Input channels" hint="Numbers of the device inputs to listen to, 1-based, comma separated; they are summed to mono">
           <input

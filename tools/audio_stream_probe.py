@@ -10,8 +10,8 @@ It opens the input the way the app does (``AudioInput``: the saved device from t
 ``--device`` is given) and prints, every second and at every change, ten times a second what the stream shows:
 callbacks so far, the age of the last callback, the status flags PortAudio passed to it, ``stream.active`` and
 ``stream.stopped``, the peak of the last second and whether the last blocks were digital silence (every sample exactly 0).
-Press Enter to run what the app's "Find new devices" does (close, re-initialise PortAudio, list the devices, open the
-saved one again). Ctrl-C ends it. The whole output goes to ``--out`` as well, so it can be sent.
+Press Enter to run what the app does to find a device plugged in after the start (close, re-initialise PortAudio,
+list the devices, open the saved one again). Ctrl-C ends it. The whole output goes to ``--out`` as well, so it can be sent.
 
 The test: start it, wait 5 s, pull the interface's USB cable, wait 5 s, plug it in again, wait 5 s, press Enter, wait
 5 s, Ctrl-C.

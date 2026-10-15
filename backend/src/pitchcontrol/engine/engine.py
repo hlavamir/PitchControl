@@ -54,7 +54,7 @@ class Engine:
         self.lock = threading.RLock()
         self.ui_unsaved = UnsavedReports()  # what the open pages say about their unsaved edits (asked when the desktop app quits)
         # stop → re-initialise PortAudio → start of the audio input, one at a time: two at once would terminate PortAudio
-        # while the other thread opens its stream. Reentrant: ``rescan_audio`` calls ``restart_audio``.
+        # while the other thread opens its stream. Reentrant: the audio watchdog calls ``restart_audio``.
         self._audio_restart = threading.RLock()
         # item 30: what the audio watchdog saw. ``_audio_lost`` is the wall-clock time the input was lost (None: missing
         # since the start), ``_audio_back`` when it came back; both are kept for the Inputs page, in memory only.
@@ -149,7 +149,9 @@ class Engine:
 
     def restart_audio(self, reinit: bool = False) -> None:
         """Reopen the audio input from the saved settings. ``reinit`` makes PortAudio list the devices again first
-        (with the old stream closed, which is why it cuts the input for a moment)."""
+        (with the old stream closed, which is why it cuts the input for a moment). It also does that by itself when a
+        saved device isn't in this process's list: the Inputs page lists the devices as they are now (a child process),
+        so a device plugged in after the start can be picked and saved before PortAudio here knows it."""
         with self._audio_restart:
             if self.audio is not None:
                 self.audio.stop()
@@ -157,7 +159,7 @@ class Engine:
             if not self.enable_hardware:
                 return
             a = self.store.settings.audio
-            if reinit:
+            if reinit or (a.device and audio_in.match_device(a.device, audio_in.list_input_devices()) is None):
                 audio_in.reinit_portaudio(a.device)
             self.rebuild_audio_analysis()
             self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
@@ -251,18 +253,6 @@ class Engine:
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
                 log.exception("audio watchdog")
 
-    def rescan_audio(self, force: bool = False) -> dict | None:
-        """Make PortAudio look for devices again and reopen the input. "Rescan devices" does it only when the input
-        isn't running on the saved device (missing device, error, stopped): a rescan pressed during a show leaves a
-        working input alone. ``force`` ("Find new devices") does it always, and cuts the input for a moment."""
-        with self._audio_restart:
-            st = self.audio.status() if self.audio else None
-            if self.enable_hardware and st is not None and (force or not st["running"] or st["device_missing"]):
-                self.restart_audio(reinit=True)
-            elif self.enable_hardware and st is not None:
-                log.info("rescan devices: the audio input runs on '%s', left alone", st["device"])
-            return self.audio_status()
-
     def restart_midi(self) -> None:
         # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
         # only held to swap ``self.midi``: closing and opening a port is up to the driver and must not stop the frames.
@@ -352,15 +342,6 @@ class Engine:
                 self.midi_check()
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
                 log.exception("MIDI watchdog")
-
-    def rescan_midi(self) -> dict | None:
-        """"Rescan devices": reopen the MIDI input if it has an error (the controller was plugged in after the start, or
-        another program held the port). A working input is left alone: a rescan pressed during a show must not let go of
-        a held button. ``mido`` lists the ports afresh on every call, so no re-initialisation is needed."""
-        midi = self.midi
-        if self.enable_hardware and midi is not None and midi.error:
-            self.restart_midi()
-        return self.midi_status()
 
     # ------------------------------------------------------------------ frame
     def tick(self, dt: float) -> None:

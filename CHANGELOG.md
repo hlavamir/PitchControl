@@ -20,10 +20,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   controller is in use shows "isn't connected" at once and lets go of any button that was held (a fog button goes
   off). A port that can't be opened (another program holds it) is tried again until it is free. The Inputs page keeps
   a line of what happened (`lost 21:13:58 · back 21:14:05`, or `not found at start · connected 21:14:05`).
-- **Find new devices** (Inputs page, audio section, end of the Device row): looks for audio devices plugged in after
-  the app started and restarts the audio input, also while it runs; the analysis stops for about a quarter of a
-  second. "Rescan devices" does the same only when the input isn't running on its device, so pressing it during a show
-  leaves a working input alone.
+- **The Inputs page keeps its lists current.** The audio devices, the MIDI ports and the controller files are read
+  again every two seconds while the page is open, so a device you plug in is in the list a moment later and one you pull
+  out is gone, with nothing to press, and the running input is not touched. The buttons "Rescan devices" and "Find new
+  devices" are gone: they were only there because the lists went stale, and the audio and MIDI inputs reconnect by
+  themselves now. The Device field names what "System default" is (`System default (MacBook Pro Microphone)`). Saving
+  a device that was plugged in after the app started looks for it again itself.
 
 ### Changed
 - **macOS build script:** everything the build prints, warnings and errors included, is also written to
@@ -33,14 +35,13 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ### Fixed
 - **A MIDI controller that isn't found or can't be opened says so on the Inputs page**, as text under the MIDI port
-  row (which port was looked for and what to do), not only in the status dot's tooltip. **Rescan devices** reopens a
-  MIDI input that has an error, and leaves a working one alone.
+  row (which port was looked for and what to do), not only in the status dot's tooltip.
 - **A microphone with one input works as the audio input** (the built-in microphone, an iPhone microphone): a device
   with fewer inputs than the "Input channels" setting now runs on the channels it has instead of refusing to start. The
   setting stays as saved. The Inputs page says what the input listens to ("device has 1 input · using channel 1"),
   and shows as text why the input doesn't run or isn't on the device that was set (an interface that isn't plugged
-  in: the system default is used, and **Rescan devices** switches back to it). Before, only the status dot's tooltip
-  said "stopped".
+  in: the system default is used, and it switches back by itself when the interface is plugged in). Before, only the
+  status dot's tooltip said "stopped".
 
 ## 1.5.0 — 2026-10-15
 

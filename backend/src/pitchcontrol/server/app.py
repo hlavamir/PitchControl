@@ -28,7 +28,7 @@ from ..config.loader import CONTROLLERS, RIGS, VERSION_KEY, report_unknown_keys,
 from ..config.models import Controller, FixtureType, FogMachine, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
-from ..io.audio_in import list_input_devices
+from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..version import version_label
@@ -640,18 +640,9 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     @app.get("/api/devices/audio")
     def audio_devices():
-        return list_input_devices()
-
-    @app.post("/api/devices/audio/rescan")
-    def audio_rescan(data: dict | None = None):
-        """"Rescan devices": reopen the audio input if it isn't running on the saved device. With ``{"restart": true}``
-        ("Find new devices") always: PortAudio is re-initialised and the input restarted, which cuts it for a moment."""
-        return engine.rescan_audio(force=bool(data and data.get("restart")))
-
-    @app.post("/api/devices/midi/rescan")
-    def midi_rescan():
-        """Part of "Rescan devices": reopen the MIDI input if it has an error (see Engine)."""
-        return engine.rescan_midi()
+        """The devices as they are now, also those plugged in after the start (a child process lists them, see
+        ``list_input_devices_fresh``); the running input isn't touched. A sync endpoint runs off the event loop."""
+        return list_input_devices_fresh()
 
     @app.get("/api/devices/midi")
     def midi_devices():
