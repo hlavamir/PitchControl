@@ -3,6 +3,7 @@ import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
+import { audioReconnectLine } from '../audioReconnect'
 import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
 
@@ -44,6 +45,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const midiNote = midiNotice(io?.midi)
+  const reconnectLine = audioReconnectLine(io?.audio)
   const inputsNote = live
     ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
     : selected
@@ -117,6 +119,11 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             ! {io.audio.warning}
           </div>
         ) : null}
+        {reconnectLine && (
+          <div className="my-1 px-2 text-[11px] text-dim" role="status">
+            {reconnectLine}
+          </div>
+        )}
         <Row label="Gain" hint="Input gain before the analysis: raise it for a quiet signal. The bar shows the input level">
           <NumberInput value={a.gain} min={0} onChange={(v) => update((s) => (s.audio.gain = v))} />
           <div className="h-2 w-40 bg-panel-2" data-hint="info" data-tip="Input level after the gain; if it hits the right end on loud music, lower the gain or the source">

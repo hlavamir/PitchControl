@@ -7,6 +7,14 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
+- **The audio input reconnects by itself** to the device you selected. If the interface is pulled out (or someone steps
+  on the cable) during a show, the Inputs page shows the input as stopped ("'Komplete Audio 6' disappeared. Check the
+  cable: it reconnects by itself when the device is back") and the meter drops to zero; when the device is back, the
+  input runs on it again within a few seconds, with no button to press, and a line under the input channels keeps what
+  happened (`lost 21:13:58 · back 21:14:05`). An interface that wasn't plugged in at the start is switched to when it
+  appears. It only ever goes back to the device you selected, never to another one; with no device selected, a stopped
+  input restarts on the system default (and the line names both devices, because that is where the device changes under
+  you). A device that is there but can't be opened (another program holds it) is tried again every ten seconds.
 - **Find new devices** (Inputs page, audio section, end of the Device row): looks for audio devices plugged in after
   the app started and restarts the audio input, also while it runs; the analysis stops for about a quarter of a
   second. "Rescan devices" does the same only when the input isn't running on its device, so pressing it during a show

@@ -98,6 +98,9 @@ export interface IoStatus {
   device?: string | null // audio input: the device that was opened
   device_inputs?: number // audio input: its number of inputs
   channels?: number[] // audio input: the channels listened to
+  // audio input: when it dropped and came back by itself (epoch seconds; lost null = missing since the start), with the
+  // devices it was on; null before any drop (item 30)
+  reconnect?: { lost: number | null; back: number | null; lost_device?: string | null; back_device?: string | null } | null
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   port?: string | null
   port_override?: string | null // the MIDI port set in Settings, which wins over the controller file's

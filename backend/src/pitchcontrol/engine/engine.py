@@ -55,6 +55,8 @@ class Engine:
         self._audio_problem: str | None = None  # "missing" | "dead" | "failed" while the saved device isn't running
         self._audio_lost: float | None = None
         self._audio_back: float | None = None
+        self._audio_lost_device: str | None = None  # the device that was open when it dropped
+        self._audio_back_device: str | None = None  # the device it runs on after (differs with no saved device)
         self._audio_link_device: str | None = None  # the saved device the two times above are about
         self._audio_retry_at = 0.0
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
@@ -152,7 +154,12 @@ class Engine:
         if audio is None:
             return None
         st = audio.status()
-        link = {"lost": self._audio_lost, "back": self._audio_back}
+        link = {
+            "lost": self._audio_lost,
+            "back": self._audio_back,
+            "lost_device": self._audio_lost_device,
+            "back_device": self._audio_back_device,
+        }
         st["reconnect"] = link if link["lost"] is not None or link["back"] is not None else None
         return st
 
@@ -170,12 +177,13 @@ class Engine:
             return
         if saved != self._audio_link_device:  # another device was saved: what happened to the old one is no longer news
             self._audio_lost = self._audio_back = None
+            self._audio_lost_device = self._audio_back_device = None
             self._audio_problem = None
             self._audio_link_device = saved
         st = audio.status()
         if st["running"] and not st["device_missing"]:
             if self._audio_problem is not None:
-                self._audio_back = time.time()
+                self._audio_back, self._audio_back_device = time.time(), st["device"]
                 log.info("audio input is back on '%s'", st["device"])
                 self._audio_problem = None
             return
@@ -183,7 +191,8 @@ class Engine:
         if self._audio_problem != problem:
             if self._audio_problem is None:  # a new drop, not a change of what is wrong with it
                 self._audio_lost = audio.last_block_epoch() if problem == "dead" else None
-                self._audio_back = None
+                self._audio_lost_device = st["device"] if problem == "dead" else None
+                self._audio_back = self._audio_back_device = None
             self._audio_problem = problem
             what = {
                 "dead": f"audio input '{st['device']}' stopped delivering audio",
@@ -204,7 +213,7 @@ class Engine:
             if new is None or not new["running"] or new["device_missing"]:
                 self._audio_retry_at = time.monotonic() + AUDIO_RETRY_S
             else:
-                self._audio_back = time.time()
+                self._audio_back, self._audio_back_device = time.time(), new["device"]
                 self._audio_problem = None
                 log.info("audio input is back on '%s'", new["device"])
 

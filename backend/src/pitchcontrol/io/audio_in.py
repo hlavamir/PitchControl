@@ -203,7 +203,7 @@ class AudioInput:
         except Exception as exc:  # noqa: BLE001
             self.error = (
                 f"'{name}' could not be opened ({exc}). "
-                "It tries again every few seconds; another program may be using the device, or pick another device."
+                "Another program may be using it: close that program and it reconnects by itself, or pick another device."
             )
             log.error("audio input failed: %s", self.error)
             self.stream = None

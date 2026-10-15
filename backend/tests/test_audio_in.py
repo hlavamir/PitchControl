@@ -127,7 +127,7 @@ def test_stream_that_fails_to_open_is_an_error_naming_the_device(monkeypatch):
     st = inp.status()
     assert not st["running"]
     assert st["error"].startswith("'MacBook Pro Microphone' could not be opened (")
-    assert st["error"].endswith("It tries again every few seconds; another program may be using the device, or pick another device.")
+    assert st["error"].endswith("Another program may be using it: close that program and it reconnects by itself, or pick another device.")
     assert st["warning"] is None
 
 
@@ -444,6 +444,7 @@ def test_a_dead_stream_shows_stopped_and_runs_again_when_the_device_is_back(monk
     st = engine.audio_status()
     assert st["running"] and st["device"] == "Komplete Audio 6" and st["error"] is None
     assert st["reconnect"]["lost"] < st["reconnect"]["back"]  # "lost 21:13:58 · back 21:14:05"
+    assert st["reconnect"]["lost_device"] == st["reconnect"]["back_device"] == "Komplete Audio 6"
     engine.audio.stop()
 
 
@@ -464,6 +465,7 @@ def test_without_a_saved_device_a_dead_stream_restarts_on_the_system_default(mon
     engine.audio_check()
     st = engine.audio_status()
     assert st["running"] and st["reconnect"]["back"] is not None and fake.calls == ["terminate", "initialize"]
+    assert st["reconnect"]["lost_device"] == "MacBook Pro Microphone"  # the fake lists the microphone first: same device
     engine.audio.stop()
 
 
