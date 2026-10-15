@@ -31,15 +31,15 @@ jobs:
             platform: macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # tags and history, so test builds can show "1.1.0+3 (abc1234)"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
       - name: Version
         id: version
         shell: bash
@@ -70,7 +70,7 @@ jobs:
       - name: Name the zip after the version
         shell: bash
         run: mv "dist/${{ matrix.zip }}" "dist/PitchControl-${{ steps.version.outputs.version }}-${{ matrix.platform }}.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: PitchControl-${{ matrix.platform }}
           path: dist/PitchControl-${{ steps.version.outputs.version }}-${{ matrix.platform }}.zip
@@ -82,8 +82,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: true
