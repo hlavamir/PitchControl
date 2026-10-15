@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.5.1 — 2026-10-15
+
 ### Added
 - **The audio input reconnects by itself** to the device you selected. If the interface is pulled out (or someone steps
   on the cable) during a show, the Inputs page shows the input as stopped ("'Komplete Audio 6' disappeared. Check the
