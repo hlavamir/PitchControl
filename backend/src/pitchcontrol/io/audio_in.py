@@ -41,6 +41,22 @@ def list_input_devices() -> list[dict]:
     return out
 
 
+def reinitialize() -> None:
+    """Make PortAudio list the devices as they are now.
+
+    PortAudio enumerates its devices once, when it is initialised, so a device plugged in after the start only shows up
+    after a terminate and initialise. All streams must be closed first. (``_terminate``/``_initialize`` are
+    sounddevice's own, underscored, but it has no public call for this.)
+    """
+    if sd is None:
+        return
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception as exc:  # noqa: BLE001
+        log.error("PortAudio could not be re-initialised: %s", exc)
+
+
 def find_device(name: str | None) -> int | None:
     """Index of the first input device whose "name (host api)" label contains ``name``."""
     if not name:
@@ -61,6 +77,7 @@ class AudioInput:
         self.stream = None
         self.error: str | None = None
         self.warning: str | None = None  # the input runs, but not as configured
+        self.device_missing = False  # the configured device wasn't found: the system default is used
         self.device: str | None = None  # the device actually opened
         self.device_inputs = 0
         self.used_channels: list[int] = self.channels  # the requested channels the device has
@@ -69,6 +86,7 @@ class AudioInput:
     def start(self) -> None:
         self.error = None
         self.warning = None
+        self.device_missing = False
         self.device, self.device_inputs, self.used_channels = None, 0, self.channels
         if sd is None:
             self.error = "sounddevice / PortAudio not available"
@@ -97,8 +115,9 @@ class AudioInput:
             self.device, self.device_inputs, self.used_channels = actual, inputs, used
             warnings = []
             if self.device_name and index is None:
+                self.device_missing = True
                 warnings.append(
-                    f"'{self.device_name}' not found: using the system default ({actual}). "
+                    f"'{self.device_name}' not found: listening to the system default ('{actual}'). "
                     "Plug it in and press Rescan devices."
                 )
             if fallback:
@@ -143,6 +162,7 @@ class AudioInput:
             "running": self.stream is not None,
             "error": self.error,
             "warning": self.warning,
+            "device_missing": self.device_missing,
             "device": self.device,
             "device_inputs": self.device_inputs,
             "channels": self.used_channels,

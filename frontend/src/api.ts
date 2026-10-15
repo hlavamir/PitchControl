@@ -92,6 +92,7 @@ export interface IoStatus {
   frames?: number
   level?: number
   warning?: string | null // audio input: it runs, but not as set up (fallback channel, system default instead of the device)
+  device_missing?: boolean // audio input: the set device wasn't found, the system default is used
   device?: string | null // audio input: the device that was opened
   device_inputs?: number // audio input: its number of inputs
   channels?: number[] // audio input: the channels listened to

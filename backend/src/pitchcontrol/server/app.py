@@ -642,16 +642,10 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     def audio_devices():
         return list_input_devices()
 
-    @app.post("/api/audio/rescan")
+    @app.post("/api/devices/audio/rescan")
     def audio_rescan():
-        """"Rescan devices": open the audio input again if it isn't running as configured (the interface was plugged in
-        after the start, or the input fell back to another device). A working input is left alone."""
-        audio = engine.audio
-        if engine.enable_hardware and audio is not None:
-            st = audio.status()
-            if not st["running"] or st["warning"]:
-                engine.restart_audio()
-        return engine.audio.status() if engine.audio else None
+        """Part of "Rescan devices": reopen the audio input if it isn't running on the saved device (see Engine)."""
+        return engine.rescan_audio()
 
     @app.get("/api/devices/midi")
     def midi_devices():

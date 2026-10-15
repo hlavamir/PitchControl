@@ -27,9 +27,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     api.get<BandInfo>('/api/audio/bands').then(setBands)
   }
   useEffect(refresh, [])
-  // "Rescan devices" also opens an audio input again that fell back or stopped (the interface was plugged in late)
+  // "Rescan devices" also opens the audio input again when its device was missing or it stopped
   const rescan = () => {
-    api.post('/api/audio/rescan').finally(refresh)
+    api.post('/api/devices/audio/rescan').finally(refresh)
   }
   if (!settings) return null
   const a = settings.audio
@@ -39,7 +39,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const inputsNote = live
-    ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using channel${live.channels?.length === 1 ? '' : 's'} ${live.channels?.join(', ')}`
+    ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
     : selected
       ? `device has ${plural(selected.channels, 'input')}`
       : null
@@ -48,7 +48,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     // sections take half the page width side by side, or the full width under each other
     <div className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-between wide:col-span-2">
-        <Button onClick={rescan} tip="Look for newly plugged-in audio devices, MIDI ports and controller files">
+        <Button onClick={rescan} tip="Look for newly plugged-in MIDI ports and controller files. Also restarts the audio input if its device was missing">
           Rescan devices
         </Button>
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
@@ -100,7 +100,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             ✕ Audio input stopped: {io.audio.error}
           </div>
         ) : io?.audio?.warning ? (
-          <div className="my-1 px-2 py-1 text-[12px]" role="status">
+          <div className="my-1 px-2 py-1 text-[11px]" role="status">
             ! {io.audio.warning}
           </div>
         ) : null}

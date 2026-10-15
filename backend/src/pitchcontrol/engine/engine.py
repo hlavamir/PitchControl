@@ -16,6 +16,7 @@ import numpy as np
 
 from ..config.loader import ConfigStore, load_model, save_model
 from ..config.models import Scene
+from ..io import audio_in
 from ..io.audio_in import AudioInput
 from ..io.midi_in import MidiInput
 from ..io.outputs import OutputManager
@@ -127,6 +128,18 @@ class Engine:
         self.rebuild_audio_analysis()
         self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
         self.audio.start()
+
+    def rescan_audio(self) -> dict | None:
+        """"Rescan devices": make PortAudio look for devices again and reopen the input, but only when the input isn't
+        running on the saved device (missing device, error, stopped). A rescan pressed during a show leaves a working
+        input alone: re-initialising PortAudio closes the stream."""
+        st = self.audio.status() if self.audio else None
+        if self.enable_hardware and st is not None and (not st["running"] or st["device_missing"]):
+            if self.audio is not None:
+                self.audio.stop()
+            audio_in.reinitialize()
+            self.restart_audio()
+        return self.audio.status() if self.audio else None
 
     def restart_midi(self) -> None:
         # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
