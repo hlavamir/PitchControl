@@ -235,6 +235,11 @@ class AudioInput:
         limit = DEAD_AFTER_S if self.got_block else FIRST_CALLBACK_S
         return time.monotonic() - self.last_callback > limit
 
+    @property
+    def delivering(self) -> bool:
+        """Blocks are arriving: a stream is open and not dead. What the analysis may rely on."""
+        return self.stream is not None and not self.dead
+
     def last_block_epoch(self) -> float | None:
         """Wall-clock time of the last block (for "lost 21:13:58"), or None before the stream was started."""
         if self.last_callback is None:

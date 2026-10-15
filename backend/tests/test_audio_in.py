@@ -587,3 +587,31 @@ def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkey
     engine.audio_check()
     assert engine.audio_status()["device"] == "Komplete Audio 6"
     engine.audio.stop()
+
+
+def test_the_analysis_falls_to_silence_while_the_input_is_dead(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    engine.outputs.send = lambda *a, **k: None
+    loud = (np.random.default_rng(1).uniform(-1, 1, 48000)).astype("float32")
+    engine.analyzer.push(loud)  # the music, delivered by the running input
+    engine.tick(0.025)
+    assert engine.features.values.max() > 0.5 or engine.analyzer.envelope.max() > 0.5
+
+    make_dead(engine)  # the cable is pulled: no more blocks
+    fake.devices.remove(INTERFACE)
+    for _ in range(80):  # two seconds of frames
+        engine.tick(0.025)
+    assert engine.analyzer.envelope.max() < 0.05  # released, not frozen at the last frame
+    engine.audio.stop()
+
+
+def test_a_running_input_is_not_given_silence(monkeypatch, store):
+    engine, _ = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    engine.outputs.send = lambda *a, **k: None
+    engine.audio.got_block = True
+    engine.audio._callback(np.zeros((4, 2), dtype="float32"), 4, None, None)
+    pushed = []
+    monkeypatch.setattr(engine.analyzer, "push", lambda samples: pushed.append(len(samples)))
+    engine.tick(0.025)
+    assert pushed == []  # the audio thread feeds it, the engine adds nothing
+    engine.audio.stop()

@@ -29,6 +29,12 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     api.get<BandInfo>('/api/audio/bands').then(setBands)
   }
   useEffect(refresh, [])
+  // a device that came back by itself is in the lists now: read them again, so the fields stop saying "(not found)"
+  const audioBack = engine.state?.io?.audio?.reconnect?.back
+  const midiBack = engine.state?.io?.midi?.reconnect?.back
+  useEffect(() => {
+    if (audioBack != null || midiBack != null) refresh()
+  }, [audioBack, midiBack])
   // "Rescan devices" also opens the audio and the MIDI input again when they have an error (not a working one)
   const rescan = () => {
     Promise.allSettled([api.post('/api/devices/audio/rescan'), api.post('/api/devices/midi/rescan')]).finally(refresh)

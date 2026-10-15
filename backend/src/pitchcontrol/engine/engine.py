@@ -368,6 +368,11 @@ class Engine:
             self._handle_buttons()
             m.apply_settled(time.monotonic(), s.midi_settle_s)
 
+            audio = self.audio
+            if self.enable_hardware and (audio is None or not audio.delivering):
+                # no input (dead, stopped or restarting): the analysis releases as if the music had stopped, instead of
+                # holding the last frame, which would keep the meter and the strobo trigger at the moment of the pull
+                self.analyzer.push(np.zeros(max(1, int(s.audio.sample_rate * dt)), dtype=np.float32))
             levels = self.analyzer.read_frame()
             self.features.update(levels)
 
