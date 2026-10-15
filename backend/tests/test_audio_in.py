@@ -118,7 +118,7 @@ def test_missing_device_uses_the_system_default_with_a_warning(monkeypatch):
     assert st["running"] and st["device"] == "MacBook Pro Microphone" and st["device_missing"]
     assert st["warning"] == (
         "'Komplete Audio 6' not found: listening to the system default ('MacBook Pro Microphone'). "
-        "Plug it in and press Rescan devices."
+        "It switches back by itself when it's plugged in."
     )
 
 
@@ -127,7 +127,7 @@ def test_stream_that_fails_to_open_is_an_error_naming_the_device(monkeypatch):
     st = inp.status()
     assert not st["running"]
     assert st["error"].startswith("'MacBook Pro Microphone' could not be opened (")
-    assert st["error"].endswith("press Rescan devices if you just plugged it in.")
+    assert st["error"].endswith("It tries again every few seconds; another program may be using the device, or pick another device.")
     assert st["warning"] is None
 
 
@@ -357,3 +357,153 @@ def test_match_device_is_one_rule_for_both_lists():
     assert audio_in.match_device("Komplete Audio 6 (Core Audio)", devices) is devices[0]
     assert audio_in.match_device("Scarlett", devices) is None
     assert audio_in.match_device(None, devices) is None and audio_in.match_device("", devices) is None
+
+
+# ---------------------------------------------------------------- the input reconnects by itself (item 30)
+def watched_engine(monkeypatch, store, devices, saved, channels=(1, 2)):
+    """An engine with the fake PortAudio and a fake child (``list_input_devices_fresh`` lists ``fake.devices`` as they
+    are right now, as a new process would). Returns (engine, fake). ``engine.audio_check()`` is one look of the watchdog."""
+    from pitchcontrol.engine.engine import Engine
+
+    fake = FakeSd(devices)
+    monkeypatch.setattr(audio_in, "sd", fake)
+
+    def fresh():
+        return [
+            {"index": i, "name": d["name"], "label": f"{d['name']} (Core Audio)", "channels": d["max_input_channels"]}
+            for i, d in enumerate(fake.devices)
+        ]
+
+    monkeypatch.setattr(audio_in, "list_input_devices_fresh", fresh)
+    store.settings.audio.device = saved
+    store.settings.audio.channels = list(channels)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    engine.restart_audio()
+    return engine, fake
+
+
+def make_dead(engine):
+    """The callbacks stopped (a pulled cable) long enough ago."""
+    engine.audio.got_block = True
+    engine.audio.last_callback = time.monotonic() - 5
+
+
+def test_a_stream_without_callbacks_is_dead_and_not_running(monkeypatch):
+    inp, _, _ = make(monkeypatch, [MIC, INTERFACE], "Komplete", [1, 2])
+    inp._callback(np.zeros((4, 2), dtype="float32"), 4, None, None)
+    assert inp.status()["running"] and not inp.status()["dead"]
+    inp.last_callback = time.monotonic() - (audio_in.DEAD_AFTER_S + 0.1)
+    st = inp.status()
+    assert st["dead"] and not st["running"] and st["level"] == 0.0 and st["warning"] is None
+    assert st["error"] == "'Komplete Audio 6' disappeared. Check the cable: it reconnects by itself when the device is back."
+    inp._callback(np.zeros((4, 2), dtype="float32"), 4, None, None)  # blocks come again
+    assert inp.status()["running"]
+
+
+def test_a_slow_first_block_is_not_dead(monkeypatch):
+    inp, _, _ = make(monkeypatch, [INTERFACE], "Komplete", [1])
+    inp.last_callback = time.monotonic() - (audio_in.DEAD_AFTER_S + 0.1)  # no block yet, 0.6 s after the start
+    assert inp.status()["running"]
+    inp.last_callback = time.monotonic() - (audio_in.FIRST_CALLBACK_S + 0.1)
+    assert inp.status()["dead"]
+
+
+def test_a_device_missing_at_the_start_is_switched_to_when_it_appears(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    assert engine.audio.status()["device"] == "MacBook Pro Microphone" and engine.audio.device_missing
+
+    engine.audio_check()  # not plugged in: nothing is touched
+    assert fake.calls == [] and engine.audio.device == "MacBook Pro Microphone"
+
+    fake.devices.append(INTERFACE)
+    engine.audio_check()
+    st = engine.audio_status()
+    assert st["running"] and st["device"] == "Komplete Audio 6" and not st["device_missing"] and st["warning"] is None
+    assert fake.calls == ["terminate", "initialize"]
+    assert st["reconnect"]["lost"] is None and st["reconnect"]["back"] is not None  # "missing at start · back …"
+    engine.audio.stop()
+
+
+def test_a_dead_stream_shows_stopped_and_runs_again_when_the_device_is_back(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    assert engine.audio.device == "Komplete Audio 6"
+    make_dead(engine)
+    fake.devices.remove(INTERFACE)  # pulled out
+
+    engine.audio_check()  # not listed: nothing is touched, and no other device is switched to
+    st = engine.audio_status()
+    assert not st["running"] and "disappeared" in st["error"] and st["reconnect"]["lost"] is not None
+    assert st["reconnect"]["back"] is None and fake.calls == []
+
+    engine.audio_check()  # and again: still nothing, no reconnect to the microphone
+    assert fake.calls == [] and not engine.audio_status()["running"]
+
+    fake.devices.append(INTERFACE)  # plugged in
+    engine.audio_check()
+    st = engine.audio_status()
+    assert st["running"] and st["device"] == "Komplete Audio 6" and st["error"] is None
+    assert st["reconnect"]["lost"] < st["reconnect"]["back"]  # "lost 21:13:58 · back 21:14:05"
+    engine.audio.stop()
+
+
+def test_a_dead_stream_never_reconnects_to_another_device(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    make_dead(engine)
+    fake.devices.remove(INTERFACE)
+    for _ in range(3):
+        engine.audio_check()
+    assert [s.kwargs.get("device") for s in fake.streams] == [1]  # only the first open, on the interface
+    assert engine.audio.device == "Komplete Audio 6" and not engine.audio_status()["running"]
+    engine.audio.stop()
+
+
+def test_without_a_saved_device_a_dead_stream_restarts_on_the_system_default(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], None)
+    make_dead(engine)
+    engine.audio_check()
+    st = engine.audio_status()
+    assert st["running"] and st["reconnect"]["back"] is not None and fake.calls == ["terminate", "initialize"]
+    engine.audio.stop()
+
+
+def test_a_listed_device_that_wont_open_is_retried_after_a_pause(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    make_dead(engine)
+    fake.fail = True  # the device is there but busy
+    engine.audio_check()
+    assert not engine.audio_status()["running"] and fake.calls == ["terminate", "initialize"]
+    engine.audio_check()  # within the pause: not tried again
+    assert fake.calls == ["terminate", "initialize"]
+    engine._audio_retry_at = 0.0
+    fake.fail = False  # the other program let go
+    engine.audio_check()
+    assert engine.audio_status()["running"]
+    engine.audio.stop()
+
+
+def test_saving_another_device_forgets_the_drop(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    make_dead(engine)
+    fake.devices.remove(INTERFACE)
+    engine.audio_check()
+    assert engine.audio_status()["reconnect"]["lost"] is not None
+    store.settings.audio.device = "MacBook"  # the user picks the microphone and saves
+    engine.restart_audio(reinit=True)
+    engine.audio_check()
+    st = engine.audio_status()
+    assert st["running"] and st["reconnect"] is None
+    engine.audio.stop()
+
+
+def test_the_drop_is_logged_once_not_at_every_look(monkeypatch, store, caplog):
+    import logging
+
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    make_dead(engine)
+    fake.devices.remove(INTERFACE)
+    with caplog.at_level(logging.INFO):
+        for _ in range(4):
+            engine.audio_check()
+    assert sum("stopped delivering audio" in r.message for r in caplog.records) == 1
+    engine.audio.stop()

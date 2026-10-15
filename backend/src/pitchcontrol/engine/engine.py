@@ -33,6 +33,8 @@ from .phase import PhaseTracker
 log = logging.getLogger(__name__)
 
 PREVIEW_SIZE = 256
+AUDIO_WATCH_S = 2.0  # how often the audio input is looked at when it isn't on the saved device (item 30)
+AUDIO_RETRY_S = 10.0  # after a reconnect that didn't work (the device is listed but won't open), wait this long
 
 
 class MacroState(Scene):
@@ -48,6 +50,13 @@ class Engine:
         # stop → re-initialise PortAudio → start of the audio input, one at a time: two at once would terminate PortAudio
         # while the other thread opens its stream. Reentrant: ``rescan_audio`` calls ``restart_audio``.
         self._audio_restart = threading.RLock()
+        # item 30: what the audio watchdog saw. ``_audio_lost`` is the wall-clock time the input was lost (None: missing
+        # since the start), ``_audio_back`` when it came back; both are kept for the Inputs page, in memory only.
+        self._audio_problem: str | None = None  # "missing" | "dead" | "failed" while the saved device isn't running
+        self._audio_lost: float | None = None
+        self._audio_back: float | None = None
+        self._audio_link_device: str | None = None  # the saved device the two times above are about
+        self._audio_retry_at = 0.0
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()
@@ -137,6 +146,75 @@ class Engine:
             self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
             self.audio.start()
 
+    def audio_status(self) -> dict | None:
+        """The audio input's status, with when the input was lost and came back (``reconnect``, null before any drop)."""
+        audio = self.audio
+        if audio is None:
+            return None
+        st = audio.status()
+        link = {"lost": self._audio_lost, "back": self._audio_back}
+        st["reconnect"] = link if link["lost"] is not None or link["back"] is not None else None
+        return st
+
+    def audio_check(self) -> None:
+        """One look of the audio watchdog (every ``AUDIO_WATCH_S``): when the input isn't running on the device the user
+        saved (it was missing at the start, or its stream died), look at the real device list, which cuts nothing, and
+        only when the saved device is listed re-initialise PortAudio and restart on it. Never switches to another
+        device: with no device saved the system default is the user's choice, so a dead stream restarts on that.
+        Log lines are written once per change, not every look. Called from the watchdog's own thread: the list blocks
+        up to ``audio_in.LIST_TIMEOUT_S``, so never from the audio callback or the event loop."""
+        if not self.enable_hardware:
+            return
+        audio, saved = self.audio, self.store.settings.audio.device
+        if audio is None:
+            return
+        if saved != self._audio_link_device:  # another device was saved: what happened to the old one is no longer news
+            self._audio_lost = self._audio_back = None
+            self._audio_problem = None
+            self._audio_link_device = saved
+        st = audio.status()
+        if st["running"] and not st["device_missing"]:
+            if self._audio_problem is not None:
+                self._audio_back = time.time()
+                log.info("audio input is back on '%s'", st["device"])
+                self._audio_problem = None
+            return
+        problem = "dead" if st["dead"] else "missing" if st["device_missing"] else "failed"
+        if self._audio_problem != problem:
+            if self._audio_problem is None:  # a new drop, not a change of what is wrong with it
+                self._audio_lost = audio.last_block_epoch() if problem == "dead" else None
+                self._audio_back = None
+            self._audio_problem = problem
+            what = {
+                "dead": f"audio input '{st['device']}' stopped delivering audio",
+                "missing": f"saved audio device '{saved}' not found, listening to '{st['device']}'",
+                "failed": f"audio input could not be opened: {st['error']}",
+            }[problem]
+            log.warning("%s; it reconnects by itself when the device is there", what)
+        if time.monotonic() < self._audio_retry_at:
+            return
+        if saved and audio_in.match_device(saved, audio_in.list_input_devices_fresh()) is None:
+            return  # still not plugged in
+        with self._audio_restart:
+            if self._stop.is_set() or self.audio is not audio or self.store.settings.audio.device != saved:
+                return  # stopped, restarted by someone else or another device saved while the list was read
+            log.info("audio input: %s again, restarting on it", f"'{saved}' is listed" if saved else "restarting")
+            self.restart_audio(reinit=True)
+            new = self.audio.status() if self.audio else None
+            if new is None or not new["running"] or new["device_missing"]:
+                self._audio_retry_at = time.monotonic() + AUDIO_RETRY_S
+            else:
+                self._audio_back = time.time()
+                self._audio_problem = None
+                log.info("audio input is back on '%s'", new["device"])
+
+    def _audio_watch(self) -> None:
+        while not self._stop.wait(AUDIO_WATCH_S):
+            try:
+                self.audio_check()
+            except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
+                log.exception("audio watchdog")
+
     def rescan_audio(self, force: bool = False) -> dict | None:
         """Make PortAudio look for devices again and reopen the input. "Rescan devices" does it only when the input
         isn't running on the saved device (missing device, error, stopped): a rescan pressed during a show leaves a
@@ -147,7 +225,7 @@ class Engine:
                 self.restart_audio(reinit=True)
             elif self.enable_hardware and st is not None:
                 log.info("rescan devices: the audio input runs on '%s', left alone", st["device"])
-            return self.audio.status() if self.audio else None
+            return self.audio_status()
 
     def restart_midi(self) -> None:
         # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
@@ -314,6 +392,8 @@ class Engine:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="engine", daemon=True)
         self._thread.start()
+        if self.enable_hardware:
+            threading.Thread(target=self._audio_watch, name="audio-watchdog", daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -409,7 +489,7 @@ class Engine:
                 "overrides": self.overrides.snapshot(),
                 "io": {
                     "outputs": self.outputs.status(),
-                    "audio": self.audio.status() if self.audio else None,
+                    "audio": self.audio_status(),
                     "midi": midi.status() if midi else None,
                 },
             }

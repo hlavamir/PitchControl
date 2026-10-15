@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from typing import Callable
 
 import numpy as np
@@ -126,6 +127,10 @@ def find_device(name: str | None) -> int | None:
     return None
 
 
+DEAD_AFTER_S = 0.5  # no callback for this long: the stream is dead (item 29: a pulled interface just stops the callbacks)
+FIRST_CALLBACK_S = 2.0  # a slow driver may take longer for the first block than the gap between two
+
+
 class AudioInput:
     def __init__(self, device: str | None, channels: list[int], sample_rate: int, on_samples: Callable[[np.ndarray], None]):
         self.device_name = device
@@ -140,6 +145,8 @@ class AudioInput:
         self.device_inputs = 0
         self.used_channels: list[int] = self.channels  # the requested channels the device has
         self.level = 0.0  # peak input level of the last block (for the Inputs page meter)
+        self.last_callback: float | None = None  # time.monotonic() of the last block, or of the start before the first
+        self.got_block = False  # the callback has run at least once since the start
 
     def start(self) -> None:
         self.error = None
@@ -169,6 +176,8 @@ class AudioInput:
                 dtype="float32",
                 callback=self._callback,
             )
+            self.got_block = False
+            self.last_callback = time.monotonic()
             self.stream.start()
             self.device, self.device_inputs, self.used_channels = actual, inputs, used
             warnings = []
@@ -176,7 +185,7 @@ class AudioInput:
                 self.device_missing = True
                 warnings.append(
                     f"'{self.device_name}' not found: listening to the system default ('{actual}'). "
-                    "Plug it in and press Rescan devices."
+                    "It switches back by itself when it's plugged in."
                 )
             if fallback:
                 wanted = ", ".join(map(str, self.channels))
@@ -194,7 +203,7 @@ class AudioInput:
         except Exception as exc:  # noqa: BLE001
             self.error = (
                 f"'{name}' could not be opened ({exc}). "
-                "Pick another device, or press Rescan devices if you just plugged it in."
+                "It tries again every few seconds; another program may be using the device, or pick another device."
             )
             log.error("audio input failed: %s", self.error)
             self.stream = None
@@ -202,6 +211,8 @@ class AudioInput:
     def _callback(self, indata, frames, time_info, status) -> None:  # audio thread
         if status:
             log.debug("audio status: %s", status)
+        self.last_callback = time.monotonic()  # the age of this is what says the stream is dead (see ``dead``)
+        self.got_block = True
         mono = indata[:, [c - 1 for c in self.used_channels]].sum(axis=1)
         self.level = float(np.abs(mono).max()) if len(mono) else 0.0
         self.on_samples(mono)
@@ -215,16 +226,38 @@ class AudioInput:
                 pass
         self.stream = None
 
+    @property
+    def dead(self) -> bool:
+        """The stream is open but no longer delivers blocks: the device was pulled, or the driver stopped. Judged from the
+        age of the last block, so it needs no PortAudio call from another thread (``stream.active`` would)."""
+        if self.stream is None or self.last_callback is None:
+            return False
+        limit = DEAD_AFTER_S if self.got_block else FIRST_CALLBACK_S
+        return time.monotonic() - self.last_callback > limit
+
+    def last_block_epoch(self) -> float | None:
+        """Wall-clock time of the last block (for "lost 21:13:58"), or None before the stream was started."""
+        if self.last_callback is None:
+            return None
+        return time.time() - (time.monotonic() - self.last_callback)
+
     def status(self) -> dict:
+        dead = self.dead
+        error = self.error
+        if dead:  # a dead stream is not running, whatever the stream object says
+            error = (
+                f"'{self.device}' disappeared. Check the cable: it reconnects by itself when the device is back."
+            )
         return {
-            "running": self.stream is not None,
-            "error": self.error,
-            "warning": self.warning,
+            "running": self.stream is not None and not dead,
+            "error": error,
+            "warning": None if dead else self.warning,
             "device_missing": self.device_missing,
             "device": self.device,
             "device_inputs": self.device_inputs,
             "channels": self.used_channels,
-            "level": self.level,
+            "level": 0.0 if dead else self.level,
+            "dead": dead,
         }
 
 
