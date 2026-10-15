@@ -45,6 +45,18 @@ def list_midi_inputs() -> list[str]:
         return []
 
 
+def list_midi_inputs_checked() -> list[str] | None:
+    """The MIDI input names as they are now, or None when the system couldn't say: the watchdog (item 33) must tell
+    "the controller is gone" from "the listing failed", or one failed call would close a port that works."""
+    if mido is None:
+        return None
+    try:
+        return list(mido.get_input_names())
+    except Exception as exc:  # noqa: BLE001
+        log.warning("cannot list MIDI inputs: %s", exc)
+        return None
+
+
 def decode_step(value: int, encoder: str) -> int:
     """The signed number of steps a relative encoder message stands for."""
     if encoder == "offset_64":
@@ -114,16 +126,28 @@ class MidiInput:
                     )
 
     # -- port
+    def wanted_name(self) -> str:
+        """The port name (or part of it) looked for, as saved: the Settings port wins over the controller file's."""
+        return (self.port_override or (self.controller.port_match if self.controller else None) or "")
+
+    def find_port(self, names: list[str]) -> str | None:
+        """The first of ``names`` that contains the wanted name (case-insensitive): the one rule by which the port is
+        found, at the start and by the watchdog."""
+        match = self.wanted_name().lower()
+        return next((n for n in names if match and match in n.lower()), None)
+
     def start(self) -> None:
+        """Open the port. Called again by the watchdog while the input has an error: what goes wrong is logged when it
+        changes, not at every try."""
         if mido is None or self.controller is None:
             return
-        wanted = self.port_override or self.controller.port_match or ""  # shown as it is saved; matched in lower case
-        match = wanted.lower()
-        names = list_midi_inputs()
-        name = next((n for n in names if match and match in n.lower()), None)
+        wanted = self.wanted_name()  # shown as it is saved; matched in lower case
+        previous = (self.error_kind, self.error)
+        name = self.find_port(list_midi_inputs())
         if name is None:
             self.error, self.error_kind, self.port_wanted = f"no MIDI port matches '{wanted}'", "not_found", wanted
-            log.warning("MIDI input: %s", self.error)
+            if previous != (self.error_kind, self.error):
+                log.warning("MIDI input: %s", self.error)
             return
         try:
             self.port = mido.open_input(name, callback=self.handle)
@@ -132,7 +156,8 @@ class MidiInput:
             log.info("MIDI input: %s (controller '%s')", name, self.controller.name)
         except Exception as exc:  # noqa: BLE001
             self.error, self.error_kind, self.port_wanted = str(exc), "open_failed", name
-            log.error("MIDI input failed: %s", exc)
+            if previous != (self.error_kind, self.error):
+                log.error("MIDI input failed: %s", exc)
 
     def release_all(self) -> None:
         """Let go of everything the controller still holds: a momentary macro (fog!) must not stay on when the input

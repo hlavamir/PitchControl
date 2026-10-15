@@ -15,6 +15,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   appears. It only ever goes back to the device you selected, never to another one; with no device selected, a stopped
   input restarts on the system default (and the line names both devices, because that is where the device changes under
   you). A device that is there but can't be opened (another program holds it) is tried again every ten seconds.
+- **The MIDI controller reconnects by itself.** Plug it in after the app started, or pull the cable and plug it in
+  again: the input opens on its port within a couple of seconds, with nothing to press. A cable pulled while the
+  controller is in use shows "isn't connected" at once and lets go of any button that was held (a fog button goes
+  off). A port that can't be opened (another program holds it) is tried again until it is free. The Inputs page keeps
+  a line of what happened (`lost 21:13:58 · back 21:14:05`, or `not found at start · connected 21:14:05`).
 - **Find new devices** (Inputs page, audio section, end of the Device row): looks for audio devices plugged in after
   the app started and restarts the audio input, also while it runs; the analysis stops for about a quarter of a
   second. "Rescan devices" does the same only when the input isn't running on its device, so pressing it during a show

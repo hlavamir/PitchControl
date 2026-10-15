@@ -3,7 +3,7 @@ import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
-import { audioReconnectLine } from '../audioReconnect'
+import { reconnectLine } from '../reconnect'
 import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
 
@@ -45,7 +45,8 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const midiNote = midiNotice(io?.midi)
-  const reconnectLine = audioReconnectLine(io?.audio)
+  const audioLine = reconnectLine(io?.audio)
+  const midiLine = reconnectLine(io?.midi)
   const inputsNote = live
     ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
     : selected
@@ -119,9 +120,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             ! {io.audio.warning}
           </div>
         ) : null}
-        {reconnectLine && (
+        {audioLine && (
           <div className="my-1 px-2 text-[11px] text-dim" role="status">
-            {reconnectLine}
+            {audioLine}
           </div>
         )}
         <Row label="Gain" hint="Input gain before the analysis: raise it for a quiet signal. The bar shows the input level">
@@ -176,6 +177,11 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         {midiNote?.level === 'warning' && (
           <div className="my-1 px-2 py-1 text-[11px]" role="status">
             ! {midiNote.text}
+          </div>
+        )}
+        {midiLine && (
+          <div className="my-1 px-2 text-[11px] text-dim" role="status">
+            {midiLine}
           </div>
         )}
         <div className="mt-3" data-tip="Every MIDI message that arrives and the macro it moves; use it to check cables and the mapping">

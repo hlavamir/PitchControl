@@ -744,3 +744,109 @@ def test_the_wanted_port_keeps_the_name_as_it_was_saved(monkeypatch):
     midi.start()
     st = midi.status()
     assert st["port_wanted"] == "LCXL3 1 MIDI In" and st["error"] == "no MIDI port matches 'LCXL3 1 MIDI In'"
+
+
+# --------------------------------------------------------------------------- the MIDI input reconnects by itself (item 33)
+def watched_midi(monkeypatch, store, names, fail=(), match="lcxl3"):
+    """An engine with fake MIDI ports: ``names`` is the system's list right now (change it to plug and pull),
+    ``engine.midi_check()`` is one look of the watchdog. Returns (engine, names, opened)."""
+    import pitchcontrol.engine.engine as engine_module
+    from pitchcontrol.engine.engine import Engine
+
+    opened = fake_ports(monkeypatch, names, fail=fail)
+    monkeypatch.setattr(engine_module, "list_midi_inputs_checked", lambda: list(names) if names is not None else None)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    store.controller.port_match = match
+    engine.restart_midi()
+    return engine, names, opened
+
+
+def test_a_controller_plugged_in_late_opens_by_itself(monkeypatch, store):
+    engine, names, opened = watched_midi(monkeypatch, store, ["IAC Driver Bus 1"])
+    assert engine.midi.status()["error_kind"] == "not_found"
+    engine.midi_check()
+    assert opened == [] and engine.midi_status()["port"] is None  # not there yet: nothing touched
+
+    names.append("LCXL3 1 MIDI In")
+    first = engine.midi
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "LCXL3 1 MIDI In" and st["error"] is None and engine.midi is first  # same input, port opened
+    assert [p.name for p in opened] == ["LCXL3 1 MIDI In"]
+    assert st["reconnect"]["lost"] is None and st["reconnect"]["back"] is not None  # "not found at start · connected …"
+    engine.midi.stop()
+
+
+def test_a_pulled_controller_says_so_and_opens_again_when_it_is_back(monkeypatch, store):
+    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
+    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In"
+    engine.midi_check()
+    assert engine.midi_status()["reconnect"] is None  # healthy: nothing recorded
+
+    names.clear()  # the cable comes out: the open port object doesn't notice, the list does
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] is None and st["error_kind"] == "not_found" and opened[0].closed
+    assert st["reconnect"]["lost"] is not None and st["reconnect"]["back"] is None
+    assert st["reconnect"]["lost_device"] == "LCXL3 1 MIDI In"
+
+    names.append("LCXL3 1 MIDI In")
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "LCXL3 1 MIDI In" and st["error"] is None
+    assert st["reconnect"]["lost"] <= st["reconnect"]["back"] and st["reconnect"]["back_device"] == "LCXL3 1 MIDI In"
+    engine.midi.stop()
+
+
+def test_a_port_that_fails_to_open_is_retried_and_opens_when_it_is_free(monkeypatch, store, caplog):
+    import logging
+
+    engine, names, opened = watched_midi(
+        monkeypatch, store, ["LCXL3 1 MIDI In"], fail=("LCXL3 1 MIDI In",)
+    )
+    assert engine.midi_status()["error_kind"] == "open_failed"
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            engine.midi_check()
+    assert engine.midi_status()["port"] is None
+    assert sum("MIDI input failed" in r.getMessage() for r in caplog.records) == 1  # the same error is logged once (at the start), not at every try
+
+    fake_ports(monkeypatch, names)  # the other program let go
+    engine.midi_check()
+    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In" and engine.midi_status()["error"] is None
+    engine.midi.stop()
+
+
+def test_a_failed_listing_is_not_a_pulled_controller(monkeypatch, store):
+    import pitchcontrol.engine.engine as engine_module
+
+    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
+    monkeypatch.setattr(engine_module, "list_midi_inputs_checked", lambda: None)  # the system couldn't say
+    engine.midi_check()
+    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In" and not opened[0].closed
+    engine.midi.stop()
+
+
+def test_a_pulled_controller_lets_go_of_held_buttons(monkeypatch, store):
+    engine, names, _ = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
+    midi = engine.midi
+    released = []
+    monkeypatch.setattr(midi, "release_all", lambda: released.append(True))
+    names.clear()
+    engine.midi_check()
+    assert released  # a fog button held when the cable came out is switched off
+    engine.midi.stop()
+
+
+def test_saving_another_port_forgets_the_drop(monkeypatch, store):
+    engine, names, _ = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In", "Other 1"])
+    names.remove("LCXL3 1 MIDI In")
+    engine.midi_check()
+    assert engine.midi_status()["reconnect"]["lost"] is not None
+    store.settings.midi_input = "Other"  # the user picks another port and saves
+    engine.restart_midi()
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "Other 1" and st["reconnect"] is None
+    engine.midi.stop()
