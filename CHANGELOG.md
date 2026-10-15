@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.5.0 — 2026-10-15
+
 ### Added
 - **MIDI mapping in the app** (Inputs page, section 03): one row per macro with the control that drives it, a **Learn**
   button (move or press the control), buttons and notes as well as CCs, encoders (three relative modes), a channel per
