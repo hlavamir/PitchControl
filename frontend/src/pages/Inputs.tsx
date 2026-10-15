@@ -27,9 +27,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     api.get<BandInfo>('/api/audio/bands').then(setBands)
   }
   useEffect(refresh, [])
-  // "Rescan devices" also opens the audio input again when its device was missing or it stopped
+  // "Rescan devices" also opens the audio and the MIDI input again when they have an error (not a working one)
   const rescan = () => {
-    api.post('/api/devices/audio/rescan').finally(refresh)
+    Promise.allSettled([api.post('/api/devices/audio/rescan'), api.post('/api/devices/midi/rescan')]).finally(refresh)
   }
   // "Find new devices": PortAudio looks again and the input restarts, also while it runs fine (a short cut)
   const findAudioDevices = () => {
@@ -42,6 +42,17 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   // what the running input really listens to (a device with fewer inputs than set runs on the channels it has)
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  // why the MIDI input isn't running (the backend says what failed; the advice is worded here)
+  const midi = io?.midi
+  const midiError = !midi?.error
+    ? null
+    : midi.error_kind === 'not_found'
+      ? midi.port_override
+        ? `MIDI port '${midi.port_wanted}' not found. Check that it is plugged in, then press Rescan devices.`
+        : `MIDI controller not connected: no MIDI port matches '${midi.port_wanted}'${midi.controller ? ` (controller '${midi.controller}')` : ''}. Check that it is plugged in, then press Rescan devices.`
+      : midi.error_kind === 'open_failed'
+        ? `MIDI controller stopped: port '${midi.port_wanted}' could not be opened (${midi.error}). Another program may be using it: close it, then press Rescan devices.`
+        : `MIDI input: ${midi.error}`
   const inputsNote = live
     ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
     : selected
@@ -52,7 +63,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     // sections take half the page width side by side, or the full width under each other
     <div className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-between wide:col-span-2">
-        <Button onClick={rescan} tip="Look for newly plugged-in MIDI ports and controller files. Also restarts the audio input if it isn't running on its device">
+        <Button onClick={rescan} tip="Look for newly plugged-in MIDI ports and controller files. Also restarts an audio or MIDI input that has an error. A new audio device isn't listed? Use Find new devices in the audio section.">
           Rescan devices
         </Button>
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
@@ -155,6 +166,11 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             ))}
           </select>
         </Row>
+        {midiError && (
+          <div className="my-1 border border-edge px-2 py-1.5 text-[12px]" role="alert">
+            ✕ {midiError}
+          </div>
+        )}
         <div className="mt-3" data-tip="Every MIDI message that arrives and the macro it moves; use it to check cables and the mapping">
           <div className="mb-1 flex justify-between text-[11px] text-dim">
             <span>MIDI monitor — last messages (newest first)</span>

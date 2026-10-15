@@ -91,6 +91,8 @@ export interface IoStatus {
   error: string | null
   frames?: number
   level?: number
+  error_kind?: 'not_found' | 'open_failed' | null // MIDI input: what failed
+  port_wanted?: string | null // MIDI input: the match string that found nothing, or the port that wouldn't open
   warning?: string | null // audio input: it runs, but not as set up (fallback channel, system default instead of the device)
   device_missing?: boolean // audio input: the set device wasn't found, the system default is used
   device?: string | null // audio input: the device that was opened
