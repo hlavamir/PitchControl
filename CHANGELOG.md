@@ -12,6 +12,14 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   Terminal still shows it all, and a failed build ends with "BUILD FAILED" and the log's path. The package installs
   (`npm ci`, `pip`) no longer run quietly, so their warnings reach the log.
 
+### Fixed
+- **A microphone with one input works as the audio input** (the built-in microphone, an iPhone microphone): a device
+  with fewer inputs than the "Input channels" setting now runs on the channels it has instead of refusing to start. The
+  setting stays as saved. The Inputs page says what the input listens to ("device has 1 input · using channel 1"),
+  and shows as text why the input doesn't run or isn't on the device that was set (an interface that isn't plugged
+  in: the system default is used, and **Rescan devices** switches back to it). Before, only the status dot's tooltip
+  said "stopped".
+
 ## 1.5.0 — 2026-10-15
 
 ### Added

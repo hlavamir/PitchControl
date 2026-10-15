@@ -62,25 +62,26 @@ def make(monkeypatch, devices, device, channels, fail=False):
     return inp, fake, got
 
 
-def test_one_input_device_runs_on_channel_one_with_a_warning(monkeypatch):
+def test_one_input_device_with_default_channels_runs_on_channel_one_without_a_warning(monkeypatch):
     inp, fake, got = make(monkeypatch, [MIC, INTERFACE], "MacBook Pro", [1, 2])
     st = inp.status()
-    assert st["running"] and st["error"] is None
-    assert st["channels"] == [1] and st["device_inputs"] == 1
+    assert st["running"] and st["error"] is None and st["warning"] is None
+    assert st["channels"] == [1] and st["device_inputs"] == 1 and st["device"] == "MacBook Pro Microphone"
     assert fake.streams[0].kwargs["channels"] == 1
-    assert st["warning"] == "'MacBook Pro Microphone': device has 1 input, using channel 1 (channel 2 ignored)"
     assert inp.channels == [1, 2]  # the saved setting is untouched
     inp._callback(np.array([[0.25], [0.5]], dtype="float32"), 2, None, None)
     assert inp.status()["level"] == 0.5
     assert got[0].tolist() == [0.25, 0.5]
 
 
-def test_missing_channel_falls_back_to_channel_one(monkeypatch):
+def test_no_requested_channel_exists_falls_back_to_channel_one_with_a_warning(monkeypatch):
     inp, fake, _ = make(monkeypatch, [STEREO], "Stereo", [3])
     st = inp.status()
     assert st["running"] and st["channels"] == [1]
     assert fake.streams[0].kwargs["channels"] == 1
-    assert "channel 3 ignored" in st["warning"]
+    assert st["warning"] == (
+        "'Stereo Interface' has 2 inputs, channel 3 doesn't exist: listening to channel 1. Set Input channels to 1 or 2."
+    )
 
 
 def test_enough_inputs_open_the_requested_channels_without_a_warning(monkeypatch):
@@ -91,18 +92,67 @@ def test_enough_inputs_open_the_requested_channels_without_a_warning(monkeypatch
     assert fake.streams[0].kwargs["channels"] == 2
 
 
+def test_missing_device_uses_the_system_default_with_a_warning(monkeypatch):
+    inp, _, _ = make(monkeypatch, [MIC], "Komplete Audio 6", [1, 2])
+    st = inp.status()
+    assert st["running"] and st["device"] == "MacBook Pro Microphone"
+    assert st["warning"] == (
+        "'Komplete Audio 6' not found: using the system default (MacBook Pro Microphone). "
+        "Plug it in and press Rescan devices."
+    )
+
+
 def test_stream_that_fails_to_open_is_an_error_naming_the_device(monkeypatch):
     inp, _, _ = make(monkeypatch, [MIC], "MacBook", [1], fail=True)
     st = inp.status()
     assert not st["running"]
-    assert st["error"].startswith("'MacBook Pro Microphone': ")
+    assert st["error"].startswith("'MacBook Pro Microphone' could not be opened (")
+    assert st["error"].endswith("press Rescan devices if you just plugged it in.")
     assert st["warning"] is None
 
 
 def test_restart_clears_the_warning(monkeypatch):
-    inp, fake, _ = make(monkeypatch, [MIC, INTERFACE], "MacBook", [1, 2])
+    inp, fake, _ = make(monkeypatch, [MIC], "Komplete", [1, 2])
     assert inp.status()["warning"]
-    fake.devices[0] = dict(MIC, max_input_channels=2)
+    fake.devices.append(INTERFACE)
     inp.stop()
     inp.start()
-    assert inp.status()["warning"] is None and inp.status()["channels"] == [1, 2]
+    st = inp.status()
+    assert st["warning"] is None and st["device"] == "Komplete Audio 6" and st["channels"] == [1, 2]
+
+
+def test_rescan_restarts_only_an_input_that_isnt_running_as_configured(store):
+    from fastapi.testclient import TestClient
+
+    from pitchcontrol.engine.engine import Engine
+    from pitchcontrol.server.app import create_app
+
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True  # the app is built without opening devices; the endpoint checks the flag
+    restarts = []
+
+    class Input:
+        def __init__(self, **status):
+            self._status = {"running": True, "warning": None, "error": None, **status}
+
+        def status(self):
+            return self._status
+
+    def restart():
+        restarts.append(1)
+        engine.audio = Input()
+
+    engine.restart_audio = restart
+    client = TestClient(create_app(engine))
+
+    engine.audio = Input()
+    assert client.post("/api/audio/rescan").status_code == 200
+    assert restarts == []  # a working input isn't touched
+
+    engine.audio = Input(warning="'Komplete Audio 6' not found: using the system default")
+    assert client.post("/api/audio/rescan").json()["warning"] is None
+    assert restarts == [1]
+
+    engine.audio = Input(running=False, error="could not be opened")
+    client.post("/api/audio/rescan")
+    assert restarts == [1, 1]

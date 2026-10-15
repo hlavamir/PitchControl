@@ -77,14 +77,15 @@ class AudioInput:
         try:
             index = find_device(self.device_name)
             info = sd.query_devices(index if index is not None else sd.default.device[0])
-            name = info["name"]
+            actual = info["name"]
+            name = actual
             inputs = info["max_input_channels"]
             if inputs < 1:
-                raise ValueError("device has no inputs")
+                raise ValueError("it has no inputs")
             # A device with fewer inputs than requested (a laptop microphone has one) runs on the channels it has.
             # The saved channels stay as they are, so they work again when the interface is back.
             used = [c for c in self.channels if c <= inputs] or [1]
-            ignored = [c for c in self.channels if c not in used]
+            fallback = not any(c <= inputs for c in self.channels)
             self.stream = sd.InputStream(
                 device=index,
                 channels=max(used),
@@ -93,17 +94,31 @@ class AudioInput:
                 callback=self._callback,
             )
             self.stream.start()
-            self.device, self.device_inputs, self.used_channels = name, inputs, used
-            if ignored:
-                self.warning = (
-                    f"'{name}': device has {inputs} input{'s' if inputs != 1 else ''}, "
-                    f"using channel{'s' if len(used) != 1 else ''} {', '.join(map(str, used))} "
-                    f"(channel{'s' if len(ignored) != 1 else ''} {', '.join(map(str, ignored))} ignored)"
+            self.device, self.device_inputs, self.used_channels = actual, inputs, used
+            warnings = []
+            if self.device_name and index is None:
+                warnings.append(
+                    f"'{self.device_name}' not found: using the system default ({actual}). "
+                    "Plug it in and press Rescan devices."
                 )
+            if fallback:
+                wanted = ", ".join(map(str, self.channels))
+                valid = "1" if inputs == 1 else "1 or 2" if inputs == 2 else f"1 to {inputs}"
+                warnings.append(
+                    f"'{actual}' has {inputs} input{'s' if inputs != 1 else ''}, "
+                    f"channel{'s' if len(self.channels) != 1 else ''} {wanted} "
+                    f"{'do' if len(self.channels) != 1 else 'does'}n't exist: listening to channel 1. "
+                    f"Set Input channels to {valid}."
+                )
+            if warnings:
+                self.warning = " ".join(warnings)
                 log.warning("audio input: %s", self.warning)
-            log.info("audio input: '%s', channels %s, %d Hz", name, used, self.sample_rate)
+            log.info("audio input: '%s', channels %s, %d Hz", actual, used, self.sample_rate)
         except Exception as exc:  # noqa: BLE001
-            self.error = f"'{name}': {exc}"
+            self.error = (
+                f"'{name}' could not be opened ({exc}). "
+                "Pick another device, or press Rescan devices if you just plugged it in."
+            )
             log.error("audio input failed: %s", self.error)
             self.stream = None
 

@@ -91,6 +91,10 @@ export interface IoStatus {
   error: string | null
   frames?: number
   level?: number
+  warning?: string | null // audio input: it runs, but not as set up (fallback channel, system default instead of the device)
+  device?: string | null // audio input: the device that was opened
+  device_inputs?: number // audio input: its number of inputs
+  channels?: number[] // audio input: the channels listened to
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   port?: string | null
   port_override?: string | null // the MIDI port set in Settings, which wins over the controller file's

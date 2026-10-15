@@ -27,16 +27,28 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     api.get<BandInfo>('/api/audio/bands').then(setBands)
   }
   useEffect(refresh, [])
+  // "Rescan devices" also opens an audio input again that fell back or stopped (the interface was plugged in late)
+  const rescan = () => {
+    api.post('/api/audio/rescan').finally(refresh)
+  }
   if (!settings) return null
   const a = settings.audio
   const io = engine.state?.io
   const selected = audioDevices.find((d) => a.device && d.label.toLowerCase().includes(a.device.toLowerCase()))
+  // what the running input really listens to (a device with fewer inputs than set runs on the channels it has)
+  const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  const inputsNote = live
+    ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using channel${live.channels?.length === 1 ? '' : 's'} ${live.channels?.join(', ')}`
+    : selected
+      ? `device has ${plural(selected.channels, 'input')}`
+      : null
 
   return (
     // sections take half the page width side by side, or the full width under each other
     <div className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-between wide:col-span-2">
-        <Button onClick={refresh} tip="Look for newly plugged-in audio devices, MIDI ports and controller files">
+        <Button onClick={rescan} tip="Look for newly plugged-in audio devices, MIDI ports and controller files">
           Rescan devices
         </Button>
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
@@ -81,8 +93,17 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
               )
             }
           />
-          {selected && <span className="text-[11px] text-dim">device has {selected.channels} inputs</span>}
+          {inputsNote && <span className="text-[11px] text-dim">{inputsNote}</span>}
         </Row>
+        {io?.audio?.error ? (
+          <div className="my-1 border border-edge px-2 py-1.5 text-[12px]" role="alert">
+            ✕ Audio input stopped: {io.audio.error}
+          </div>
+        ) : io?.audio?.warning ? (
+          <div className="my-1 px-2 py-1 text-[12px]" role="status">
+            ! {io.audio.warning}
+          </div>
+        ) : null}
         <Row label="Gain" hint="Input gain before the analysis: raise it for a quiet signal. The bar shows the input level">
           <NumberInput value={a.gain} min={0} onChange={(v) => update((s) => (s.audio.gain = v))} />
           <div className="h-2 w-40 bg-panel-2" data-hint="info" data-tip="Input level after the gain; if it hits the right end on loud music, lower the gain or the source">
