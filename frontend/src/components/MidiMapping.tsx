@@ -3,6 +3,7 @@ import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry,
 import type { EngineConnection } from '../useEngine'
 import { useLeaveGuard } from '../leaveGuard'
 import { clashes as findClashes, channelOf, deadMappings, defaultMode, newMapping } from '../midiMapping'
+import { midiNotice } from '../midiNotice'
 import { Button, Row, Section } from './forms'
 import { MidiMappingRow } from './MidiMappingRow'
 
@@ -161,6 +162,8 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     // an override in Settings (section 02) decides the port, so the controller file's port doesn't matter
     if (!midi?.port_override && dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
     if (!midi?.port) {
+      const note = midiNotice(midi)
+      if (note) return { why: note.text, fix: null } // the Inputs page's words for the same case
       const where = midi?.port_override ? `the MIDI port in Settings (section 02: "${midi.port_override}")` : 'the MIDI port on the Controller tab'
       return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that ${where} matches its name.`, fix: null }
     }

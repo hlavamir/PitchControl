@@ -3,6 +3,7 @@ import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
+import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
 
 interface BandInfo {
@@ -42,17 +43,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   // what the running input really listens to (a device with fewer inputs than set runs on the channels it has)
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-  // why the MIDI input isn't running (the backend says what failed; the advice is worded here)
-  const midi = io?.midi
-  const midiError = !midi?.error
-    ? null
-    : midi.error_kind === 'not_found'
-      ? midi.port_override
-        ? `MIDI port '${midi.port_wanted}' not found. Check that it is plugged in, then press Rescan devices.`
-        : `MIDI controller not connected: no MIDI port matches '${midi.port_wanted}'${midi.controller ? ` (controller '${midi.controller}')` : ''}. Check that it is plugged in, then press Rescan devices.`
-      : midi.error_kind === 'open_failed'
-        ? `MIDI controller stopped: port '${midi.port_wanted}' could not be opened (${midi.error}). Another program may be using it: close it, then press Rescan devices.`
-        : `MIDI input: ${midi.error}`
+  const midiNote = midiNotice(io?.midi)
   const inputsNote = live
     ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
     : selected
@@ -166,9 +157,14 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
             ))}
           </select>
         </Row>
-        {midiError && (
+        {midiNote?.level === 'error' && (
           <div className="my-1 border border-edge px-2 py-1.5 text-[12px]" role="alert">
-            ✕ {midiError}
+            ✕ {midiNote.text}
+          </div>
+        )}
+        {midiNote?.level === 'warning' && (
+          <div className="my-1 px-2 py-1 text-[11px]" role="status">
+            ! {midiNote.text}
           </div>
         )}
         <div className="mt-3" data-tip="Every MIDI message that arrives and the macro it moves; use it to check cables and the mapping">
