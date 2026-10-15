@@ -130,9 +130,9 @@ class Engine:
             self.audio = None
             if not self.enable_hardware:
                 return
-            if reinit:
-                audio_in.reinit_portaudio()
             a = self.store.settings.audio
+            if reinit:
+                audio_in.reinit_portaudio(a.device)
             self.rebuild_audio_analysis()
             self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
             self.audio.start()
@@ -145,6 +145,8 @@ class Engine:
             st = self.audio.status() if self.audio else None
             if self.enable_hardware and st is not None and (force or not st["running"] or st["device_missing"]):
                 self.restart_audio(reinit=True)
+            elif self.enable_hardware and st is not None:
+                log.info("rescan devices: the audio input runs on '%s', left alone", st["device"])
             return self.audio.status() if self.audio else None
 
     def restart_midi(self) -> None:

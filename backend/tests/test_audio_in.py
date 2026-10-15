@@ -251,3 +251,39 @@ def test_audio_restarts_run_one_after_the_other(monkeypatch, store):
     assert sum(1 for st in fake.streams if st.started) == 1  # one open stream, not two
     assert engine.audio.status()["running"]
     engine.audio.stop()
+
+
+def test_every_reinit_logs_the_device_list_and_whether_the_saved_device_was_found(monkeypatch, store, caplog):
+    import logging
+
+    from pitchcontrol.engine.engine import Engine
+
+    fake = FakeSd([MIC])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    store.settings.audio.device = "Komplete"
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    engine.restart_audio()  # the interface is unplugged: the stand-in runs
+    caplog.set_level(logging.INFO)
+
+    def lines():
+        return [r.getMessage() for r in caplog.records if r.getMessage().startswith(("audio devices after re-init", "rescan devices"))]
+
+    engine.rescan_audio()  # "Rescan devices"
+    assert lines() == [
+        "audio devices after re-init: 'MacBook Pro Microphone (Core Audio)'; saved device 'Komplete' NOT found"
+    ]
+    caplog.clear()
+    fake.devices.append(INTERFACE)  # replugged
+    engine.rescan_audio(force=True)  # "Find new devices"
+    assert lines() == [
+        "audio devices after re-init: 'MacBook Pro Microphone (Core Audio)', 'Komplete Audio 6 (Core Audio)'; "
+        "saved device 'Komplete' found"
+    ]
+    caplog.clear()
+    engine.rescan_audio()  # runs on the saved device: left alone, and the log says so
+    assert lines() == ["rescan devices: the audio input runs on 'Komplete Audio 6', left alone"]
+    caplog.clear()
+    engine.restart_audio(reinit=True)  # what a settings save that changes the device does after a re-init
+    assert len(lines()) == 1 and lines()[0].endswith("saved device 'Komplete' found")
+    engine.audio.stop()

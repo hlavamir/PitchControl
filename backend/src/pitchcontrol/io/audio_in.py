@@ -41,8 +41,9 @@ def list_input_devices() -> list[dict]:
     return out
 
 
-def reinit_portaudio() -> None:
-    """Make PortAudio list the devices as they are now.
+def reinit_portaudio(saved: str | None = None) -> None:
+    """Make PortAudio list the devices as they are now, and log them with whether the ``saved`` device is among them
+    (one line, so that a replug that didn't work can be read from the log afterwards).
 
     PortAudio enumerates its devices once, when it is initialised, so a device plugged in after the start only shows up
     after a terminate and initialise. All streams must be closed first. (``_terminate``/``_initialize`` are
@@ -55,6 +56,15 @@ def reinit_portaudio() -> None:
         sd._initialize()
     except Exception as exc:  # noqa: BLE001
         log.error("PortAudio could not be re-initialised: %s", exc)
+        return
+    labels = [d["label"] for d in list_input_devices()]
+    if not saved:
+        verdict = "no device saved (the system default is used)"
+    elif any(saved.lower() in label.lower() for label in labels):
+        verdict = f"saved device '{saved}' found"
+    else:
+        verdict = f"saved device '{saved}' NOT found"
+    log.info("audio devices after re-init: %s; %s", ", ".join(f"'{label}'" for label in labels) or "none", verdict)
 
 
 def find_device(name: str | None) -> int | None:
