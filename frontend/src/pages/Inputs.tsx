@@ -54,7 +54,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
     // sections take half the page width side by side, or the full width under each other
     <div className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-between wide:col-span-2">
-        <Button onClick={rescan} tip="Look for newly plugged-in MIDI ports and controller files. Also restarts an audio or MIDI input that has an error. A new audio device isn't listed? Use Find new devices in the audio section.">
+        <Button onClick={rescan} tip="Looks for newly plugged-in MIDI ports and controller files, and reconnects the MIDI controller or the audio input if it isn't running. A new audio device isn't listed? Use Find new devices in the audio section.">
           Rescan devices
         </Button>
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
