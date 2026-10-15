@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
+import sys
 from typing import Callable
 
 import numpy as np
@@ -41,6 +44,51 @@ def list_input_devices() -> list[dict]:
     return out
 
 
+def match_device(name: str | None, devices: list[dict]) -> dict | None:
+    """The first of ``devices`` whose "name (host api)" label contains ``name`` (case-insensitive): the one rule by
+    which the saved device is found, in this process and in a list read by another one (indices differ between
+    processes, labels don't)."""
+    if not name:
+        return None
+    return next((d for d in devices if name.lower() in d["label"].lower()), None)
+
+
+LIST_FLAG = "--list-audio-devices"
+LIST_TIMEOUT_S = 2.0  # the child needs about 0.3 s (measured on the Mac, item 32); a stuck driver must not hang the app
+
+
+def list_input_devices_fresh() -> list[dict]:
+    """The input devices as they are right now, without touching the stream that is running: a short-lived child process
+    has its own PortAudio, which enumerates the devices afresh when it starts, and opens no stream (the running stream
+    would be closed by a re-init in this process). The ``index`` of each entry is the child's: match by label
+    (``match_device``). Falls back to the list of this process, with a warning, if the child fails or takes too long."""
+    if sd is None:
+        return []
+    if getattr(sys, "frozen", False):
+        cmd = [sys.executable, LIST_FLAG]  # the app binary itself, handled in packaging/app_entry.py before the app starts
+    else:
+        cmd = [sys.executable, "-m", "pitchcontrol.io.audio_in", LIST_FLAG]
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=LIST_TIMEOUT_S,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"exit code {res.returncode}: {res.stderr.decode(errors='replace').strip()[-200:]}")
+        return json.loads(res.stdout.decode())
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not list the audio devices in a child process (%s): using this process's list", exc)
+        return list_input_devices()
+
+
+def list_devices_main() -> None:
+    """The child's job (``--list-audio-devices``): print the input devices as JSON on stdout and exit. Written with
+    ``os.write``: a windowed app has no ``sys.stdout`` on Windows."""
+    os.write(1, json.dumps(list_input_devices()).encode())
+
+
 def reinit_portaudio(saved: str | None = None) -> None:
     """Make PortAudio list the devices as they are now, and log them with whether the ``saved`` device is among them
     (one line, so that a replug that didn't work can be read from the log afterwards).
@@ -60,7 +108,7 @@ def reinit_portaudio(saved: str | None = None) -> None:
     labels = [d["label"] for d in list_input_devices()]
     if not saved:
         verdict = "no device saved (the system default is used)"
-    elif any(saved.lower() in label.lower() for label in labels):
+    elif match_device(saved, [{"label": label} for label in labels]):
         verdict = f"saved device '{saved}' found"
     else:
         verdict = f"saved device '{saved}' NOT found"
@@ -71,9 +119,9 @@ def find_device(name: str | None) -> int | None:
     """Index of the first input device whose "name (host api)" label contains ``name``."""
     if not name:
         return None
-    for d in list_input_devices():
-        if name.lower() in d["label"].lower():
-            return d["index"]
+    found = match_device(name, list_input_devices())
+    if found:
+        return found["index"]
     log.warning("audio device '%s' not found, using the system default", name)
     return None
 
@@ -178,3 +226,8 @@ class AudioInput:
             "channels": self.used_channels,
             "level": self.level,
         }
+
+
+if __name__ == "__main__":  # python -m pitchcontrol.io.audio_in --list-audio-devices (the child, in a source run)
+    if LIST_FLAG in sys.argv:
+        list_devices_main()

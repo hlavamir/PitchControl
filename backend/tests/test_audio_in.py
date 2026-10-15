@@ -287,3 +287,73 @@ def test_every_reinit_logs_the_device_list_and_whether_the_saved_device_was_foun
     engine.restart_audio(reinit=True)  # what a settings save that changes the device does after a re-init
     assert len(lines()) == 1 and lines()[0].endswith("saved device 'Komplete' found")
     engine.audio.stop()
+
+
+# ---------------------------------------------------------------- the device list read by a child process (item 32)
+def test_the_child_process_lists_the_devices_of_this_computer_without_this_processes_portaudio(monkeypatch):
+    import pytest
+
+    if audio_in.sd is None:
+        pytest.skip("PortAudio is not available here")
+    real = audio_in.list_input_devices()
+    fresh = audio_in.list_input_devices_fresh()  # runs `python -m pitchcontrol.io.audio_in --list-audio-devices`
+    assert [d["label"] for d in fresh] == [d["label"] for d in real]
+    assert all({"index", "name", "hostapi", "label", "channels", "default_samplerate"} <= d.keys() for d in fresh)
+
+
+def test_fresh_list_leaves_the_running_streams_portaudio_alone(monkeypatch):
+    fake = FakeSd([MIC, INTERFACE])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    inp = audio_in.AudioInput("Komplete", [1, 2], 48000, lambda s: None)
+    inp.start()
+    fake.devices.append(STEREO)  # plugged in after the start
+
+    class Done:
+        returncode = 0
+        stdout = b'[{"index": 3, "name": "Stereo Interface", "hostapi": "Core Audio", "label": "Stereo Interface (Core Audio)", "channels": 2, "default_samplerate": 48000.0}]'
+        stderr = b""
+
+    monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: Done())  # the child, which has its own PortAudio
+    fresh = audio_in.list_input_devices_fresh()
+    assert [d["label"] for d in fresh] == ["Stereo Interface (Core Audio)"]
+    assert fake.calls == [] and inp.stream.started and inp.status()["running"]  # not terminated, not closed
+    inp.stop()
+
+
+def test_fresh_list_falls_back_to_this_processs_list_when_the_child_hangs(monkeypatch, caplog):
+    import subprocess
+    import sys
+
+    fake = FakeSd([MIC])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    monkeypatch.setattr(audio_in, "LIST_TIMEOUT_S", 0.3)
+    real_run = subprocess.run
+    monkeypatch.setattr(
+        audio_in.subprocess, "run", lambda cmd, **k: real_run([sys.executable, "-c", "import time; time.sleep(10)"], **k)
+    )
+    t0 = time.monotonic()
+    fresh = audio_in.list_input_devices_fresh()
+    assert time.monotonic() - t0 < 3
+    assert [d["label"] for d in fresh] == ["MacBook Pro Microphone (Core Audio)"]
+    assert "could not list the audio devices in a child process" in caplog.text
+
+
+def test_fresh_list_falls_back_when_the_child_fails(monkeypatch):
+    fake = FakeSd([MIC])
+    monkeypatch.setattr(audio_in, "sd", fake)
+
+    class Failed:
+        returncode = 1
+        stdout = b""
+        stderr = b"Traceback ... OSError: PortAudio library not found"
+
+    monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: Failed())
+    assert [d["label"] for d in audio_in.list_input_devices_fresh()] == ["MacBook Pro Microphone (Core Audio)"]
+
+
+def test_match_device_is_one_rule_for_both_lists():
+    devices = [{"label": "Komplete Audio 6 (Core Audio)"}, {"label": "MacBook Pro Microphone (Core Audio)"}]
+    assert audio_in.match_device("komplete", devices) is devices[0]
+    assert audio_in.match_device("Komplete Audio 6 (Core Audio)", devices) is devices[0]
+    assert audio_in.match_device("Scarlett", devices) is None
+    assert audio_in.match_device(None, devices) is None and audio_in.match_device("", devices) is None
