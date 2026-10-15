@@ -57,6 +57,8 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const midiNote = midiNotice(io?.midi)
   const audioLine = reconnectLine(io?.audio)
+  // no blocks arrive: the lights hold the look they had (item 30), so the bands below are the held ones, not live
+  const bandsHeld = !!io?.audio && !io.audio.running
   const midiLine = reconnectLine(io?.midi)
   const inputsNote = live
     ? `device has ${plural(live.device_inputs ?? 0, 'input')} · using ${live.channels?.length === 1 ? 'channel ' : ''}${live.channels?.join(', ')}`
@@ -135,10 +137,12 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         <div className="mt-3" data-tip="Level of each frequency band, low to high. Dotted line: how much a band counts for the strobo trigger (bass most)">
           <div className="mb-1 flex justify-between text-[11px] text-dim">
             <span>{bands ? `${bands.edges[0]} Hz` : ''}</span>
-            <span>32 bands · dotted line = strobo trigger weight</span>
+            <span>{bandsHeld ? 'input stopped · lights hold the last look' : '32 bands · dotted line = strobo trigger weight'}</span>
             <span>{bands ? `${bands.edges[bands.edges.length - 1]} Hz` : ''}</span>
           </div>
-          <BandMeter bands={engine.state?.bands ?? []} peaks={engine.state?.band_peaks} weights={bands?.trigger_weights} height={100} />
+          <div style={{ opacity: bandsHeld ? 0.35 : 1 }}>
+            <BandMeter bands={engine.state?.bands ?? []} peaks={engine.state?.band_peaks} weights={bands?.trigger_weights} height={100} />
+          </div>
         </div>
       </Section>
 
