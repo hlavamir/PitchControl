@@ -60,37 +60,57 @@ class AudioInput:
         self.on_samples = on_samples
         self.stream = None
         self.error: str | None = None
+        self.warning: str | None = None  # the input runs, but not as configured
+        self.device: str | None = None  # the device actually opened
+        self.device_inputs = 0
+        self.used_channels: list[int] = self.channels  # the requested channels the device has
         self.level = 0.0  # peak input level of the last block (for the Inputs page meter)
 
     def start(self) -> None:
+        self.error = None
+        self.warning = None
+        self.device, self.device_inputs, self.used_channels = None, 0, self.channels
         if sd is None:
             self.error = "sounddevice / PortAudio not available"
             return
+        name = self.device_name or "system default"
         try:
             index = find_device(self.device_name)
             info = sd.query_devices(index if index is not None else sd.default.device[0])
-            needed = max(self.channels)
-            if needed > info["max_input_channels"]:
-                raise ValueError(f"device has {info['max_input_channels']} inputs, channel {needed} requested")
+            name = info["name"]
+            inputs = info["max_input_channels"]
+            if inputs < 1:
+                raise ValueError("device has no inputs")
+            # A device with fewer inputs than requested (a laptop microphone has one) runs on the channels it has.
+            # The saved channels stay as they are, so they work again when the interface is back.
+            used = [c for c in self.channels if c <= inputs] or [1]
+            ignored = [c for c in self.channels if c not in used]
             self.stream = sd.InputStream(
                 device=index,
-                channels=needed,
+                channels=max(used),
                 samplerate=self.sample_rate,
                 dtype="float32",
                 callback=self._callback,
             )
             self.stream.start()
-            self.error = None
-            log.info("audio input: %s, channels %s, %d Hz", info["name"], self.channels, self.sample_rate)
+            self.device, self.device_inputs, self.used_channels = name, inputs, used
+            if ignored:
+                self.warning = (
+                    f"'{name}': device has {inputs} input{'s' if inputs != 1 else ''}, "
+                    f"using channel{'s' if len(used) != 1 else ''} {', '.join(map(str, used))} "
+                    f"(channel{'s' if len(ignored) != 1 else ''} {', '.join(map(str, ignored))} ignored)"
+                )
+                log.warning("audio input: %s", self.warning)
+            log.info("audio input: '%s', channels %s, %d Hz", name, used, self.sample_rate)
         except Exception as exc:  # noqa: BLE001
-            self.error = str(exc)
-            log.error("audio input failed: %s", exc)
+            self.error = f"'{name}': {exc}"
+            log.error("audio input failed: %s", self.error)
             self.stream = None
 
     def _callback(self, indata, frames, time_info, status) -> None:  # audio thread
         if status:
             log.debug("audio status: %s", status)
-        mono = indata[:, [c - 1 for c in self.channels]].sum(axis=1)
+        mono = indata[:, [c - 1 for c in self.used_channels]].sum(axis=1)
         self.level = float(np.abs(mono).max()) if len(mono) else 0.0
         self.on_samples(mono)
 
@@ -104,4 +124,12 @@ class AudioInput:
         self.stream = None
 
     def status(self) -> dict:
-        return {"running": self.stream is not None, "error": self.error, "level": self.level}
+        return {
+            "running": self.stream is not None,
+            "error": self.error,
+            "warning": self.warning,
+            "device": self.device,
+            "device_inputs": self.device_inputs,
+            "channels": self.used_channels,
+            "level": self.level,
+        }
