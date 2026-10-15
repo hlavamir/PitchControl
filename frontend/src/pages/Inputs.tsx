@@ -31,6 +31,10 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const rescan = () => {
     api.post('/api/devices/audio/rescan').finally(refresh)
   }
+  // "Find new devices": PortAudio looks again and the input restarts, also while it runs fine (a short cut)
+  const findAudioDevices = () => {
+    api.post('/api/devices/audio/rescan', { restart: true }).finally(refresh)
+  }
   if (!settings) return null
   const a = settings.audio
   const io = engine.state?.io
@@ -77,6 +81,12 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
               </option>
             ))}
           </select>
+          <Button
+            onClick={findAudioDevices}
+            tip="Looks for newly plugged-in audio devices. Restarts the audio input: the analysis stops for a moment"
+          >
+            Find new devices
+          </Button>
         </Row>
         <Row label="Input channels" hint="Numbers of the device inputs to listen to, 1-based, comma separated; they are summed to mono">
           <input

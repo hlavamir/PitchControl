@@ -1,5 +1,8 @@
 """AudioInput on devices with fewer inputs than the configured channels (item 25)."""
 
+import threading
+import time
+
 import numpy as np
 
 from pitchcontrol.io import audio_in
@@ -36,13 +39,20 @@ class FakeSd:
         self.fail = fail
         self.streams: list[FakeStream] = []
         self.calls: list[str] = []
+        self.slow = False
+        self.in_reinit = False
 
     def _terminate(self):
         self.calls.append("terminate")
+        if self.slow:
+            assert not self.in_reinit, "PortAudio terminated while it was being re-initialised"
+            self.in_reinit = True
+            time.sleep(0.05)
 
     def _initialize(self):
         self.calls.append("initialize")
         self.listed = list(self.devices)
+        self.in_reinit = False
 
     def query_devices(self, index=None):
         if index is None:
@@ -191,3 +201,53 @@ def test_rescan_endpoint(store):
     client = TestClient(create_app(engine))
     r = client.post("/api/devices/audio/rescan")
     assert r.status_code == 200 and r.json() is None
+
+
+def test_find_new_devices_reinitialises_even_while_the_input_runs(monkeypatch, store):
+    from pitchcontrol.engine.engine import Engine
+
+    fake = FakeSd([MIC])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    engine.restart_audio()
+    assert engine.audio.status()["running"] and fake.calls == []
+
+    fake.devices.append(INTERFACE)  # plugged in while the microphone is listened to
+    assert "Komplete Audio 6" not in [d["label"].split(" (")[0] for d in audio_in.list_input_devices()]
+    old = engine.audio
+    st = engine.rescan_audio(force=True)
+    assert fake.calls == ["terminate", "initialize"] and engine.audio is not old and old.stream is None
+    assert st["running"]
+    assert "Komplete Audio 6" in [d["label"].split(" (")[0] for d in audio_in.list_input_devices()]
+    engine.audio.stop()
+
+
+def test_audio_restarts_run_one_after_the_other(monkeypatch, store):
+    from pitchcontrol.engine.engine import Engine
+
+    fake = FakeSd([MIC, INTERFACE])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    engine.restart_audio()
+    fake.slow = True  # a re-init takes a while, so that two threads would overlap in it without the lock
+    errors = []
+
+    def go(force):
+        try:
+            engine.rescan_audio(force=force)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=go, args=(True,)) for _ in range(3)]
+    threads.append(threading.Thread(target=engine.restart_audio))  # a settings save
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert fake.calls == ["terminate", "initialize"] * 3
+    assert sum(1 for st in fake.streams if st.started) == 1  # one open stream, not two
+    assert engine.audio.status()["running"]
+    engine.audio.stop()

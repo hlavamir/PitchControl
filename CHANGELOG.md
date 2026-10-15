@@ -6,6 +6,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Find new devices** (Inputs page, audio section, end of the Device row): looks for audio devices plugged in after
+  the app started and restarts the audio input, also while it runs; the analysis stops for about a quarter of a
+  second. "Rescan devices" does the same only when the input isn't running on its device, so pressing it during a show
+  leaves a working input alone.
+
 ### Changed
 - **macOS build script:** everything the build prints, warnings and errors included, is also written to
   `build-macos.log` in the repo root (the latest run only, gitignored), with a header of the tool versions. The

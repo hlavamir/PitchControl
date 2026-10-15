@@ -643,9 +643,10 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         return list_input_devices()
 
     @app.post("/api/devices/audio/rescan")
-    def audio_rescan():
-        """Part of "Rescan devices": reopen the audio input if it isn't running on the saved device (see Engine)."""
-        return engine.rescan_audio()
+    def audio_rescan(data: dict | None = None):
+        """"Rescan devices": reopen the audio input if it isn't running on the saved device. With ``{"restart": true}``
+        ("Find new devices") always: PortAudio is re-initialised and the input restarted, which cuts it for a moment."""
+        return engine.rescan_audio(force=bool(data and data.get("restart")))
 
     @app.get("/api/devices/midi")
     def midi_devices():

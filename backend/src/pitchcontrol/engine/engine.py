@@ -45,6 +45,9 @@ class Engine:
         self.enable_hardware = enable_hardware
         self.lock = threading.RLock()
         self.ui_unsaved = UnsavedReports()  # what the open pages say about their unsaved edits (asked when the desktop app quits)
+        # stop → re-initialise PortAudio → start of the audio input, one at a time: two at once would terminate PortAudio
+        # while the other thread opens its stream. Reentrant: ``rescan_audio`` calls ``restart_audio``.
+        self._audio_restart = threading.RLock()
         self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
         self.macros = MacroBank()
         self._restore_macros()
@@ -118,28 +121,31 @@ class Engine:
         self.restart_audio()
         self.restart_midi()
 
-    def restart_audio(self) -> None:
-        if self.audio is not None:
-            self.audio.stop()
-        self.audio = None
-        if not self.enable_hardware:
-            return
-        a = self.store.settings.audio
-        self.rebuild_audio_analysis()
-        self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
-        self.audio.start()
-
-    def rescan_audio(self) -> dict | None:
-        """"Rescan devices": make PortAudio look for devices again and reopen the input, but only when the input isn't
-        running on the saved device (missing device, error, stopped). A rescan pressed during a show leaves a working
-        input alone: re-initialising PortAudio closes the stream."""
-        st = self.audio.status() if self.audio else None
-        if self.enable_hardware and st is not None and (not st["running"] or st["device_missing"]):
+    def restart_audio(self, reinit: bool = False) -> None:
+        """Reopen the audio input from the saved settings. ``reinit`` makes PortAudio list the devices again first
+        (with the old stream closed, which is why it cuts the input for a moment)."""
+        with self._audio_restart:
             if self.audio is not None:
                 self.audio.stop()
-            audio_in.reinit_portaudio()
-            self.restart_audio()
-        return self.audio.status() if self.audio else None
+            self.audio = None
+            if not self.enable_hardware:
+                return
+            if reinit:
+                audio_in.reinit_portaudio()
+            a = self.store.settings.audio
+            self.rebuild_audio_analysis()
+            self.audio = AudioInput(a.device, a.channels, a.sample_rate, lambda s: self.analyzer.push(s))
+            self.audio.start()
+
+    def rescan_audio(self, force: bool = False) -> dict | None:
+        """Make PortAudio look for devices again and reopen the input. "Rescan devices" does it only when the input
+        isn't running on the saved device (missing device, error, stopped): a rescan pressed during a show leaves a
+        working input alone. ``force`` ("Find new devices") does it always, and cuts the input for a moment."""
+        with self._audio_restart:
+            st = self.audio.status() if self.audio else None
+            if self.enable_hardware and st is not None and (force or not st["running"] or st["device_missing"]):
+                self.restart_audio(reinit=True)
+            return self.audio.status() if self.audio else None
 
     def restart_midi(self) -> None:
         # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
