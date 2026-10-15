@@ -44,6 +44,8 @@ sys.path.insert(0, str(ROOT / "backend" / "src"))
 import uvicorn  # noqa: E402
 
 from pitchcontrol.config.loader import write_json  # noqa: E402
+from pitchcontrol.io import audio_in  # noqa: E402
+from pitchcontrol.server import app as server_app  # noqa: E402
 from pitchcontrol.engine.engine import Engine  # noqa: E402
 from pitchcontrol.engine.macros import MacroBank  # noqa: E402
 from pitchcontrol.paths import open_store, resolve_paths  # noqa: E402
@@ -76,6 +78,20 @@ def macro_values(**changes: float) -> dict[str, float]:
     bank = MacroBank()
     values = {n: v for n, v in bank.snapshot().items() if bank.defs[n].page in ("general", "dimmers") and bank.defs[n].kind != "button"}
     return values | changes
+
+
+# The machine's own audio devices must not end up on the website: the UI is shown with this one.
+DEVICES = [
+    {
+        "index": 0,
+        "name": "MacBook Pro Microphone",
+        "hostapi": "Core Audio",
+        "label": "MacBook Pro Microphone (Core Audio)",
+        "channels": 1,
+        "default_samplerate": 48000.0,
+        "default": True,
+    }
+]
 
 
 def stage(data_src: Path | None, data: Path, machine: Path) -> None:
@@ -237,6 +253,10 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="pitchcontrol-shots-") as tmp:
         data, machine = Path(tmp) / "data", Path(tmp) / "machine"
         stage(args.data, data, machine)
+        for module in (audio_in, server_app):
+            for name in ("list_input_devices", "list_input_devices_fresh"):
+                if hasattr(module, name):
+                    setattr(module, name, lambda: [dict(d) for d in DEVICES])
         store = open_store(resolve_paths(ROOT / "config", data=data, machine=machine))
         store.notices.clear()  # nothing to report about a staged folder
         engine = Engine(store, enable_hardware=False)
