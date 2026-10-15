@@ -316,7 +316,10 @@ class Engine:
             return
         listed = midi.find_port(names)
         if midi.port is not None:
-            if midi.port_name in names:
+            # Pulled only when nothing in the list matches the wanted name: Windows (WinMM) appends the port's index to
+            # every name, so plugging in another device can renumber this one ("LCXL3 1 MIDI In 0" → "… 1"), and a
+            # renamed match is the same controller, still open.
+            if midi.port_name in names or listed is not None:
                 if self._midi_problem is not None:
                     self._midi_problem = None
                 return

@@ -799,6 +799,27 @@ def test_a_pulled_controller_says_so_and_opens_again_when_it_is_back(monkeypatch
     engine.midi.stop()
 
 
+def test_a_renumbered_port_is_not_a_pulled_one(monkeypatch, store, caplog):
+    """Windows (WinMM) appends the port index to every name: plugging in another device renumbers the controller.
+    The open port is still the controller, so nothing is closed, no held button is let go and nothing is reported."""
+    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In 0"])
+    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In 0"
+
+    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 1"]  # another device plugged in, the controller is now ... 1
+    with caplog.at_level("WARNING"):
+        engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "LCXL3 1 MIDI In 0" and st["error"] is None and not opened[0].closed
+    assert st["reconnect"] is None
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    names[:] = ["Some Keyboard 0"]  # now the controller itself is pulled: that is still seen
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] is None and opened[0].closed and st["reconnect"]["lost"] is not None
+    engine.midi.stop()
+
+
 def test_a_port_that_fails_to_open_is_retried_and_opens_when_it_is_free(monkeypatch, store, caplog):
     import logging
 
