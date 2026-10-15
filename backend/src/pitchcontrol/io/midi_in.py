@@ -117,11 +117,12 @@ class MidiInput:
     def start(self) -> None:
         if mido is None or self.controller is None:
             return
-        match = (self.port_override or self.controller.port_match or "").lower()
+        wanted = self.port_override or self.controller.port_match or ""  # shown as it is saved; matched in lower case
+        match = wanted.lower()
         names = list_midi_inputs()
         name = next((n for n in names if match and match in n.lower()), None)
         if name is None:
-            self.error, self.error_kind, self.port_wanted = f"no MIDI port matches '{match}'", "not_found", match
+            self.error, self.error_kind, self.port_wanted = f"no MIDI port matches '{wanted}'", "not_found", wanted
             log.warning("MIDI input: %s", self.error)
             return
         try:

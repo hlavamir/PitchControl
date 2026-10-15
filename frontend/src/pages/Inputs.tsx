@@ -152,6 +152,9 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         <Row label="MIDI port" hint="MIDI input to listen to; 'from controller file' picks the port by the name stored in the mapping">
           <select value={settings.midi_input ?? ''} onChange={(e) => update((s) => (s.midi_input = e.target.value || null))}>
             <option value="">from controller file</option>
+            {settings.midi_input && !midiPorts.includes(settings.midi_input) && (
+              <option value={settings.midi_input}>{settings.midi_input} (not found)</option>
+            )}
             {midiPorts.map((p) => (
               <option key={p}>{p}</option>
             ))}

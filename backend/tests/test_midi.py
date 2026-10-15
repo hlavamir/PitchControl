@@ -735,3 +735,12 @@ def test_midi_rescan_endpoint_without_hardware(store):
     client = TestClient(create_app(Engine(store, enable_hardware=False)))
     r = client.post("/api/devices/midi/rescan")
     assert r.status_code == 200 and r.json() is None
+
+
+def test_the_wanted_port_keeps_the_name_as_it_was_saved(monkeypatch):
+    fake_ports(monkeypatch, ["IAC Driver Bus 1"])
+    ctrl = Controller(name="t", channel=1, mappings=[], port_match="x")
+    midi = MidiInput(ctrl, "LCXL3 1 MIDI In", MacroBank())  # a port picked in the MIDI port row
+    midi.start()
+    st = midi.status()
+    assert st["port_wanted"] == "LCXL3 1 MIDI In" and st["error"] == "no MIDI port matches 'LCXL3 1 MIDI In'"
