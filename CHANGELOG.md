@@ -19,6 +19,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   (`npm ci`, `pip`) no longer run quietly, so their warnings reach the log.
 
 ### Fixed
+- **A MIDI controller that isn't found or can't be opened says so on the Inputs page**, as text under the MIDI port
+  row (which port was looked for and what to do), not only in the status dot's tooltip. **Rescan devices** reopens a
+  MIDI input that has an error, and leaves a working one alone.
 - **A microphone with one input works as the audio input** (the built-in microphone, an iPhone microphone): a device
   with fewer inputs than the "Input channels" setting now runs on the channels it has instead of refusing to start. The
   setting stays as saved. The Inputs page says what the input listens to ("device has 1 input · using channel 1"),
