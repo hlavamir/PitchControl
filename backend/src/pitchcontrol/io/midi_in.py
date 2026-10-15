@@ -80,6 +80,8 @@ class MidiInput:
         self.port = None
         self.port_name: str | None = None
         self.error: str | None = None
+        self.error_kind: str | None = None  # "not_found" (no port matches) or "open_failed": the Inputs page words the advice
+        self.port_wanted: str | None = None  # the match string that found nothing, or the port that wouldn't open
         self.by_control: dict[tuple[str, int], list[MidiMapping]] = {}
         self.shift_controls: set[tuple[str, int, int]] = set()  # (kind, number, channel) of the shift buttons held down
         # (kind, number, channel) of a held button -> the momentary mapping that got its press: the release goes
@@ -119,16 +121,16 @@ class MidiInput:
         names = list_midi_inputs()
         name = next((n for n in names if match and match in n.lower()), None)
         if name is None:
-            self.error = f"MIDI input matching '{match}' not found"
-            log.warning(self.error)
+            self.error, self.error_kind, self.port_wanted = f"no MIDI port matches '{match}'", "not_found", match
+            log.warning("MIDI input: %s", self.error)
             return
         try:
             self.port = mido.open_input(name, callback=self.handle)
             self.port_name = name
-            self.error = None
+            self.error, self.error_kind, self.port_wanted = None, None, None
             log.info("MIDI input: %s (controller '%s')", name, self.controller.name)
         except Exception as exc:  # noqa: BLE001
-            self.error = str(exc)
+            self.error, self.error_kind, self.port_wanted = str(exc), "open_failed", name
             log.error("MIDI input failed: %s", exc)
 
     def release_all(self) -> None:
@@ -362,6 +364,8 @@ class MidiInput:
             "port": self.port_name,
             "port_override": self.port_override or None,  # section 02's MIDI port; wins over the controller file's
             "error": self.error,
+            "error_kind": self.error_kind,
+            "port_wanted": self.port_wanted,
             "controller": self.controller.name if self.controller else None,
             "channel": self.controller.channel if self.controller else None,
             "received": self.received,

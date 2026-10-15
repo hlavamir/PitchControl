@@ -162,6 +162,15 @@ class Engine:
             with self.lock:
                 self.midi = new
 
+    def rescan_midi(self) -> dict | None:
+        """"Rescan devices": reopen the MIDI input if it has an error (the controller was plugged in after the start, or
+        another program held the port). A working input is left alone: a rescan pressed during a show must not let go of
+        a held button. ``mido`` lists the ports afresh on every call, so no re-initialisation is needed."""
+        midi = self.midi
+        if self.enable_hardware and midi is not None and midi.error:
+            self.restart_midi()
+        return self.midi.status() if self.midi else None
+
     # ------------------------------------------------------------------ frame
     def tick(self, dt: float) -> None:
         t0 = time.perf_counter()

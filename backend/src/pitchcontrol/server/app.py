@@ -648,6 +648,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         ("Find new devices") always: PortAudio is re-initialised and the input restarted, which cuts it for a moment."""
         return engine.rescan_audio(force=bool(data and data.get("restart")))
 
+    @app.post("/api/devices/midi/rescan")
+    def midi_rescan():
+        """Part of "Rescan devices": reopen the MIDI input if it has an error (see Engine)."""
+        return engine.rescan_midi()
+
     @app.get("/api/devices/midi")
     def midi_devices():
         return list_midi_inputs()

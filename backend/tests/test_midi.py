@@ -655,3 +655,83 @@ def test_settings_that_mean_nothing_are_set_right(caplog):
     with caplog.at_level("WARNING"):
         Controller(name="two", mappings=[MidiMapping(number=44, mode="shift"), MidiMapping(number=45, mode="shift")])
     assert "2 shift buttons" in caplog.records[-1].getMessage()
+
+
+# --------------------------------------------------------------------------- port errors and rescan
+
+
+class FakePort:
+    def __init__(self, name):
+        self.name, self.closed = name, False
+
+    def close(self):
+        self.closed = True
+
+
+def fake_ports(monkeypatch, names, fail=()):
+    import pitchcontrol.io.midi_in as module
+
+    opened = []
+
+    def open_input(name, callback=None):
+        if name in fail:
+            raise OSError("MIDI port is in use")
+        port = FakePort(name)
+        opened.append(port)
+        return port
+
+    monkeypatch.setattr(module, "list_midi_inputs", lambda: list(names))
+    monkeypatch.setattr(module.mido, "open_input", open_input)
+    return opened
+
+
+def test_a_port_that_isnt_there_is_a_not_found_error_naming_what_was_looked_for(monkeypatch):
+    fake_ports(monkeypatch, ["IAC Driver Bus 1"])
+    midi, _ = build(port_match="lcxl3")
+    midi.start()
+    st = midi.status()
+    assert st["port"] is None
+    assert (st["error"], st["error_kind"], st["port_wanted"]) == ("no MIDI port matches 'lcxl3'", "not_found", "lcxl3")
+
+
+def test_a_port_that_wont_open_is_an_open_failed_error_with_the_drivers_reason(monkeypatch):
+    fake_ports(monkeypatch, ["Launch Control XL 3"], fail=("Launch Control XL 3",))
+    midi, _ = build(port_match="launch control")
+    midi.start()
+    st = midi.status()
+    assert st["port"] is None
+    assert (st["error"], st["error_kind"], st["port_wanted"]) == ("MIDI port is in use", "open_failed", "Launch Control XL 3")
+
+
+def test_rescan_midi_reopens_only_an_input_with_an_error(monkeypatch, store):
+    from pitchcontrol.engine.engine import Engine
+
+    names = ["IAC Driver Bus 1"]
+    opened = fake_ports(monkeypatch, names)
+    engine = Engine(store, enable_hardware=False)
+    engine.enable_hardware = True
+    store.controller.port_match = "lcxl3"
+    engine.restart_midi()
+    assert engine.midi.status()["error_kind"] == "not_found"
+
+    names.append("LCXL3 1")  # plugged in after the start
+    first = engine.midi
+    st = engine.rescan_midi()
+    assert engine.midi is not first and st["port"] == "LCXL3 1" and st["error"] is None
+    assert [p.name for p in opened] == ["LCXL3 1"]
+
+    working = engine.midi  # a working controller isn't touched
+    engine.rescan_midi()
+    assert engine.midi is working and [p.name for p in opened] == ["LCXL3 1"] and not opened[0].closed
+    engine.midi.stop()
+
+
+def test_midi_rescan_endpoint_without_hardware(store):
+    from fastapi.testclient import TestClient
+
+    from pitchcontrol.engine.engine import Engine
+    from pitchcontrol.server.app import create_app
+
+    client = TestClient(create_app(Engine(store, enable_hardware=False)))
+    r = client.post("/api/devices/midi/rescan")
+    assert r.status_code == 200 and r.json() is None
