@@ -18,5 +18,6 @@ frontend/dist/
 /build/
 /dist/
 
-# Windows build log
+# Windows and macOS build logs
 /build-windows.log
+/build-macos.log

@@ -61,6 +61,10 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   last frame) or a page has unsaved edits. Cancel keeps the window and the output running.
 - Saving content that doesn't fit (a controller mapping without a macro, a rig or fixture type with a wrong value) says
   what is wrong (`mappings[3]: a mapping needs a macro`) instead of "Internal Server Error".
+- **macOS build script:** everything the build prints, warnings and errors included, is also written to
+  `build-macos.log` in the repo root (the latest run only, gitignored), with a header of the tool versions. The
+  Terminal still shows it all, and a failed build ends with "BUILD FAILED" and the log's path. The package installs
+  (`npm ci`, `pip`) no longer run quietly, so their warnings reach the log.
 
 ### Removed
 - **The page knob** of the controller files (`page_knob`: a knob that stepped through the control pages). Pages are

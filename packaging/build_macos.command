@@ -9,6 +9,36 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Everything the steps print, errors included, also goes to build-macos.log in the repo root (the latest run only),
+# which is what to send when a build fails or warns. The script runs itself once more with its output through tee:
+# the Terminal still shows everything, the prompt below still reads from the keyboard, and the exit code is kept.
+# CI keeps the output on the console as well; "--check" writes no log, so it doesn't replace the last build's.
+if [ -z "${PC_BUILD_LOGGING:-}" ] && [ "${1:-}" != "--check" ]; then
+    LOG="$ROOT/build-macos.log"
+    ver() { if command -v "$1" >/dev/null 2>&1; then "$@" 2>&1 | head -n 1; else echo "not found"; fi; }
+    {
+        echo "PitchControl macOS build, $(date)"
+        echo "Folder: $ROOT"
+        echo "Mac: $(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null), $(uname -m)"
+        echo "node: $(ver node --version)"
+        echo "npm: $(ver npm --version)"
+        echo "python3: $(ver python3 --version)"
+        echo "uv: $(ver uv --version)"
+        echo "git: $(ver git --version)"
+        echo
+    } 2>&1 | tee "$LOG"
+    set +e
+    PC_BUILD_LOGGING=1 /bin/bash "$0" "$@" 2>&1 | tee -a "$LOG"
+    RC="${PIPESTATUS[0]}"
+    set -e
+    if [ "$RC" -ne 0 ]; then
+        echo "BUILD FAILED (exit code $RC), full log: $LOG" | tee -a "$LOG"
+    else
+        echo "Full log: $LOG"
+    fi
+    exit "$RC"
+fi
+
 # the UI build (Vite 8) needs Node 20.19 or newer, or 22.12 or newer
 if ! command -v node >/dev/null 2>&1; then
     echo "Node.js was not found. Install the LTS version from https://nodejs.org and run this again."
@@ -62,7 +92,7 @@ fi
 
 echo "== web UI"
 if [ -n "$NEED_UI" ]; then
-    (cd frontend && npm ci --silent)
+    (cd frontend && npm ci)
     echo "$UI_NOW" > "$UI_MARKER"
 fi
 (cd frontend && npm run build --silent)
@@ -71,11 +101,11 @@ echo "== Python environment"
 if [ -n "$NEED_PY" ]; then
     cd backend
     if command -v uv >/dev/null 2>&1; then
-        [ -x .venv/bin/python ] || uv venv -q .venv
-        uv pip install -q --python .venv/bin/python -e ".[build]"
+        [ -x .venv/bin/python ] || uv venv .venv
+        uv pip install --python .venv/bin/python -e ".[build]"
     else
         [ -x .venv/bin/python ] || python3 -m venv .venv
-        .venv/bin/python -m pip install -q -e ".[build]"
+        .venv/bin/python -m pip install -e ".[build]"
     fi
     cd "$ROOT"
     echo "$("$PY" --version) $(sha backend/pyproject.toml)" > "$PY_MARKER"
