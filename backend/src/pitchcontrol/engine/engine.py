@@ -137,7 +137,7 @@ class Engine:
         if self.enable_hardware and st is not None and (not st["running"] or st["device_missing"]):
             if self.audio is not None:
                 self.audio.stop()
-            audio_in.reinitialize()
+            audio_in.reinit_portaudio()
             self.restart_audio()
         return self.audio.status() if self.audio else None
 

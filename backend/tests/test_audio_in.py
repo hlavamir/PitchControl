@@ -24,13 +24,15 @@ class FakeStream:
 
 
 class FakeSd:
-    """Stands in for ``sounddevice``: two devices, a built-in microphone with 1 input and an interface with 6."""
+    """Stands in for ``sounddevice``. Like PortAudio it lists the devices of the moment it was initialised: a device
+    added to ``devices`` ("plugged in") is only listed after ``_terminate()`` and ``_initialize()``."""
 
     class default:
         device = (0, 1)
 
     def __init__(self, devices, fail=False):
         self.devices = devices
+        self.listed = list(devices)
         self.fail = fail
         self.streams: list[FakeStream] = []
         self.calls: list[str] = []
@@ -40,11 +42,12 @@ class FakeSd:
 
     def _initialize(self):
         self.calls.append("initialize")
+        self.listed = list(self.devices)
 
     def query_devices(self, index=None):
         if index is None:
-            return [dict(d, hostapi=0) for d in self.devices]
-        return dict(self.devices[index], hostapi=0)
+            return [dict(d, hostapi=0) for d in self.listed]
+        return dict(self.listed[index], hostapi=0)
 
     def query_hostapis(self):
         return [{"name": "Core Audio"}]
@@ -124,6 +127,10 @@ def test_restart_clears_the_warning(monkeypatch):
     fake.devices.append(INTERFACE)
     inp.stop()
     inp.start()
+    assert inp.status()["device_missing"]  # not listed: PortAudio was not re-initialised
+    inp.stop()
+    audio_in.reinit_portaudio()
+    inp.start()
     st = inp.status()
     assert st["warning"] is None and st["device"] == "Komplete Audio 6" and st["channels"] == [1, 2]
 
@@ -139,8 +146,10 @@ def test_rescan_reinitialises_portaudio_only_for_an_input_that_isnt_on_the_saved
     engine.restart_audio()
     assert engine.audio.status()["device_missing"] and fake.calls == []
 
-    # the interface is plugged in after the start: a rescan re-initialises PortAudio and the input moves to it
+    # the interface is plugged in after the start: PortAudio doesn't list it until a rescan re-initialises it
     fake.devices.append(INTERFACE)
+    engine.restart_audio()
+    assert engine.audio.status()["device_missing"] and fake.calls == []
     first = engine.audio
     st = engine.rescan_audio()
     assert fake.calls == ["terminate", "initialize"]

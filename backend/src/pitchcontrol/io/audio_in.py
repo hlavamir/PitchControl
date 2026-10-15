@@ -41,7 +41,7 @@ def list_input_devices() -> list[dict]:
     return out
 
 
-def reinitialize() -> None:
+def reinit_portaudio() -> None:
     """Make PortAudio list the devices as they are now.
 
     PortAudio enumerates its devices once, when it is initialised, so a device plugged in after the start only shows up
