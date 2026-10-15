@@ -131,6 +131,15 @@ class SpectrumAnalyzer:
             self.frame_max = self.envelope.copy()
         return out
 
+    def reset(self) -> None:
+        """Forget what was heard: the input is gone and the look is held (item 30), so that what comes back starts from
+        nothing instead of from the envelope of the moment of the pull."""
+        with self.lock:
+            self.ring[:] = 0.0
+            self.pending = 0
+            self.envelope[:] = 0.0
+            self.frame_max[:] = 0.0
+
 
 # --------------------------------------------------------------------------- per-frame features (AudioData port)
 
@@ -158,6 +167,11 @@ class AudioFeatures:
         self.values = np.zeros(n)
         self.peak = np.zeros(n, dtype=bool)
         self.peak_score = np.zeros(n)
+
+    def hold(self) -> None:
+        """The input is gone and the look is held (item 30): ``values`` and everything the lights derive from them stay as
+        they were, and nothing peaks, so no new strobo or peak trigger comes out of a frozen signal."""
+        self.peak = np.zeros(self.bands, dtype=bool)
 
     def update(self, levels: np.ndarray) -> None:
         # per-band adaptive normalisation

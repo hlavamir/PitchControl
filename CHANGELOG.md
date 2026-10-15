@@ -15,6 +15,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   appears. It only ever goes back to the device you selected, never to another one; with no device selected, a stopped
   input restarts on the system default (and the line names both devices, because that is where the device changes under
   you). A device that is there but can't be opened (another program holds it) is tried again every ten seconds.
+  While the input is gone the lights hold their look as it was; no new strobo or peak triggers come from the missing
+  sound, and the manual controls and MIDI keep working. When the sound is back the lights follow it again.
 - **The MIDI controller reconnects by itself.** Plug it in after the app started, or pull the cable and plug it in
   again: the input opens on its port within a couple of seconds, with nothing to press. A cable pulled while the
   controller is in use shows "isn't connected" at once and lets go of any button that was held (a fog button goes

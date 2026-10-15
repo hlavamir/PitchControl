@@ -565,19 +565,55 @@ def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkey
     engine.audio.stop()
 
 
-def test_the_analysis_falls_to_silence_while_the_input_is_dead(monkeypatch, store):
+def test_the_lights_hold_their_look_while_the_input_is_dead(monkeypatch, store):
+    """Item 30 (Miro): the look stays as it was, but a frozen signal gives no new strobo or peak triggers. (Holding the
+    last frame of the signal would: the normalisation decays towards it and every band peaks over and over.)"""
     engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
     engine.outputs.send = lambda *a, **k: None
-    loud = (np.random.default_rng(1).uniform(-1, 1, 48000)).astype("float32")
-    engine.analyzer.push(loud)  # the music, delivered by the running input
-    engine.tick(0.025)
-    assert engine.features.values.max() > 0.5 or engine.analyzer.envelope.max() > 0.5
+    rng = np.random.default_rng(1)
+    for _ in range(120):  # a few seconds of music delivered by the running input, varying
+        engine.analyzer.push((rng.uniform(-1, 1, 1200) * rng.uniform(0.2, 1.0)).astype("float32"))
+        engine.tick(0.025)
+    assert engine.features.values.max() > 0.5
+    before = engine.features.values.copy()
 
     make_dead(engine)  # the cable is pulled: no more blocks
     fake.devices.remove(INTERFACE)
-    for _ in range(80):  # two seconds of frames
+    triggers = 0
+    for _ in range(400):  # ten seconds of frames at 40 fps
         engine.tick(0.025)
-    assert engine.analyzer.envelope.max() < 0.05  # released, not frozen at the last frame
+        assert engine.features.trigger_fraction == 0.0 and not engine.features.peak.any()
+        triggers += bool(engine.phase.on_peak)
+    assert np.array_equal(engine.features.values, before)  # the look is held, not released
+    assert triggers == 0  # no new strobo trigger out of the frozen signal
+
+    engine.macros.set("Manual Strobo", 1.0)  # the manual controls still work
+    for _ in range(80):
+        engine.tick(0.025)
+        triggers += bool(engine.phase.on_peak)
+    assert triggers >= 1
+    engine.macros.set("Manual Strobo", 0.0)
+    engine.audio.stop()
+
+
+def test_the_analysis_starts_clean_when_the_input_is_back(monkeypatch, store):
+    engine, _ = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    engine.outputs.send = lambda *a, **k: None
+    rng = np.random.default_rng(2)
+    for _ in range(80):
+        engine.analyzer.push(rng.uniform(-1, 1, 1200).astype("float32"))
+        engine.tick(0.025)
+    make_dead(engine)
+    for _ in range(20):
+        engine.tick(0.025)
+    assert engine.analyzer.envelope.max() == 0.0 and engine.analyzer.frame_max.max() == 0.0  # nothing stale is kept
+    held = engine.features.values.copy()
+
+    engine.audio.last_callback = time.monotonic()  # the device is back: blocks arrive again
+    engine.audio.got_block = True
+    engine.analyzer.push(rng.uniform(-1, 1, 4800).astype("float32"))
+    engine.tick(0.025)
+    assert not np.array_equal(engine.features.values, held)  # the values move again with the music
     engine.audio.stop()
 
 

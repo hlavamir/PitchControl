@@ -354,11 +354,16 @@ class Engine:
 
             audio = self.audio
             if self.enable_hardware and (audio is None or not audio.delivering):
-                # no input (dead, stopped or restarting): the analysis releases as if the music had stopped, instead of
-                # holding the last frame, which would keep the meter and the strobo trigger at the moment of the pull
-                self.analyzer.push(np.zeros(max(1, int(s.audio.sample_rate * dt)), dtype=np.float32))
-            levels = self.analyzer.read_frame()
-            self.features.update(levels)
+                # No input (dead, stopped or restarting): hold the look, not the signal (item 30, Miro). The analysis
+                # isn't fed or read, the features keep their last values (bands, colours, masks stay as they were) and
+                # nothing peaks, so no new strobo or peak trigger comes out of a frozen signal (a held last frame would:
+                # the normalisation decays towards it and every band "peaks" over and over). MIDI and manual controls
+                # work as always. What the analyser holds is dropped, so the music that comes back starts clean.
+                self.analyzer.reset()
+                self.features.hold()
+            else:
+                levels = self.analyzer.read_frame()
+                self.features.update(levels)
 
             self.phase.update(
                 dt,
