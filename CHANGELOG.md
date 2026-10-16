@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.5.2 — 2026-10-16
+
 ### Added
 - **OSC output** (Outputs page, section 04; Live output is section 05 now): sends the **base colours A and B** over OSC
   (UDP) to one IP address and port, for example to MadMapper or Resolume. They are the colours the Hue / Saturation
