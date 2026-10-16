@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.5.3 — 2026-10-17
+
 ### Changed
 - **Audio normalisation is shared by all bands again, as in the vvvv patch.** The 32 bands used to be scaled each by
   its own maximum (1.0 to 1.5.2), which made a quiet band as full as a loud one. Now the loudest band sets the scale
