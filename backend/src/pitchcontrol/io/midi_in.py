@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import itertools
 import logging
+import re
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -83,6 +85,15 @@ class _Takeover:
     h_last: float | None = None  # the previous hardware position: a move from there to the next one may cross the macro's value
 
 
+_WINMM_INDEX = re.compile(r"\s\d+$")  # what WinMM appends to a port name: the port's index
+
+
+def _winmm_indices() -> bool:
+    """Whether port names end in an index added by the system (Windows only: on macOS a trailing number is part of
+    the real name)."""
+    return sys.platform == "win32"
+
+
 class MidiInput:
     def __init__(self, controller: Controller | None, port_override: str | None, macros, ignored=None):
         self.controller = controller
@@ -131,10 +142,33 @@ class MidiInput:
         return (self.port_override or (self.controller.port_match if self.controller else None) or "")
 
     def find_port(self, names: list[str]) -> str | None:
-        """The first of ``names`` that contains the wanted name (case-insensitive): the one rule by which the port is
-        found, at the start and by the watchdog."""
-        match = self.wanted_name().lower()
-        return next((n for n in names if match and match in n.lower()), None)
+        """The one rule by which the port is found, at the start and by the watchdog (all case-insensitive):
+
+        1. a listed name that is the wanted name;
+        2. on Windows, a listed name that differs only in the index WinMM appends to every name: another device coming
+           or going renumbers a port (``LCXL3 1 MIDI In 0`` → ``… 1``), and a port picked in the MIDI port row is
+           saved with its index;
+        3. the first listed name that contains the wanted name (a controller file's ``port_match`` is a part of the
+           name), except that a wanted name ending in a digit isn't taken for the start of a longer number
+           (``… In 1`` is not ``… In 10``).
+        """
+        wanted = self.wanted_name().lower()
+        if not wanted:
+            return None
+        listed = [(n, n.lower()) for n in names]
+        for name, low in listed:
+            if low == wanted:
+                return name
+        if _winmm_indices() and _WINMM_INDEX.search(wanted):
+            base = _WINMM_INDEX.sub("", wanted)
+            for name, low in listed:
+                if _WINMM_INDEX.sub("", low) == base:
+                    return name
+        for name, low in listed:
+            at = low.find(wanted)
+            if at >= 0 and not (wanted[-1].isdigit() and low[at + len(wanted) : at + len(wanted) + 1].isdigit()):
+                return name
+        return None
 
     def start(self) -> None:
         """Open the port. Called again by the watchdog while the input has an error: what goes wrong is logged when it
@@ -389,6 +423,7 @@ class MidiInput:
         return {
             "port": self.port_name,
             "port_override": self.port_override or None,  # section 02's MIDI port; wins over the controller file's
+            "wanted": self.wanted_name(),
             "error": self.error,
             "error_kind": self.error_kind,
             "port_wanted": self.port_wanted,

@@ -4,6 +4,7 @@ import threading
 import time
 
 import numpy as np
+import pytest
 
 from pitchcontrol.io import audio_in
 
@@ -66,6 +67,13 @@ class FakeSd:
         stream = FakeStream(fail=self.fail, **kwargs)
         self.streams.append(stream)
         return stream
+
+
+@pytest.fixture(autouse=True)
+def _forget_child_failures():
+    audio_in._child_failure[0] = None  # the fallback warning is logged once per change: every test starts afresh
+    yield
+    audio_in._child_failure[0] = None
 
 
 MIC = {"name": "MacBook Pro Microphone", "max_input_channels": 1, "default_samplerate": 48000.0}
@@ -627,3 +635,58 @@ def test_a_running_input_is_not_given_silence(monkeypatch, store):
     engine.tick(0.025)
     assert pushed == []  # the audio thread feeds it, the engine adds nothing
     engine.audio.stop()
+
+
+def test_the_fallback_warning_is_logged_once_per_change_not_every_two_seconds(monkeypatch, caplog):
+    fake = FakeSd([MIC])
+    monkeypatch.setattr(audio_in, "sd", fake)
+
+    class Failed:
+        returncode = 1
+        stdout = b""
+        stderr = b"OSError: PortAudio library not found"
+
+    class Fine:
+        returncode = 0
+        stdout = b"[]"
+        stderr = b""
+
+    result = {"run": Failed}
+    monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: result["run"]())
+    with caplog.at_level("WARNING"):
+        audio_in.list_input_devices_fresh()
+        audio_in.list_input_devices_fresh()
+        assert caplog.text.count("could not list the audio devices in a child process") == 1
+        result["run"] = Fine  # the child works again ...
+        assert audio_in.list_input_devices_fresh() == []
+        result["run"] = Failed  # ... and fails again: that is news again
+        audio_in.list_input_devices_fresh()
+    assert caplog.text.count("could not list the audio devices in a child process") == 2
+
+
+def test_listing_the_devices_waits_while_portaudio_is_being_reinitialised(monkeypatch):
+    """The Inputs page's fallback list (this process's PortAudio) must not query while a Save or the watchdog has
+    PortAudio terminated: that overlap is what the lock is for."""
+    gate = threading.Event()
+    inside = threading.Event()
+
+    class Blocking(FakeSd):
+        def _terminate(self):
+            super()._terminate()
+            inside.set()
+            gate.wait(5)  # terminated, not yet initialised again
+
+    fake = Blocking([MIC, INTERFACE])
+    monkeypatch.setattr(audio_in, "sd", fake)
+    done: list[str] = []
+    reinit = threading.Thread(target=lambda: (audio_in.reinit_portaudio("Komplete"), done.append("reinit")))
+    reinit.start()
+    assert inside.wait(2)
+    listing = threading.Thread(target=lambda: (audio_in.list_input_devices(), done.append("list")))
+    listing.start()
+    time.sleep(0.3)
+    assert done == []  # the listing is waiting for the re-init to finish
+    gate.set()
+    reinit.join(3)
+    listing.join(3)
+    assert sorted(done) == ["list", "reinit"] and done[0] == "reinit"

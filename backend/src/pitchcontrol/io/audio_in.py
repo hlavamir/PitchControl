@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from typing import Callable
 
@@ -24,30 +25,37 @@ except OSError as exc:  # PortAudio missing
     log.error("sounddevice unavailable: %s", exc)
 
 
+# PortAudio is not safe to query while it is terminated and initialised again: reinit_portaudio and everything in this
+# process that asks for the devices take this lock (item 34: the Inputs page's list can fall back to this process
+# every two seconds, while a Save or the watchdog restarts the audio input). Reentrant: a thread that holds it may ask again.
+_PORTAUDIO = threading.RLock()
+
+
 def list_input_devices() -> list[dict]:
     if sd is None:
         return []
-    apis = sd.query_hostapis()
-    try:
-        default = sd.default.device[0]  # what a stream opens when no device is chosen
-    except Exception:  # noqa: BLE001 - the list matters more than which entry is the default
-        default = -1
-    out = []
-    for i, d in enumerate(sd.query_devices()):
-        if d["max_input_channels"] > 0:
-            api = apis[d["hostapi"]]["name"]
-            out.append(
-                {
-                    "index": i,
-                    "name": d["name"],
-                    "hostapi": api,
-                    "label": f"{d['name']} ({api})",
-                    "channels": d["max_input_channels"],
-                    "default_samplerate": d["default_samplerate"],
-                    "default": i == default,
-                }
-            )
-    return out
+    with _PORTAUDIO:
+        apis = sd.query_hostapis()
+        try:
+            default = sd.default.device[0]  # what a stream opens when no device is chosen
+        except Exception:  # noqa: BLE001 - the list matters more than which entry is the default
+            default = -1
+        out = []
+        for i, d in enumerate(sd.query_devices()):
+            if d["max_input_channels"] > 0:
+                api = apis[d["hostapi"]]["name"]
+                out.append(
+                    {
+                        "index": i,
+                        "name": d["name"],
+                        "hostapi": api,
+                        "label": f"{d['name']} ({api})",
+                        "channels": d["max_input_channels"],
+                        "default_samplerate": d["default_samplerate"],
+                        "default": i == default,
+                    }
+                )
+        return out
 
 
 def match_device(name: str | None, devices: list[dict]) -> dict | None:
@@ -61,6 +69,9 @@ def match_device(name: str | None, devices: list[dict]) -> dict | None:
 
 LIST_FLAG = "--list-audio-devices"
 LIST_TIMEOUT_S = 2.0  # the child needs about 0.3 s (measured on the Mac, item 32); a stuck driver must not hang the app
+
+
+_child_failure: list[str | None] = [None]  # why the last listing by the child failed, until one works again
 
 
 def list_input_devices_fresh() -> list[dict]:
@@ -83,9 +94,13 @@ def list_input_devices_fresh() -> list[dict]:
         )
         if res.returncode != 0:
             raise RuntimeError(f"exit code {res.returncode}: {res.stderr.decode(errors='replace').strip()[-200:]}")
-        return json.loads(res.stdout.decode())
+        devices = json.loads(res.stdout.decode())
+        _child_failure[0] = None
+        return devices
     except Exception as exc:  # noqa: BLE001
-        log.warning("could not list the audio devices in a child process (%s): using this process's list", exc)
+        if _child_failure[0] != str(exc):  # the Inputs page asks every two seconds: say it when it changes, not every time
+            _child_failure[0] = str(exc)
+            log.warning("could not list the audio devices in a child process (%s): using this process's list", exc)
         return list_input_devices()
 
 
@@ -106,8 +121,9 @@ def reinit_portaudio(saved: str | None = None) -> None:
     if sd is None:
         return
     try:
-        sd._terminate()
-        sd._initialize()
+        with _PORTAUDIO:
+            sd._terminate()
+            sd._initialize()
     except Exception as exc:  # noqa: BLE001
         log.error("PortAudio could not be re-initialised: %s", exc)
         return
@@ -164,7 +180,8 @@ class AudioInput:
         name = self.device_name or "system default"
         try:
             index = find_device(self.device_name)
-            info = sd.query_devices(index if index is not None else sd.default.device[0])
+            with _PORTAUDIO:
+                info = sd.query_devices(index if index is not None else sd.default.device[0])
             actual = info["name"]
             name = actual
             inputs = info["max_input_channels"]

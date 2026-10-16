@@ -713,7 +713,7 @@ def test_the_wanted_port_keeps_the_name_as_it_was_saved(monkeypatch):
 
 
 # --------------------------------------------------------------------------- the MIDI input reconnects by itself (item 33)
-def watched_midi(monkeypatch, store, names, fail=(), match="lcxl3"):
+def watched_midi(monkeypatch, store, names, fail=(), match="lcxl3", override=None):
     """An engine with fake MIDI ports: ``names`` is the system's list right now (change it to plug and pull),
     ``engine.midi_check()`` is one look of the watchdog. Returns (engine, names, opened)."""
     import pitchcontrol.engine.engine as engine_module
@@ -724,6 +724,7 @@ def watched_midi(monkeypatch, store, names, fail=(), match="lcxl3"):
     engine = Engine(store, enable_hardware=False)
     engine.enable_hardware = True
     store.controller.port_match = match
+    store.settings.midi_input = override  # a port picked in the MIDI port row: saved with the name as it was listed
     engine.restart_midi()
     return engine, names, opened
 
@@ -837,3 +838,73 @@ def test_saving_another_port_forgets_the_drop(monkeypatch, store):
     st = engine.midi_status()
     assert st["port"] == "Other 1" and st["reconnect"] is None
     engine.midi.stop()
+
+
+# --------------------------------------------------------------------------- the port rule on Windows (item 33, review 2)
+def on_windows(monkeypatch, windows=True):
+    import pitchcontrol.io.midi_in as midi_module
+
+    monkeypatch.setattr(midi_module, "_winmm_indices", lambda: windows)
+
+
+def finder(wanted, names):
+    return MidiInput(Controller(name="t", channel=1, mappings=[], port_match=""), wanted, MacroBank()).find_port(names)
+
+
+def test_a_port_picked_in_settings_survives_winmm_renumbering(monkeypatch, store, caplog):
+    """The Settings port is saved with WinMM's index (``… In 0``). Another device renumbers the controller to ``… 1``:
+    the open port stays open, nothing is reported, and it is not looked for again (before: the watchdog closed it
+    and it never came back)."""
+    on_windows(monkeypatch)
+    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In 0"], override="LCXL3 1 MIDI In 0")
+    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In 0"
+
+    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 1"]
+    with caplog.at_level("WARNING"):
+        engine.midi_check()
+        engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "LCXL3 1 MIDI In 0" and st["error"] is None and not opened[0].closed
+    assert st["reconnect"] is None and not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    names[:] = ["Some Keyboard 0"]  # the controller itself is pulled: seen
+    engine.midi_check()
+    assert engine.midi_status()["port"] is None and opened[0].closed
+    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 3"]  # plugged in again, under yet another index
+    engine.midi_check()
+    st = engine.midi_status()
+    assert st["port"] == "LCXL3 1 MIDI In 3" and st["reconnect"]["back_device"] == "LCXL3 1 MIDI In 3"
+    engine.midi.stop()
+
+
+def test_a_start_with_the_saved_index_opens_the_renumbered_port(monkeypatch):
+    on_windows(monkeypatch)
+    opened = fake_ports(monkeypatch, ["Some Keyboard 0", "LCXL3 1 MIDI In 1"])
+    midi = MidiInput(Controller(name="t", channel=1, mappings=[], port_match="x"), "LCXL3 1 MIDI In 0", MacroBank())
+    midi.start()
+    assert midi.status()["port"] == "LCXL3 1 MIDI In 1" and [p.name for p in opened] == ["LCXL3 1 MIDI In 1"]
+    assert midi.status()["wanted"] == "LCXL3 1 MIDI In 0"  # the Inputs page compares the saved name with the open port
+
+
+def test_the_exact_name_beats_a_longer_one(monkeypatch):
+    for windows in (True, False):
+        on_windows(monkeypatch, windows)
+        assert finder("X MIDI In 1", ["X MIDI In 10", "X MIDI In 1"]) == "X MIDI In 1"
+    on_windows(monkeypatch, False)
+    assert finder("x midi in 1", ["X MIDI In 10"]) is None  # a number is not the start of a longer one
+    assert finder("Port 1", ["Port 2"]) is None and finder("Port 2", ["Port 1", "Port 2"]) == "Port 2"
+
+
+def test_the_index_is_only_ignored_on_windows(monkeypatch):
+    on_windows(monkeypatch, False)  # macOS: a trailing number is part of the name
+    assert finder("IAC Driver Bus 1", ["IAC Driver Bus 2"]) is None
+    on_windows(monkeypatch, True)
+    assert finder("IAC Driver Bus 1", ["IAC Driver Bus 2"]) == "IAC Driver Bus 2"  # WinMM: the same port, renumbered
+
+
+def test_parts_of_a_name_still_find_a_port(monkeypatch):
+    for windows in (True, False):
+        on_windows(monkeypatch, windows)
+        assert finder("LCXL3", ["Some Keyboard 0", "LCXL3 1 MIDI In 4"]) == "LCXL3 1 MIDI In 4"
+        assert finder("lcxl", ["LCXL3 1 MIDI In"]) == "LCXL3 1 MIDI In"
+        assert finder("", ["LCXL3 1 MIDI In"]) is None

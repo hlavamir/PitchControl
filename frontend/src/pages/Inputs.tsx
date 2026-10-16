@@ -4,6 +4,7 @@ import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
 import { reconnectLine } from '../reconnect'
+import { savedPortState } from '../savedPort'
 import { unchanged, usePolling } from '../usePolling'
 import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
@@ -56,6 +57,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const midiNote = midiNotice(io?.midi)
+  const saved = savedPortState(settings.midi_input ?? '', midiPorts, io?.midi)
   const audioLine = reconnectLine(io?.audio)
   // no blocks arrive: the lights hold the look they had (item 30), so the bands below are the held ones, not live
   const bandsHeld = !!io?.audio && !io.audio.running
@@ -166,9 +168,12 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
         <Row label="MIDI port" hint="MIDI input to listen to; 'from controller file' picks the port by the name stored in the mapping">
           <select value={settings.midi_input ?? ''} onChange={(e) => update((s) => (s.midi_input = e.target.value || null))}>
             <option value="">from controller file</option>
-            {settings.midi_input && !midiPorts.includes(settings.midi_input) && (
-              <option value={settings.midi_input}>{settings.midi_input} (not found)</option>
+            {settings.midi_input && saved.state === 'renamed' && (
+              <option value={settings.midi_input}>
+                {settings.midi_input} (now {saved.now})
+              </option>
             )}
+            {settings.midi_input && saved.state === 'missing' && <option value={settings.midi_input}>{settings.midi_input} (not found)</option>}
             {midiPorts.map((p) => (
               <option key={p}>{p}</option>
             ))}

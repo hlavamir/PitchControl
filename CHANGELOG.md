@@ -22,6 +22,17 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   - OSC runs on its own thread, so a dead receiver never slows the lights, and saving only OSC settings restarts only
     OSC (the DMX outputs aren't touched).
 
+### Fixed
+- **Windows: a MIDI controller picked under MIDI port keeps working when another MIDI device is plugged in or pulled.**
+  Windows adds the port's index to every port name (`LCXL3 1 MIDI In 0`) and renumbers the ports when a device comes or
+  goes; the controller was then taken for pulled and not found again until the app was restarted (1.5.1). A port is now
+  found by its exact name, then, on Windows, by its name without the index, then by a part of the name (the controller
+  file's); a number is no longer taken for the start of a longer one (`… In 1` is not `… In 10`). The MIDI port row says
+  `(now …)` for a port that is open under another number, not `(not found)`.
+- The device lists of the Inputs page can no longer overlap with a restart of the audio input in PortAudio (a lock
+  around the re-initialisation and the queries), and when the lists can't be read in the background the warning is
+  logged when it changes, not every two seconds.
+
 ## 1.5.1 — 2026-10-15
 
 ### Added
