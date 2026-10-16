@@ -6,6 +6,22 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **OSC output** (Outputs page, section 04; Live output is section 05 now): sends the **base colours A and B** over OSC
+  (UDP) to one IP address and port, for example to MadMapper or Resolume. They are the colours the Hue / Saturation
+  faders or Auto Color Change make (Swap Colors applied), before strobo, brightness, masks, dimmers and gamma. An
+  Enabled switch, the IP address, the port, and a list of files that say what to send; a status dot (sending, no file,
+  nothing to send, file problem, not sending) and a line with the number of messages.
+  - The files are JSON arrays in the new `osc/` folder of your data folder (next to `controllers/`); three examples
+    ship with the app (`Colors as RGBA`, `Colors as floats`, `Colors as integers`). Each entry has `what`
+    (`color_a` or `color_b` with `.r`, `.g`, `.b` or `.rgba`), `address` and `format`: `.r` / `.g` / `.b` as `f` (float
+    0-1) or `i` (integer 0-255), `.rgba` as `r` (the OSC colour: four bytes R, G, B, A with A = 255). Anything else in
+    a file is ignored and counted on the page.
+  - A message is sent when its value changes and everything again once a second. A file edited while the app runs is
+    read again within a second; one that can't be read keeps the last good messages going and shows the error.
+  - OSC runs on its own thread, so a dead receiver never slows the lights, and saving only OSC settings restarts only
+    OSC (the DMX outputs aren't touched).
+
 ## 1.5.1 — 2026-10-15
 
 ### Added

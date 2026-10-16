@@ -63,7 +63,25 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 ![Outputs page](screenshots/outputs.png)
 
-Up to four USB DMX interfaces (Add interface / Remove; each with its own device and universe; the type is detected, see [USB DMX interfaces](#usb-dmx-interfaces)), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), and the PitchPlease V2 serial output (device, baud rate, mirror mode). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
+Up to four USB DMX interfaces (Add interface / Remove; each with its own device and universe; the type is detected, see [USB DMX interfaces](#usb-dmx-interfaces)), Art-Net targets (the app's universe 0–3 → IP, with the Art-Net universe 0–15 on the wire), the PitchPlease V2 serial output (device, baud rate, mirror mode) and [OSC](#osc-output) (the base colours A and B to one IP address and port). Live output on the right shows what every fixture sends: pixel colours and, with "show channel values", the channel table.
+
+#### OSC output
+Section 04 of the Outputs page sends the **base colours A and B** over OSC (UDP) to one IP address and port, for example to a video mapping program: the colours as the Hue / Saturation faders or Auto Color Change make them (Swap Colors applied), before strobo, brightness, masks, dimmers and gamma. Switch it on with **Enabled**, give the **IP address** (a broadcast address works) and **Port**, and choose a file under **Messages**. The status dot says *sending*, *no file*, *nothing to send*, *file problem* or *not sending* (with the reason in the footer).
+
+What is sent is described by a JSON file in the `osc/` folder of your data folder (next to `controllers/`; the app ships three examples that are always listed). A file is an array of entries with three keys:
+
+```json
+[
+  {"what": "color_a.rgba", "address": "/color_a", "format": "r"},
+  {"what": "color_b.g",    "address": "/color_b/green", "format": "i"}
+]
+```
+
+- `what`: `color_a` or `color_b`, plus `.r`, `.g`, `.b` or `.rgba`;
+- `address`: the OSC address (starts with `/`);
+- `format`: `.r`, `.g` and `.b` are one value, `f` (float 0–1) or `i` (integer 0–255); `.rgba` is one OSC colour, `r` (four bytes R, G, B and A = 255).
+
+Everything else is ignored (and counted in the section: "2 ignored: …"). A message goes out when its value changes, and everything again once a second, so a receiver started later catches up. A file you edit while the app runs is read again within a second; one that can't be read keeps the last good messages going and shows the error. OSC is sent from its own thread: a wrong address or a dead receiver never slows the lights. Saving only OSC changes restarts only OSC, not the DMX outputs.
 
 #### USB DMX interfaces
 
@@ -208,10 +226,11 @@ A file in your data folder wins over a default of the same name (ignoring case);
 | Path | Content |
 |---|---|
 | `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, Auto Color palette, masks, audio analysis |
-| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial), appearance (`ui`) |
+| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`) |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
 | `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`) |
 | `controllers/*.json` | MIDI controller mappings (CC or note → macro), edited on the Inputs page |
+| `osc/*.json` | what the OSC output sends (what, address, format; see [OSC output](#osc-output)), edited by hand; the file is chosen on the Outputs page |
 | `scenes/scene_N.json` | the 8 scenes (macro name → control value); an empty slot means the macro defaults |
 | `state/macros.json` (this computer) | auto-saved macro values, restored on start; without it (first start) the macro defaults |
 | `state/overrides.json` (this computer) | Control Desk channel overrides, restored on start |

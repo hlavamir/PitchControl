@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { api, type DeviceRef, type SerialDevice } from '../api'
+import { api, type DeviceRef, type OscStatus, type SerialDevice } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { ARTNET_UNIVERSES, Button, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect, useSettings } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
+import { usePolling } from '../usePolling'
 
 function deviceKey(d: DeviceRef | SerialDevice): string {
   return d.serial_number ? `sn:${d.serial_number}` : `port:${d.port ?? ''}`
@@ -42,6 +43,15 @@ function DevicePicker({ value, devices, onChange }: { value: DeviceRef; devices:
 
 const MAX_ENTTEC = 4 // as in the backend (config/models.py)
 
+/** The OSC section's dot: off, nothing to send (no file, or only entries that are ignored), a problem, or sending. */
+function oscDot(osc: OscStatus | null | undefined, file: string): { ok: boolean | null; label: string; error?: string | null } {
+  if (!osc) return { ok: null, label: 'off' }
+  if (osc.error) return { ok: false, label: 'not sending', error: osc.error }
+  if (osc.file_error) return { ok: false, label: osc.messages ? 'file problem' : 'no messages', error: osc.file_error }
+  if (osc.messages === 0) return { ok: null, label: file ? 'nothing to send' : 'no file', error: osc.ignored[0] }
+  return { ok: osc.connected ?? null, label: 'sending' }
+}
+
 const KIND_NAMES = { pro: 'Enttec DMX USB Pro or compatible', open: 'Enttec Open DMX USB (bare FTDI)' } as const
 
 export function Output({ engine }: { engine: EngineConnection }) {
@@ -52,6 +62,12 @@ export function Output({ engine }: { engine: EngineConnection }) {
   useEffect(() => {
     refresh()
   }, [])
+  const [oscFiles, setOscFiles] = useState<{ available: string[]; folder: string }>({ available: [], folder: '' })
+  const loadOscFiles = () => api.get<{ available: string[]; folder: string }>('/api/osc/files').then(setOscFiles)
+  useEffect(() => {
+    loadOscFiles().catch(() => undefined)
+  }, [])
+  usePolling(loadOscFiles) // a file put into the osc folder shows up in the list
   if (!settings) return null
   const o = settings.outputs
   const io = engine.state?.io.outputs
@@ -259,10 +275,51 @@ export function Output({ engine }: { engine: EngineConnection }) {
           <NumberInput value={o.pitchpls_v2.mode} integer min={0} max={254} onChange={(v) => update((s) => (s.outputs.pitchpls_v2.mode = v))} />
         </Row>
       </Section>
+
+      <Section
+        index="04"
+        title="OSC"
+        right={(() => {
+          const dot = oscDot(io?.osc, o.osc.file)
+          return <StatusDot ok={dot.ok} label={dot.label} error={dot.error} tip="Whether OSC messages are being sent" />
+        })()}
+        tip="OSC over the network (UDP): the base colours A and B, as the file below describes, to one IP address and port"
+      >
+        <Row label="Enabled" hint="Send the messages below; off keeps the settings but sends nothing">
+          <Toggle checked={o.osc.enabled} onChange={(v) => update((s) => (s.outputs.osc.enabled = v))} />
+        </Row>
+        <Row label="IP address" hint="Where to send: the IP address (or name) of the computer or device that receives OSC; a broadcast address works too">
+          <input type="text" className="w-40" value={o.osc.host} onChange={(e) => update((s) => (s.outputs.osc.host = e.target.value))} />
+        </Row>
+        <Row label="Port" hint="The UDP port the receiver listens on (1–65535)">
+          <NumberInput value={o.osc.port} integer min={1} max={65535} onChange={(v) => update((s) => (s.outputs.osc.port = v))} />
+        </Row>
+        <Row
+          label="Messages"
+          hint={`The file that says what to send, to which address and in which format. The app ships examples; your own files go in ${oscFiles.folder || 'the osc folder of your data folder'}. A file is read again within a second when you edit it`}
+        >
+          <select className="w-full" value={o.osc.file} onChange={(e) => update((s) => (s.outputs.osc.file = e.target.value))}>
+            <option value="">— no file —</option>
+            {o.osc.file && !oscFiles.available.includes(o.osc.file) && <option value={o.osc.file}>{o.osc.file} (not found)</option>}
+            {oscFiles.available.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </Row>
+        {io?.osc && (
+          <div className="mt-1 text-[11px] text-dim" data-hint="info" data-tip="What the file makes: entries that don't fit (an unknown 'what', a format that doesn't suit it, a bad address) are ignored">
+            {io.osc.messages} message{io.osc.messages === 1 ? '' : 's'} from the file
+            {io.osc.ignored.length > 0 && ` · ${io.osc.ignored.length} ignored: ${io.osc.ignored[0]}${io.osc.ignored.length > 1 ? ' …' : ''}`}
+            {io.osc.file_error && ` · ${io.osc.file_error}`}
+          </div>
+        )}
+      </Section>
       </div>
 
       <div className="min-w-0">
-        <Section index="04" title="Live output" tip="What the fixtures send right now, after gamma: the DMX and serial data that leaves this app">
+        <Section index="05" title="Live output" tip="What the fixtures send right now, after gamma: the DMX and serial data that leaves this app">
           <OutputMonitor state={engine.state} />
         </Section>
       </div>

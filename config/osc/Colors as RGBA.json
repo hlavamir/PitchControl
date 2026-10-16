@@ -1,0 +1,12 @@
+[
+  {
+    "what": "color_a.rgba",
+    "address": "/color_a",
+    "format": "r"
+  },
+  {
+    "what": "color_b.rgba",
+    "address": "/color_b",
+    "format": "r"
+  }
+]

@@ -85,6 +85,13 @@ export interface ControllerFile {
   mappings: MidiMappingEntry[]
 }
 
+/** The OSC output: the socket's state plus what the file said (see io/osc.py). */
+export interface OscStatus extends IoStatus {
+  messages: number // how many messages the file makes
+  ignored: string[] // entries of the file that are ignored, and why
+  file_error: string | null // the file is missing or can't be read
+}
+
 export interface IoStatus {
   connected?: boolean
   running?: boolean
@@ -136,7 +143,7 @@ export interface EngineState {
   fog: Record<string, boolean>
   overrides?: Record<string, Record<string, number>> // Control Desk: universe → channel (1–512) → value
   io: {
-    outputs: { enttec: (IoStatus | null)[]; artnet: IoStatus | null; pitchpls_v2: IoStatus | null }
+    outputs: { enttec: (IoStatus | null)[]; artnet: IoStatus | null; pitchpls_v2: IoStatus | null; osc: OscStatus | null }
     audio: IoStatus | null
     midi: IoStatus | null
   }
@@ -206,6 +213,7 @@ export interface Settings {
     enttec: { enabled: boolean; device: DeviceRef; universe: number; type: 'auto' | 'pro' | 'open'; break_method: 'break' | 'baud' }[]
     artnet: { enabled: boolean; targets: { universe: number; ip: string; artnet_universe?: number | null }[] }
     pitchpls_v2: { enabled: boolean; device: DeviceRef; baudrate: number; mode: number; strips: number; pixels_per_strip: number }
+    osc: { enabled: boolean; host: string; port: number; file: string } // file: a name in the osc folder, '' = none
   }
   masks: { line_falloff: number; transition_s: number }
   auto_colors: HSB[]

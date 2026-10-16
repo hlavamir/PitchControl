@@ -1,13 +1,16 @@
-"""Output manager: USB DMX interfaces (Enttec DMX USB Pro and compatibles, Enttec Open DMX USB), Art-Net and PitchPlease v2.2 serial."""
+"""Output manager: USB DMX interfaces (Enttec DMX USB Pro and compatibles, Enttec Open DMX USB), Art-Net, PitchPlease v2.2 serial and OSC."""
 
 from __future__ import annotations
 
 import logging
 import socket
 import time
+from collections.abc import Callable
+from pathlib import Path
 
 from ..config.models import OutputSettings
 from .devices import detect_dmx_type
+from .osc import OscOutput
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
 from .workers import LatestFrameWorker, OpenDmxWorker, SerialWorker
 
@@ -43,8 +46,10 @@ class ArtNetWorker(LatestFrameWorker):
 
 
 class OutputManager:
-    def __init__(self, settings: OutputSettings):
+    def __init__(self, settings: OutputSettings, find_osc_file: Callable[[str], Path | None] = lambda name: None):
         self.settings = settings
+        self.find_osc_file = find_osc_file  # name -> the file in the osc folder
+        self.osc: OscOutput | None = None
         # parallel to settings.enttec; None = disabled
         self.enttec: list[SerialWorker | None] = []
         self._enttec_errors: dict[int, str] = {}  # interfaces that were not started, and why
@@ -84,6 +89,12 @@ class OutputManager:
         if s.pitchpls_v2.enabled:
             self.v2 = SerialWorker(s.pitchpls_v2.device, s.pitchpls_v2.baudrate, "pitchpls_v2")
             self.v2.start()
+        self._start_osc()
+
+    def _start_osc(self) -> None:
+        if self.settings.osc.enabled:
+            self.osc = OscOutput(self.settings.osc, self.find_osc_file)
+            self.osc.start()
 
     def stop(self) -> None:
         for w in (*self.enttec, self.artnet, self.v2):
@@ -91,11 +102,23 @@ class OutputManager:
                 w.stop()
         self.enttec, self._enttec_errors = [], {}
         self.artnet = self.v2 = None
+        self._stop_osc()
+
+    def _stop_osc(self) -> None:
+        if self.osc is not None:
+            self.osc.stop()
+        self.osc = None
 
     def restart(self, settings: OutputSettings) -> None:
         self.stop()
         self.settings = settings
         self.start()
+
+    def restart_osc(self, settings: OutputSettings) -> None:
+        """Only OSC changed: the DMX outputs keep running (a restart of those would blink the lights)."""
+        self._stop_osc()
+        self.settings = settings
+        self._start_osc()
 
     def send(self, universes: dict[int, bytearray], v2_strips: list[list[int]]) -> None:
         s = self.settings
@@ -128,6 +151,7 @@ class OutputManager:
             "enttec": [self._enttec_status(i, w) for i, w in enumerate(self.enttec)],
             "artnet": self.artnet.status() if self.artnet else None,
             "pitchpls_v2": self.v2.status() if self.v2 else None,
+            "osc": self.osc.status() if self.osc else None,
         }
 
     def _enttec_status(self, i: int, worker: SerialWorker | None) -> dict | None:

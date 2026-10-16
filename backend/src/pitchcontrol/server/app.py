@@ -252,6 +252,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     def get_settings():
         return store.settings.model_dump(mode="json")
 
+    @app.get("/api/osc/files")
+    def osc_files():
+        """The files that say what OSC sends: shipped examples and the user's own, from the osc folder."""
+        return {"available": store.osc_names(), "folder": str(store.osc_dir)}
+
     @app.put("/api/settings")
     def put_settings(data: dict):
         new = Settings.model_validate(data)
@@ -260,8 +265,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         with engine.lock:
             store.settings = new
         store.save_settings()
-        if new.outputs != old.outputs and engine.enable_hardware:
-            engine.outputs.restart(new.outputs)
+        if engine.enable_hardware and new.outputs != old.outputs:
+            if new.outputs.model_copy(update={"osc": old.outputs.osc}) != old.outputs:
+                engine.outputs.restart(new.outputs)
+            else:  # only OSC: the DMX outputs aren't touched
+                engine.outputs.restart_osc(new.outputs)
         if new.audio != old.audio:
             engine.restart_audio() if engine.enable_hardware else engine.rebuild_audio_analysis()
         if new.active_controller != old.active_controller or new.midi_input != old.midi_input:

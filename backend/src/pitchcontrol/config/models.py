@@ -396,6 +396,15 @@ class PitchPlsV2Settings(Model):
     pixels_per_strip: int = 19  # the firmware mirrors these to 38 LEDs
 
 
+class OscSettings(Model):
+    """OSC out: what is sent is described by a file in the ``osc`` folder (see ``io/osc.py``)."""
+
+    enabled: bool = False
+    host: str = "127.0.0.1"  # IP address or name of the receiver (a broadcast address works too)
+    port: int = Field(default=8010, ge=1, le=65535)
+    file: str = ""  # name (without .json) of a file in the osc folder; none = nothing is sent
+
+
 MAX_ENTTEC = 4  # USB DMX interfaces that can be driven at once
 
 
@@ -405,6 +414,7 @@ class OutputSettings(Model):
     enttec: list[EnttecSettings] = Field(default_factory=list, max_length=MAX_ENTTEC)
     artnet: ArtNetSettings = Field(default_factory=ArtNetSettings)
     pitchpls_v2: PitchPlsV2Settings = Field(default_factory=PitchPlsV2Settings)
+    osc: OscSettings = Field(default_factory=OscSettings)
 
     @model_validator(mode="before")
     @classmethod

@@ -92,7 +92,7 @@ class Engine:
         self.preview_u, self.preview_v = np.meshgrid(grid, grid)
         self._preview_inputs: tuple[MaskParams, bool] = (MaskParams(), False)
 
-        self.outputs = OutputManager(store.settings.outputs)
+        self.outputs = OutputManager(store.settings.outputs, store.find_osc)
         self.audio: AudioInput | None = None
         self.midi: MidiInput | None = None
 
@@ -420,10 +420,21 @@ class Engine:
 
         if self.enable_hardware:
             self.outputs.send(universes, v2_strips)
+            if self.outputs.osc is not None:
+                self.outputs.osc.send(self.base_colors())
         self._autosave_macros()
         self._autosave_overrides()
         self.frame += 1
         self.tick_ms = (time.perf_counter() - t0) * 1000.0
+
+    def base_colors(self) -> dict[str, tuple[float, float, float]]:
+        """The group colours A and B as RGB (floats 0..1), as the Hue / Saturation macros or Auto Color Change make
+        them (Swap Colors applied): before strobo, brightness, masks, dimmers and gamma. What OSC sends."""
+        out = {}
+        for key, c in (("a", self.colors.a), ("b", self.colors.b)):
+            r, g, b = hsv_to_rgb(np.array(c.h), np.array(c.s), np.array(c.b)).tolist()
+            out[key] = (r, g, b)
+        return out
 
     def _handle_buttons(self) -> None:
         for name in self.macros.take_buttons():

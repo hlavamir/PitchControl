@@ -1,0 +1,32 @@
+[
+  {
+    "what": "color_a.r",
+    "address": "/color_a/red",
+    "format": "i"
+  },
+  {
+    "what": "color_a.g",
+    "address": "/color_a/green",
+    "format": "i"
+  },
+  {
+    "what": "color_a.b",
+    "address": "/color_a/blue",
+    "format": "i"
+  },
+  {
+    "what": "color_b.r",
+    "address": "/color_b/red",
+    "format": "i"
+  },
+  {
+    "what": "color_b.g",
+    "address": "/color_b/green",
+    "format": "i"
+  },
+  {
+    "what": "color_b.b",
+    "address": "/color_b/blue",
+    "format": "i"
+  }
+]

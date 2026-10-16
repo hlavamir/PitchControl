@@ -51,7 +51,7 @@ Origin = Literal["default", "user", "modified"]
 VERSION_KEY = "app_version"
 # 1.5.0 replaced the shipped LCXL3 layout (see ConfigStore.upgrade_notice)
 NEW_LCXL3_VERSION = (1, 5, 0)
-TYPES, RIGS, CONTROLLERS, SCENES = "fixtures/types", "rigs", "controllers", "scenes"
+TYPES, RIGS, CONTROLLERS, SCENES, OSC = "fixtures/types", "rigs", "controllers", "scenes", "osc"
 DEFAULT_RIG = "Default"
 
 # rig names are file names: keep them portable (macOS / Windows) and free of path separators
@@ -244,6 +244,10 @@ class ConfigStore:
         return self.root / CONTROLLERS
 
     @property
+    def osc_dir(self) -> Path:
+        return self.root / OSC
+
+    @property
     def scenes_dir(self) -> Path:
         return self.root / SCENES
 
@@ -319,6 +323,10 @@ class ConfigStore:
         self.load_rig(self.settings.active_rig)
         self.load_controller(self.settings.active_controller)
         self.upgrade_notice(fresh)
+        try:  # the place for the user's own OSC files, next to rigs and controllers
+            self.osc_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
     @property
     def last_version_path(self) -> Path:
@@ -706,6 +714,13 @@ class ConfigStore:
         self.load_rig(name)
         log.info("rig '%s' reset to the shipped version", name)
         return True
+
+    # -- OSC files: arrays of "what to send where" (io/osc.py); the app ships examples, the user adds their own
+    def osc_names(self) -> list[str]:
+        return self.names(OSC)
+
+    def find_osc(self, name: str) -> Path | None:
+        return self.find(OSC, name)
 
     # -- controllers
     def controller_names(self) -> list[str]:
