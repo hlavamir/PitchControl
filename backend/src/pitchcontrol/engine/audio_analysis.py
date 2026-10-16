@@ -1,11 +1,13 @@
-"""Audio analysis: FFT → 32 log-spaced bands → per-band normalisation and peak detection.
+"""Audio analysis: FFT → 32 log-spaced bands → shared normalisation and peak detection.
 
 Replaces VL.Audio's 128-sample FFT (375 Hz bins) with a 2048-sample FFT (23.4 Hz
 bins at 48 kHz) evaluated every 512 samples, grouped into log-spaced bands
 between 35 Hz and 10 kHz (see wiki: port-design, Audio Analysis).
 
-The per-frame part (``AudioFeatures``) ports the vvvv ``AudioData`` class, but
-normalises every band by its own running maximum instead of one shared maximum.
+The per-frame part (``AudioFeatures``) ports the vvvv ``AudioData`` class: all bands are
+normalised by one shared running maximum, so the loudest band sets the scale and quiet bands
+stay quiet next to it. (Until 1.5.2 every band had its own maximum; Miro went back to the
+vvvv behaviour on 2026-10-16.)
 """
 
 from __future__ import annotations
@@ -146,13 +148,13 @@ class SpectrumAnalyzer:
 
 @dataclass
 class AudioFeatures:
-    """Port of the vvvv ``AudioData`` class (per-band normalisation instead of one shared max)."""
+    """Port of the vvvv ``AudioData`` class (one normalisation maximum shared by all bands)."""
 
     bands: int
     weights: np.ndarray
     normalisation_decay: float = 0.998
     normalisation_floor: float = 0.25
-    norm_max: np.ndarray = field(init=False)
+    norm_max: float = field(init=False)  # the shared maximum all bands are divided by
     peak_max: np.ndarray = field(init=False)
     peak_min: np.ndarray = field(init=False)
     values: np.ndarray = field(init=False)
@@ -161,7 +163,7 @@ class AudioFeatures:
 
     def __post_init__(self) -> None:
         n = self.bands
-        self.norm_max = np.full(n, self.normalisation_floor)
+        self.norm_max = self.normalisation_floor
         self.peak_max = np.full(n, 0.01)
         self.peak_min = np.zeros(n)
         self.values = np.zeros(n)
@@ -174,10 +176,9 @@ class AudioFeatures:
         self.peak = np.zeros(self.bands, dtype=bool)
 
     def update(self, levels: np.ndarray) -> None:
-        # per-band adaptive normalisation
-        self.norm_max = np.maximum.reduce(
-            [self.norm_max * self.normalisation_decay, np.full_like(levels, self.normalisation_floor), levels]
-        )
+        # adaptive normalisation by one maximum for all bands: it follows the loudest band, decays slowly, and never
+        # falls below the floor (so silence and noise aren't scaled up)
+        self.norm_max = max(self.norm_max * self.normalisation_decay, self.normalisation_floor, float(levels.max()))
         v = np.clip(levels / self.norm_max, 0.0, 1.0)
 
         # peak detection (as AudioData.Update): compare against the previous frame's max

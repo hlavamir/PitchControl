@@ -6,6 +6,17 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Audio normalisation is shared by all bands again, as in the vvvv patch.** The 32 bands used to be scaled each by
+  its own maximum (1.0 to 1.5.2), which made a quiet band as full as a loud one. Now the loudest band sets the scale
+  for all of them, so quiet bands (mids, highs) stay quiet next to the bass, as they were in vvvv. The band meter shows
+  less in the mids and highs, and the masks that follow the sound react more to the low end; peaks are still found per
+  band, against that band's own recent maximum. The normalisation settings (`normalisation_decay`,
+  `normalisation_floor`) are as before.
+- **Vertical Symmetry mirrors the left half of the image onto the right half**, as it did in vvvv before the averaging
+  was added there: the left side is untouched and the right side is its mirror image. Up to 1.5.2 it averaged the image
+  with its mirror image instead, which blended the two sides.
+
 ## 1.5.2 — 2026-10-16
 
 ### Added

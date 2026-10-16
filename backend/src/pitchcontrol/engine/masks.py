@@ -143,7 +143,6 @@ class PeaksMap:
 
 
 def mixed_mask(gen: MaskGenerator, peaks: PeaksMap, u, v, params: MaskParams, symmetry: bool) -> np.ndarray:
-    out = peaks.apply(gen.evaluate(u, v, params))
-    if symmetry:
-        out = 0.5 * (out + peaks.apply(gen.evaluate(1.0 - u, v, params)))
-    return out
+    if symmetry:  # the left half of the image, mirrored onto the right half
+        u = np.where(u > 0.5, 1.0 - u, u)
+    return peaks.apply(gen.evaluate(u, v, params))

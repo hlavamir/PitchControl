@@ -355,7 +355,7 @@ class AudioSettings(Model):
     range_db: float = 80.0
     release_s: float = 0.08
     normalisation_decay: float = 0.998  # per frame
-    normalisation_floor: float = 0.25  # stops quiet bands (noise) from being scaled up to full level
+    normalisation_floor: float = 0.25  # stops a quiet input (noise) from being scaled up to full level
     trigger_full_hz: float = 100.0
     trigger_zero_hz: float = 5000.0
 

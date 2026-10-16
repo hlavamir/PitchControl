@@ -42,13 +42,26 @@ def test_kick_lands_in_low_bands():
     assert levels[an.layout.centres > 1000].max() < 0.5 * levels.max()
 
 
-def test_per_band_normalisation_and_peaks():
+def test_shared_normalisation_and_peaks():
     f = AudioFeatures(4, np.ones(4))
     f.update(np.array([0.9, 0.3, 0.3, 0.0]))
-    assert f.values[0] == pytest.approx(1.0) and f.values[1] == pytest.approx(1.0)  # each band scales to its own max
+    assert f.values[0] == pytest.approx(1.0)  # the loudest band sets the scale for all of them ...
+    assert f.values[1] == pytest.approx(1 / 3) and f.values[2] == pytest.approx(1 / 3)  # ... the others stay quieter
     assert f.values[3] == 0.0
-    assert f.peak[:3].all() and not f.peak[3]
+    assert f.peak[:3].all() and not f.peak[3]  # peaks are still found per band, against that band's own recent maximum
     assert f.trigger_fraction == pytest.approx(0.75)
+
+
+def test_the_shared_maximum_decays_and_has_a_floor():
+    f = AudioFeatures(2, np.ones(2), normalisation_decay=0.5, normalisation_floor=0.25)
+    f.update(np.array([0.8, 0.1]))
+    assert f.norm_max == pytest.approx(0.8)
+    f.update(np.array([0.2, 0.1]))  # the loud band went quiet: the maximum follows down, by the decay
+    assert f.norm_max == pytest.approx(0.4)
+    assert f.values.tolist() == pytest.approx([0.5, 0.25])
+    for _ in range(10):
+        f.update(np.array([0.0, 0.0]))
+    assert f.norm_max == pytest.approx(0.25)  # never below the floor: silence isn't scaled up
 
 
 # ---------------------------------------------------------------- macros & phase
@@ -200,12 +213,17 @@ def test_audio_reactivity_zero_means_raw_mask():
     assert peaks.control == pytest.approx(1.0)
 
 
-def test_symmetry_is_left_right_average():
+def test_symmetry_mirrors_the_left_half_onto_the_right():
     gen = MaskGenerator()
     peaks = PeaksMap(32)
     p = MaskParams(preset=0, shader_param=1.0)  # horizontal gradient: f(u) = u
-    out = mixed_mask(gen, peaks, np.array([0.1, 0.9]), np.array([0.5, 0.5]), p, symmetry=True)
-    assert np.allclose(out, 0.5)
+    u = np.array([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0])
+    v = np.full_like(u, 0.5)
+    off = mixed_mask(gen, peaks, u, v, p, symmetry=False)
+    assert np.allclose(off, u)  # without symmetry the image is as it is
+    out = mixed_mask(gen, peaks, u, v, p, symmetry=True)
+    # the left half is untouched, the right half is its mirror: no averaging of the two sides
+    assert np.allclose(out, [0.0, 0.1, 0.25, 0.5, 0.25, 0.1, 0.0])
 
 
 def test_texture_sampling():

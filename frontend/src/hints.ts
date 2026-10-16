@@ -91,7 +91,7 @@ export const MACRO_TIPS: Record<string, string> = {
   'Manual Strobo': 'Flash by hand, independent of the audio',
   'Fog Machine': 'Fog while held (machines set up on the Fog page)',
   'Invert Discoball': 'Inverts the idle brightness of fixtures whose remap is bound to it (the pinspots)',
-  'Vertical Symmetry': 'Mirrors the mask left ↔ right',
+  'Vertical Symmetry': 'Mirrors the left half of the mask onto the right half',
   'Auto Color Change': 'Picks new group colours from the palette after a random number of strobo flashes',
   'Swap Colors': 'Swaps the colours of groups A and B',
   'Mask A': 'A gradient',
