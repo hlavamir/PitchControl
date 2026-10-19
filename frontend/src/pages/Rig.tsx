@@ -7,6 +7,8 @@ import { hsvCss } from '../components/MacroControl'
 import { Button, Check, NumberInput, Row, Section, Toggle, UniverseSelect } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
 import { useElementWidth } from '../useElementWidth'
+import { MOD_NAME } from '../hints'
+import { clickSelection } from '../listSelection'
 
 const NEW_FIXTURE: FixtureInstance = {
   name: 'New fixture',
@@ -49,8 +51,10 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const [rig, setRig] = useState<Rig | null>(null)
   const [rigs, setRigs] = useState<RigList>({ active: '', available: [], origins: {} })
   const [types, setTypes] = useState<Record<string, FixtureType>>({})
-  // indices into rig.fixtures; click selects one, Shift + click adds / removes one (multi-edit)
+  // indices into rig.fixtures (multi-edit): click selects one, Shift + click a range from the anchor,
+  // Ctrl / Cmd + click adds or removes one (see listSelection.ts)
   const [selection, setSelection] = useState<number[]>([0])
+  const anchor = useRef<number | null>(0)
   const [dirty, setDirty] = useState(false)
   const [problems, setProblems] = useState<string[]>([])
   const [editorRef, editorWidth] = useElementWidth<HTMLDivElement>()
@@ -90,9 +94,20 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     commitRig(next, live)
   }
 
-  const clickFixture = (i: number, shift: boolean) => {
-    if (!shift) return setSelection([i])
-    setSelection((cur) => (cur.includes(i) ? (cur.length > 1 ? cur.filter((j) => j !== i) : cur) : [...cur, i]))
+  // the list is shown alphabetically (natural order); a Shift range follows what is shown
+  const shown = rig ? rig.fixtures.map((f, i) => [f, i] as const).sort(([a], [b]) => byName(a.name, b.name)) : []
+  const select = (selected: number[], at: number | null = selected[0] ?? null) => {
+    anchor.current = at
+    setSelection(selected)
+  }
+  const clickFixture = (i: number, e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
+    const next = clickSelection(
+      shown.map(([, j]) => j),
+      { selected: sel, anchor: anchor.current },
+      i,
+      { shift: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+    )
+    select(next.selected, next.anchor)
   }
 
   /** The value all selected fixtures share, or MIXED. */
@@ -204,7 +219,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     const base = copyOf ? structuredClone(copyOf) : { ...NEW_FIXTURE, type: Object.keys(types).sort(byName)[0] ?? '' }
     base.name = copyOf ? `${copyOf.name} copy` : base.name
     next.fixtures.push(base)
-    setSelection([next.fixtures.length - 1])
+    select([next.fixtures.length - 1])
     commitRig(next)
   }
 
@@ -212,7 +227,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     if (!rig) return
     const next = structuredClone(rig)
     next.fixtures.splice(sel[0], 1)
-    setSelection([Math.max(0, sel[0] - 1)])
+    select([Math.max(0, sel[0] - 1)])
     commitRig(next)
   }
 
@@ -250,7 +265,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           revert={revert}
           settle={() => live.current}
           changed={() => {
-            setSelection([0])
+            select([0])
             setProblems([])
             reload()
           }}
@@ -261,17 +276,14 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           right={rig && `${rig.fixtures.length} in rig`}
           className="min-h-0 flex-1"
           bodyClassName="p-2.5 min-h-0"
-          tip="The lights of the rig: group, name and universe:address. Click one to edit it; Shift + click selects several"
+          tip={`The lights of the rig: group, name and universe:address. Click one to edit it; Shift + click selects a range, ${MOD_NAME} + click adds or removes one`}
         >
           <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
             {/* alphabetical (natural order): rename or number the fixtures to arrange them */}
-            {rig?.fixtures
-              .map((f, i) => [f, i] as const)
-              .sort(([a], [b]) => byName(a.name, b.name))
-              .map(([f, i]) => (
+            {shown.map(([f, i]) => (
               <li key={i}>
                 <button
-                  onClick={(e) => clickFixture(i, e.shiftKey)}
+                  onClick={(e) => clickFixture(i, e)}
                   data-hint="list-multi"
                   data-tip={`${f.name}: fixture type ${f.type}, group ${f.group}${f.enabled ? '' : '; disabled, sends nothing'}`}
                   className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
@@ -287,7 +299,9 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
               </li>
             ))}
           </ul>
-          <p className="lbl mt-2 text-[10px] text-dim">Shift + click: add to / remove from the selection</p>
+          <p className="lbl mt-2 text-[10px] text-dim">
+            Shift + click: select a range · {MOD_NAME} + click: add / remove one
+          </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Button onClick={() => addFixture()} tip="Add a new fixture to the rig (first fixture type, default placement)">
               Add

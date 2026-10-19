@@ -34,7 +34,10 @@ export type HintKind =
 export type Keys = [cap: string, what: string][]
 
 /** The shortcut modifier: ⌘ on macOS, Ctrl elsewhere. */
-export const MOD = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac') ? '⌘' : 'CTRL'
+const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
+export const MOD = IS_MAC ? '⌘' : 'CTRL'
+/** The same key as running text: Cmd on macOS, Ctrl elsewhere. */
+export const MOD_NAME = IS_MAC ? 'Cmd' : 'Ctrl'
 
 const MOVE: Keys = [['W A S D', 'move']]
 
@@ -57,7 +60,7 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
   undo: [['CLICK', 'back to the type value']],
   channel: [['DRAG ↕', 'override'], ['↑ ↓', 'override'], ['SHIFT', 'fine'], ['⏎', 'override on / off'], ['Q E', 'subpage'], ...MOVE],
   list: [['CLICK', 'select']],
-  'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'add / remove']],
+  'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'range'], [`${MOD} CLICK`, 'add / remove']],
   slider: [['CLICK / DRAG', 'set'], ['↑ ↓', 'change'], ['SHIFT', 'fine'], ...MOVE],
   tab: [['1 – 9', 'page'], ['F', 'full screen'], [`${MOD} + −`, 'UI scale'], [`${MOD} 0`, 'UI scale 100 %']],
 }
