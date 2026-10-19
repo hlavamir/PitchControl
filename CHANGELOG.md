@@ -6,6 +6,21 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **A mask curve for the whole rig** (Rig page, Rig panel, under the description). One number from -3 to +3 bends the
+  brightness curve of the mask for all fixtures at once: it is applied before each fixture's own idle remap curve, so
+  the two add up (`mask ^ 2^(rig curve + fixture curve)`). 0 is as before, so existing rigs and scenes look the same.
+  It is saved in the rig file as `mask_curve` and applies live.
+
+### Changed
+- **Rig page, fixture list: Shift + click selects a range, ⌘ / Ctrl + click adds or removes one fixture.** Shift + click
+  selects every fixture between the one you clicked last and the one you click now, in the order the list shows
+  (alphabetical); ⌘ (macOS) or Ctrl (Windows) + click does what Shift + click did before. ⌘ / Ctrl + Shift + click adds a
+  range to the selection.
+- **Rig page, placement view: the first pixel's mark is drawn on top of all pixels.** On a short strip, where the
+  pixels overlap, the ring round the first pixel is no longer covered by the pixels drawn after it. It is now a wider
+  ring round the pixel; a selected fixture has a thin ring round every pixel, and its first pixel keeps the wider one.
+
 ## 1.5.3 — 2026-10-17
 
 ### Changed
