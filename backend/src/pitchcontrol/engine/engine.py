@@ -398,10 +398,11 @@ class Engine:
                     m.value("Idle Brightness") * m.control("Idle Bright. B"),
                 ),
             }
+            mask_curve = self.store.rig.mask_curve
             universes: dict[int, bytearray] = {}
             v2_strips: list[list[int]] = []
             for i, fx in enumerate(self.fixtures):
-                fx.update(mask[self._offsets[i] : self._offsets[i + 1]], self.phase.phase, self.colors, groups[fx.inst.group], m)
+                fx.update(mask[self._offsets[i] : self._offsets[i + 1]], self.phase.phase, self.colors, groups[fx.inst.group], m, mask_curve)
                 if fx.ftype.transport == "pitchpls_v2":
                     fx.last_output = fx.pixel_bytes("RGB")
                     v2_strips.append(fx.last_output)

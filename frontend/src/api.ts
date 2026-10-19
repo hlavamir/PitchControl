@@ -253,6 +253,7 @@ export interface FixtureInstance {
 export interface Rig {
   name: string
   description: string
+  mask_curve?: number // curve of the mask for all fixtures at once (default 0)
   fixtures: FixtureInstance[]
   dimmer_names?: Record<string, string> // "Dimmer 03" → "D Pinspots"
 }

@@ -8,11 +8,14 @@ Missing keys are filled with the defaults defined here.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 log = logging.getLogger(__name__)
+
+MASK_CURVE_LIMIT = 3.0  # the rig's mask curve, like the per-fixture curve on the Rig page, is -3 to +3
 
 
 def _merge_legacy_gamma(data, where: str):
@@ -326,6 +329,20 @@ class Rig(Model):
     dimmer_names: dict[str, str] = Field(default_factory=dict)
     # the fog machines of this setup (Fog page); up to 1.4 they were in settings.json
     fog_machines: list[FogMachine] = Field(default_factory=list)
+    # curve of the mask for every fixture at once (venue taste): applied before each fixture's own
+    # remap, so the exponents add: ``mask ** (2 ** (mask_curve + fixture curve))``. 0 = as before.
+    mask_curve: float = 0.0
+
+    @field_validator("mask_curve", mode="after")
+    @classmethod
+    def _mask_curve_in_range(cls, v):
+        if not math.isfinite(v):
+            log.warning("rig: mask_curve %r is not a number, using 0", v)
+            return 0.0
+        if not -MASK_CURVE_LIMIT <= v <= MASK_CURVE_LIMIT:
+            log.warning("rig: mask_curve %r is outside -%g to %g, limited", v, MASK_CURVE_LIMIT, MASK_CURVE_LIMIT)
+            return max(-MASK_CURVE_LIMIT, min(MASK_CURVE_LIMIT, v))
+        return v
 
 
 # --------------------------------------------------------------------------- settings

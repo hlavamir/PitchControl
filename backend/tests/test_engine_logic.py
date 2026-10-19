@@ -1,9 +1,10 @@
+import logging
 import math
 
 import numpy as np
 import pytest
 
-from pitchcontrol.config.models import AudioSettings, FixtureInstance, IdleMaskRange
+from pitchcontrol.config.models import AudioSettings, FixtureInstance, IdleMaskRange, Rig
 from pitchcontrol.engine.audio_analysis import AudioFeatures, SpectrumAnalyzer, make_layout, trigger_weights
 from pitchcontrol.engine.colors import GroupColors
 from pitchcontrol.engine.fixtures import Fixture, GroupBrightness, pixel_positions
@@ -147,6 +148,41 @@ def test_invert_discoball_range_only_with_macro(store):
     macros.set("Invert Discoball", 1.0)
     fx.update(np.array([1.0]), 1.0, colors, g, macros)
     assert fx.rgb.max() == pytest.approx(0.0)
+
+
+def test_rig_mask_curve_adds_to_the_fixture_curve(store):
+    colors, macros = GroupColors(), MacroBank()
+    colors.update(False, macros, [])
+    g = GroupBrightness(1.0, 1.0)
+    mask = np.array([0.5])
+    fx = _fixture(store, idle_mask_range=IdleMaskRange(curve=0.0))
+    fx.update(mask, 1.0, colors, g, macros)
+    assert fx.rgb.max() == pytest.approx(0.5)  # no rig curve: as before
+    fx.update(mask, 1.0, colors, g, macros, mask_curve=1.0)
+    assert fx.rgb.max() == pytest.approx(0.5**2)  # mask ** (2 ** 1)
+    fx.update(mask, 1.0, colors, g, macros, mask_curve=-1.0)
+    assert fx.rgb.max() == pytest.approx(0.5**0.5)
+    fx = _fixture(store, idle_mask_range=IdleMaskRange(curve=-1.0))  # the exponents add: 2 ** (1 - 1) = 1
+    fx.update(mask, 1.0, colors, g, macros, mask_curve=1.0)
+    assert fx.rgb.max() == pytest.approx(0.5)
+
+
+def test_rig_mask_curve_also_applies_while_the_fixture_remap_macro_is_off(store):
+    colors, macros = GroupColors(), MacroBank()
+    colors.update(False, macros, [])
+    fx = _fixture(store, idle_mask_range=IdleMaskRange(min=1.0, max=0.0, curve=-3.0, macro="Invert Discoball"))
+    fx.update(np.array([0.5]), 1.0, colors, GroupBrightness(1.0, 1.0), macros, mask_curve=1.0)
+    assert fx.rgb.max() == pytest.approx(0.25)  # macro off: identity remap, only the rig's curve
+
+
+def test_rig_mask_curve_default_and_limits(caplog):
+    assert Rig().mask_curve == 0.0  # a rig file without it
+    assert Rig.model_validate({"mask_curve": -1.5}).mask_curve == -1.5
+    with caplog.at_level(logging.WARNING):
+        assert Rig.model_validate({"mask_curve": 7}).mask_curve == 3.0
+        assert Rig.model_validate({"mask_curve": -9}).mask_curve == -3.0
+        assert Rig.model_validate({"mask_curve": float("nan")}).mask_curve == 0.0
+    assert "mask_curve" in caplog.text
 
 
 def test_gamma_on_output_per_channel(store):
