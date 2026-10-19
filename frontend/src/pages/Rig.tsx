@@ -552,8 +552,8 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           <div className="min-w-0">
             <Preview preview={engine.preview} state={engine.state} highlight={selectedNames} />
             <p className="mt-2 text-[11px] text-dim">
-              Changes apply live (Enter or leaving a field); the rig’s Save writes the rig file, Revert reloads it. The outlined
-              pixel is the first one.
+              Changes apply live (Enter or leaving a field); the rig’s Save writes the rig file, Revert reloads it. The pixel with the wider ring
+              round it is the first one.
             </p>
           </div>
           {fx && (

@@ -16,7 +16,7 @@ const MASK_LEVEL = 0.65 // the mask is drawn darker than full white: less light 
 /**
  * The square 2D scene: the mask in plain greyscale (no dithering: it shows the real output) and
  * every fixture pixel as a square in the colour it is sending. The first pixel of a multi-pixel
- * fixture has an ink outline so its direction is visible.
+ * fixture has an ink ring, drawn after all pixels so nothing covers it, so its direction is visible.
  */
 export function Preview({ preview, state, showFixtures = true, highlight, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -53,10 +53,11 @@ export function Preview({ preview, state, showFixtures = true, highlight, classN
     }
 
     if (showFixtures && state) {
+      const pixelSize = (n: number) => (n > 1 ? (n > 20 ? 6 : 5) : 10) * unit
+      // pass 1: every pixel of every fixture. The marks come after all of them (pass 2), so a pixel
+      // drawn later, on a short strip or in the next fixture, can't cover a mark.
       for (const fx of state.fixtures) {
-        const focused = Array.isArray(highlight) ? highlight.includes(fx.name) : highlight === fx.name
-        const multi = fx.uv.length > 1
-        const px = (multi ? (fx.uv.length > 20 ? 6 : 5) : 10) * unit
+        const px = pixelSize(fx.uv.length)
         fx.uv.forEach(([u, v], i) => {
           const [r, g, b] = fx.rgb[i] ?? [0, 0, 0]
           const x = u * size - px / 2
@@ -71,10 +72,26 @@ export function Preview({ preview, state, showFixtures = true, highlight, classN
           ctx.lineWidth = unit
           ctx.strokeStyle = '#0b0c0c'
           ctx.strokeRect(x, y, px, px)
-          if ((multi && i === 0) || focused) {
-            ctx.lineWidth = (focused ? 1.5 : 1) * unit
-            ctx.strokeStyle = `rgb(${ink})`
-            ctx.strokeRect(x - unit, y - unit, px + 2 * unit, px + 2 * unit)
+        })
+      }
+      // pass 2: a selected fixture has a thin ring round each pixel; the first pixel of a strip has a
+      // stronger mark (a double ring, further out than the pixel's neighbours reach), selected or not
+      ctx.strokeStyle = `rgb(${ink})`
+      const ring = (x: number, y: number, px: number, out: number, width: number) => {
+        ctx.lineWidth = width * unit
+        ctx.strokeRect(x - out * unit, y - out * unit, px + 2 * out * unit, px + 2 * out * unit)
+      }
+      for (const fx of state.fixtures) {
+        const focused = Array.isArray(highlight) ? highlight.includes(fx.name) : highlight === fx.name
+        const multi = fx.uv.length > 1
+        const px = pixelSize(fx.uv.length)
+        fx.uv.forEach(([u, v], i) => {
+          const x = u * size - px / 2
+          const y = v * size - px / 2
+          if (focused) ring(x, y, px, 1, multi ? 1 : 1.5)
+          if (multi && i === 0) {
+            ring(x, y, px, 3, 1.5)
+            if (focused) ring(x, y, px, 1, 1.5)
           }
         })
       }
@@ -86,7 +103,7 @@ export function Preview({ preview, state, showFixtures = true, highlight, classN
     // never wider than half the window, so it doesn't take over a single-column page
     <div
       data-hint="info"
-      data-tip="The scene: the mask in grey with every fixture pixel in the colour it sends. A fixture's first pixel is outlined"
+      data-tip="The scene: the mask in grey with every fixture pixel in the colour it sends. A fixture's first pixel has a wider ring round it; a selected fixture has a ring round each pixel"
       className={`relative mx-auto aspect-square w-full max-w-[calc(var(--win-w,100vw)*0.5)] ${className ?? ''}`}
     >
       <canvas ref={canvasRef} width={764} height={764} className="block size-full bg-ground" />
