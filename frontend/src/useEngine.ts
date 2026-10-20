@@ -14,8 +14,11 @@ export interface EngineConnection {
   setOverride: (universe: number, channel: number, value: number | null) => void // Control Desk; null releases
 }
 
-/** Live connection to the engine: JSON state + binary 256×256 preview, reconnecting automatically. */
-export function useEngine(): EngineConnection {
+/**
+ * Live connection to the engine: JSON state + binary 256×256 preview, reconnecting automatically.
+ * ``preview: false`` asks for the state only (the phone layout has no scene preview: less wifi, less rendering).
+ */
+export function useEngine({ preview: withPreview = true }: { preview?: boolean } = {}): EngineConnection {
   const [state, setState] = useState<EngineState | null>(null)
   const [preview, setPreview] = useState<Uint8Array | null>(null)
   const [connected, setConnected] = useState(false)
@@ -27,7 +30,7 @@ export function useEngine(): EngineConnection {
 
     const connect = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      const ws = new WebSocket(`${proto}://${location.host}/ws`)
+      const ws = new WebSocket(`${proto}://${location.host}/ws${withPreview ? '' : '?preview=0'}`)
       ws.binaryType = 'arraybuffer'
       socketRef.current = ws
       ws.onopen = () => setConnected(true)
@@ -46,7 +49,7 @@ export function useEngine(): EngineConnection {
       window.clearTimeout(retry)
       socketRef.current?.close()
     }
-  }, [])
+  }, [withPreview])
 
   const send = useCallback((msg: object) => {
     const ws = socketRef.current

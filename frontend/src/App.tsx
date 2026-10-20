@@ -63,7 +63,7 @@ const RIG_KEYS: [string, string][] = [
 ]
 
 /** The 3×3 pixel mark next to the wordmark. */
-function Glyph() {
+export function Glyph() {
   return (
     <span className="grid grid-cols-3 gap-px">
       {[1, 0, 1, 0, 1, 0, 1, 0, 1].map((on, i) => (

@@ -724,7 +724,8 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     @app.websocket("/ws")
     async def ws(socket: WebSocket):
         await socket.accept()
-        sender = asyncio.create_task(_push_state(socket, engine))
+        # ?preview=0: the state only (the phone layout shows no scene preview: less wifi, and no render per frame)
+        sender = asyncio.create_task(_push_state(socket, engine, preview=socket.query_params.get("preview") != "0"))
         try:
             while True:
                 msg = await socket.receive_json()
@@ -763,12 +764,13 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     return app
 
 
-async def _push_state(socket: WebSocket, engine: Engine) -> None:
-    """Send engine state (JSON) and the 256×256 preview (binary) at ``preview_fps``."""
+async def _push_state(socket: WebSocket, engine: Engine, preview: bool = True) -> None:
+    """Send engine state (JSON) and, unless ``preview`` is off, the 256×256 preview (binary) at ``preview_fps``."""
     try:
         while True:
             await socket.send_json(engine.state())
-            await socket.send_bytes(await asyncio.to_thread(engine.render_preview))
+            if preview:
+                await socket.send_bytes(await asyncio.to_thread(engine.render_preview))
             await asyncio.sleep(1.0 / max(engine.store.settings.preview_fps, 1.0))
     except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
         pass

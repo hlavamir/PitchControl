@@ -4,51 +4,12 @@ import { BandMeter, SegmentBar } from '../components/BandMeter'
 import { MacroControl, colorTrackFor } from '../components/MacroControl'
 import { Preview } from '../components/Preview'
 import { Section } from '../components/forms'
+import { BUTTONS, FADERS, MASKS, type SceneInfo } from '../generalControls'
 import { useMacroNav } from '../macroNav'
 import type { EngineConnection } from '../useEngine'
 import { useGridNav, type NavGrid, type NavItem } from '../useGridNav'
 
-// same order as the LCXL3: the bottom knob row, then the faders
-const FADERS = [
-  'Strobo Decay',
-  'Idle Attack',
-  'Mask Param A',
-  'Mask Param B',
-  'Hue A',
-  'Saturation A',
-  'Hue B',
-  'Saturation B',
-  'Audio Reactivity',
-  'Strobo',
-  'Strobo Brightness',
-  'Idle Brightness',
-  'Strobo Bright. A',
-  'Idle Bright. A',
-  'Strobo Bright. B',
-  'Idle Bright. B',
-]
-const BUTTONS: [string, string, string][] = [
-  ['Manual Strobo', 'HOLD', 'Man. strobo'],
-  ['Fog Machine', 'HOLD', 'Fog'],
-  ['Invert Discoball', 'TGL', 'Invert disco'],
-  ['Vertical Symmetry', 'TGL', 'V. symmetry'],
-  ['Auto Color Change', 'TGL', 'Auto color'],
-  ['Swap Colors', 'TGL', 'Swap colors'],
-]
-const MASKS: [string, string, string][] = [
-  ['Mask A', 'Gradient', 'A'],
-  ['Mask B', 'Back & Forth', 'B'],
-  ['Mask C', 'Rotating Line', 'C'],
-  ['Mask D', 'Noise', 'D'],
-]
-
 const pad8 = <T,>(items: T[]): (T | null)[] => [...items, ...Array<null>(Math.max(0, 8 - items.length)).fill(null)]
-
-interface SceneInfo {
-  index: number
-  name: string | null
-  exists: boolean
-}
 
 /** Output colour as shown next to the group swatch: hue in degrees (−180…180), saturation in %. */
 const sceneTip = (s: SceneInfo) =>

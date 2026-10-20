@@ -70,6 +70,22 @@ def test_api_and_websocket(store):
     assert engine.macros.control("Strobo") == 0.25
 
 
+def test_websocket_without_preview(store):
+    """The phone layout asks for the state only: no preview frames, and no preview rendered for that connection."""
+    engine = Engine(store, enable_hardware=False)
+    rendered = []
+    engine.render_preview = lambda: rendered.append(1) or bytes(256 * 256)
+    client = TestClient(create_app(engine))
+    with client.websocket_connect("/ws?preview=0") as ws:
+        for _ in range(3):  # a binary frame in between would fail receive_json
+            assert "macros" in ws.receive_json()
+    assert rendered == []
+    with client.websocket_connect("/ws") as ws:  # the laptop's UI still gets it
+        ws.receive_json()
+        assert len(ws.receive_bytes()) == 256 * 256
+    assert rendered
+
+
 def test_rig_management(store):
     engine = Engine(store, enable_hardware=False)
     client = TestClient(create_app(engine))

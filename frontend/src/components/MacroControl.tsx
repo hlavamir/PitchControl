@@ -166,12 +166,12 @@ export function MacroControl(props: Props) {
   )
 }
 
-const SEGMENTS = 20
+export const SEGMENTS = 20
 const SEAM = 'inset 0 1px 0 rgba(15,16,17,.6)'
 const halo = 'calc(10px * var(--glow))'
 
 /** One segment: no gaps, a 1px darker seam; the ink fades in with the fill (0..1). */
-function segmentStyle(fill: number, bright: boolean, pending: boolean) {
+export function segmentStyle(fill: number, bright: boolean, pending: boolean) {
   if (pending) {
     return { background: 'rgb(var(--ink-rgb) / 0.14)', boxShadow: `${SEAM}, inset 0 0 0 1px rgb(var(--ink-rgb) / 0.7)` }
   }

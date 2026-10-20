@@ -16,9 +16,19 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   connection refuse it without. Five wrong PINs from one address make it wait, 30 seconds and then longer. This computer
   is never asked. A device on the network can't change the network settings or open folders and windows on the computer.
   The switch, port and PIN are per computer (`machine.json`). The PIN keeps visitors out; it is not strong security (the
-  traffic is not encrypted). There is no phone layout yet. The command-line option `--host` is gone (it is ignored with
+  traffic is not encrypted). The command-line option `--host` is gone (it is ignored with
   a note in the log): the switch replaces it, and it put no PIN in front of the UI. New dependency: `ifaddr` (lists the
   network adapters).
+- **Phone layout** for a phone that opens the UI over the network: the General page's macros as sideways sliders (01–16,
+  in the computer's order), the scenes as a 4 × 2 grid with Save and Delete, the function and mask buttons, and the
+  Dimmers page (a dimmer no fixture uses is greyed out), with two tabs at the bottom (in landscape, in the top bar). Every
+  control is at least 44 px, nothing depends on hovering, the text is larger than on the computer, and the ink, glow and
+  brightness of Settings → Appearance apply. The scene preview and the audio meters are left out; Fixtures, Rig, Inputs,
+  Outputs, Fog, Settings and the Control Desk stay on the computer (a link to one of them shows a note). "Full UI on this
+  phone" switches the phone to the whole UI and "Phone layout" back; the phone remembers it. The layout follows the
+  screen size, not the browser: a screen whose shorter side is below 600 px is a phone, so an iPad and the computer keep
+  the full UI. The phone doesn't receive the scene preview (`/ws?preview=0`): less traffic on the wifi, and no extra
+  preview rendering on the computer for each phone.
 - **Open DMX interface: "Log frame timing"** (Outputs page, the interface's Advanced settings, off by default). For
   finding out why the lights go dark for a frame now and then on a bare Open DMX interface. While it is on, the log
   file gets one line every 10 seconds (frames per second, the longest write, the largest gap between two frames,
