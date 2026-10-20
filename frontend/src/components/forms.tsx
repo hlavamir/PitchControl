@@ -42,7 +42,7 @@ export function Section({
 export function Row({ label, children, hint, plain }: { label: string; children: ReactNode; hint?: string; plain?: boolean }) {
   const Tag = plain ? 'div' : 'label'
   return (
-    <Tag data-tip={hint} className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-2 py-0.5 text-[13px]">
+    <Tag data-tip={hint} data-row className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-2 py-0.5 text-[13px]">
       <span className="lbl truncate text-[11px] text-dim">{label}</span>
       {/* inputs shrink instead of overflowing into the next column */}
       <span className="flex min-w-0 items-center gap-2 [&>*]:min-w-0 [&>select]:max-w-full">{children}</span>

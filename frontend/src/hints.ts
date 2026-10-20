@@ -30,6 +30,10 @@ export type HintKind =
   | 'select'
   | 'text'
   | 'info'
+  | 'nav-edit'
+  | 'nav-open'
+  | 'nav-toggle'
+  | 'nav-press'
 
 export type Keys = [cap: string, what: string][]
 
@@ -62,17 +66,22 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
   list: [['CLICK', 'select']],
   // the Rig page's fixture list: the keys move like files in Finder / Explorer (rigKeys.ts)
   'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'range'], [`${MOD} CLICK`, 'add / remove'], ['W S ↑ ↓', 'move'], ['SHIFT W S', 'range'], ['SPACE', 'add / remove'], ['D →', 'details']],
+  // the Rig page's details: the keys move from field to field, ⏎ starts editing (rigKeys.ts)
+  'nav-edit': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'edit'], ['ESC', 'list']],
+  'nav-open': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'open'], ['ESC', 'list']],
+  'nav-toggle': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'on / off'], ['ESC', 'list']],
+  'nav-press': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'press'], ['ESC', 'list']],
   slider: [['CLICK / DRAG', 'set'], ['↑ ↓', 'change'], ['SHIFT', 'fine'], ...MOVE],
   tab: [['1 – 9', 'page'], ['F', 'full screen'], [`${MOD} + −`, 'UI scale'], [`${MOD} 0`, 'UI scale 100 %']],
 }
 
 /**
- * On the Rig page Esc also leaves a field and goes back to the fixture list (rigKeys.ts): the keys of the
- * fields there say so. A number field's Esc reverts the typed text first.
+ * On the Rig page ⏎ and Esc stop editing a field of the details (rigKeys.ts); a number field's Esc reverts the
+ * typed text first. The keys of the fields there say so.
  */
 export function rigFieldKeys(kind: HintKind, keys: Keys): Keys {
-  if (kind === 'number') return keys.map(([cap, what]) => (cap === 'ESC' ? [cap, 'revert, back to list'] : [cap, what]))
-  if (kind === 'text' || kind === 'select' || kind === 'switch' || kind === 'override') return [...keys, ['ESC', 'back to list']]
+  if (kind === 'number') return keys.map(([cap, what]) => (cap === 'ESC' ? [cap, 'revert, done'] : cap === '⏎' ? [cap, 'apply, done'] : [cap, what]))
+  if (kind === 'text' || kind === 'select') return [...keys, ['⏎ ESC', 'done']]
   return keys
 }
 

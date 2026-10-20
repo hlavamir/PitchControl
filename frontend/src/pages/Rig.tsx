@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
 import { api, byName, channelCount, modeOf, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { Preview } from '../components/Preview'
@@ -7,9 +7,10 @@ import { hsvCss } from '../components/MacroControl'
 import { Button, Check, NumberInput, Row, Section, Toggle, UniverseSelect } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
 import { useElementWidth } from '../useElementWidth'
-import { MOD_NAME } from '../hints'
+import { MOD_NAME, hintAt, type HintKind } from '../hints'
 import { clickSelection } from '../listSelection'
-import { rigKeyAction, stepSelection, toggleCurrent } from '../rigKeys'
+import type { FieldBox } from '../fieldNav'
+import { editKind, navStep, rigKeyAction, stepSelection, toggleCurrent, type NavState } from '../rigKeys'
 import { SelectionContext, isTyping } from '../useGridNav'
 
 const NEW_FIXTURE: FixtureInstance = {
@@ -44,7 +45,40 @@ export const OPEN_TYPE_KEY = 'pitchcontrol.openFixtureType'
 
 const WHITE: HSB = { h: 0, s: 0, b: 1 }
 
-const LIST_TIP = `The lights of the rig: group, name and universe:address. Click one to edit it, or move with W S / ↑ ↓; Shift + click or Shift + a key selects a range, ${MOD_NAME} + click or Space adds or removes one, D / → goes into the details, Esc / A comes back`
+/** The controls of the details that the keys move over, in the order of the page. */
+const DETAIL_CONTROLS = 'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href]'
+
+/** ⏎ on a highlighted control: a text or number field takes the caret, a select opens, a switch or button is pressed. */
+function editField(el: HTMLElement | undefined) {
+  if (!el) return
+  const kind = editKind({ tagName: el.tagName, type: (el as HTMLInputElement).type })
+  if (kind === 'press') return el.click()
+  el.focus()
+  if (kind === 'open') {
+    try {
+      ;(el as HTMLSelectElement).showPicker()
+    } catch {
+      /* the focused select still changes with the arrow keys */
+    }
+  } else {
+    const input = el as HTMLInputElement
+    try {
+      input.setSelectionRange(input.value.length, input.value.length)
+    } catch {
+      /* no caret to place */
+    }
+  }
+}
+
+/** The footer keys of a highlighted control: what ⏎ does to it. */
+function navHint(el: HTMLElement): HintKind {
+  const kind = editKind({ tagName: el.tagName, type: (el as HTMLInputElement).type })
+  if (kind === 'caret') return 'nav-edit'
+  if (kind === 'open') return 'nav-open'
+  return el.getAttribute('role') === 'switch' || el.getAttribute('role') === 'checkbox' ? 'nav-toggle' : 'nav-press'
+}
+
+const LIST_TIP = `The lights of the rig: group, name and universe:address. Click one to edit it, or move with W S / ↑ ↓; Shift + click or Shift + a key selects a range, ${MOD_NAME} + click or Space adds or removes one, D / → goes into the details (⏎ edits a field, Esc / A comes back)`
 
 /**
  * The rig of one event: the rig file, the fixtures in it and everything that differs per fixture.
@@ -115,32 +149,50 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     setCursor(i)
   }
 
-  // Keys on the fixture list, like files in Finder / Explorer (rigKeys.ts); one listener, the handler is
-  // replaced on every render so it sees the current selection
+  // Keys on the page (rigKeys.ts): the fixture list like files in Finder / Explorer, the details field by field.
+  // One listener; the handler is replaced on every render so it sees the current selection.
+  const [nav, setNav] = useState<NavState>({ zone: 'list', index: 0 })
+  const controlsOf = () => [...(editorRef.current?.querySelectorAll<HTMLElement>(DETAIL_CONTROLS) ?? [])].filter((el) => el.getClientRects().length > 0)
+  const boxesOf = (els: HTMLElement[]): FieldBox[] => {
+    const root = editorRef.current?.getBoundingClientRect()
+    return els.map((el) => {
+      const r = el.getBoundingClientRect()
+      const cx = r.left + r.width / 2
+      return { cx, cy: r.top + r.height / 2, h: r.height, col: root && editorWidth >= 744 && cx > root.left + root.width / 2 ? 1 : 0 }
+    })
+  }
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined)
   const current = cursor != null && rig && cursor < rig.fixtures.length ? cursor : (sel[0] ?? null)
   onKey.current = (e) => {
     if (!rig) return
     const t = e.target as HTMLElement | null
     const onList = !t || t === document.body || !!listRef.current?.contains(t)
-    // ⏎ does nothing new: on a focused list button it would select that one alone (the browser's click),
+    // ⏎ does nothing new on the list: on a focused list button it would select that one alone (the browser's click),
     // which throws away a range the keys just made
     if (e.key === 'Enter' && !isTyping(e) && listRef.current?.contains(t)) return e.preventDefault()
-    const action = rigKeyAction(e, isTyping(e), onList)
+    const action = rigKeyAction(e, {
+      typing: isTyping(e),
+      onList,
+      zone: nav.zone,
+      inDetails: !!t && !!editorRef.current?.contains(t),
+      multiline: t?.tagName === 'TEXTAREA',
+    })
     if (!action) return
     e.preventDefault()
-    if (action.kind === 'list') {
-      // out of the field: the keys belong to the list again
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    } else if (action.kind === 'details') {
-      editorRef.current?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])')?.focus()
-    } else {
+    if (action.kind === 'move' || action.kind === 'toggle') {
       const from = { selected: sel, anchor: anchor.current, cursor: current }
       const next = action.kind === 'move' ? stepSelection(order, from, action.step, action.shift) : toggleCurrent(order, from)
       anchor.current = next.anchor
       setSelection(next.selected)
       setCursor(next.cursor)
+      return
     }
+    const els = controlsOf()
+    const at = action.kind === 'stop' && t ? els.indexOf(t) : -1 // stopping editing leaves the field highlighted
+    const { state, effect } = navStep(at >= 0 ? { zone: 'details', index: at } : nav, action, boxesOf(els))
+    setNav(state)
+    if (effect === 'blur' && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    if (effect === 'edit') editField(els[Math.min(state.index, els.length - 1)])
   }
   useEffect(() => {
     const down = (e: KeyboardEvent) => onKey.current(e)
@@ -148,23 +200,52 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     const up = (e: KeyboardEvent) => {
       if (e.key === ' ' && listRef.current?.contains(e.target as Node)) e.preventDefault()
     }
+    // a click outside the details gives the keys back to the list
+    const away = (e: PointerEvent) => {
+      if (!editorRef.current?.contains(e.target as Node)) setNav((n) => (n.zone === 'list' ? n : { ...n, zone: 'list' }))
+    }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
+    window.addEventListener('pointerdown', away)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      window.removeEventListener('pointerdown', away)
     }
   }, [])
+  // a field that gets the focus (a click, Tab, ⏎) is the highlighted one
+  const onDetailsFocus = (e: FocusEvent<HTMLDivElement>) => {
+    const i = controlsOf().indexOf(e.target as HTMLElement)
+    if (i >= 0) setNav({ zone: 'details', index: i })
+  }
+  // the highlight is an attribute on the control (styled like the selection on the other pages), not the focus:
+  // a focused field would take the keys as text
+  useEffect(() => {
+    editorRef.current?.querySelectorAll('[data-nav]').forEach((el) => el.removeAttribute('data-nav'))
+    if (nav.zone !== 'details') return
+    const els = controlsOf()
+    els[Math.min(nav.index, els.length - 1)]?.setAttribute('data-nav', '')
+  })
+  useEffect(() => {
+    if (nav.zone !== 'details') return
+    const els = controlsOf()
+    els[Math.min(nav.index, els.length - 1)]?.scrollIntoView({ block: 'nearest' })
+  }, [nav.zone, nav.index])
   // keep the cursor in view while the keys move it
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${current}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [current])
-  // the footer names the list's keys while they are in use
+  // the footer names the keys of the list, or of the highlighted field, while they are in use
   const setFooter = useContext(SelectionContext)
   const footerLabel = rig ? (sel.length > 1 ? `${sel.length} fixtures` : (rig.fixtures[current ?? -1]?.name ?? '')) : ''
   useEffect(() => {
-    setFooter(footerLabel ? { label: footerLabel, hint: 'list-multi', tip: LIST_TIP } : null)
-  }, [footerLabel, setFooter])
+    const els = nav.zone === 'details' ? controlsOf() : []
+    const el = els[Math.min(nav.index, els.length - 1)]
+    if (el) {
+      const label = el.closest('[data-row]')?.querySelector('.lbl')?.textContent || el.textContent?.replace('›', '').trim() || 'field'
+      setFooter({ label, hint: navHint(el), tip: hintAt(el)?.tip })
+    } else setFooter(footerLabel ? { label: footerLabel, hint: 'list-multi', tip: LIST_TIP } : null)
+  }, [footerLabel, nav.zone, nav.index, setFooter])
   useEffect(() => () => setFooter(null), [setFooter])
 
   /** The value all selected fixtures share, or MIXED. */
@@ -397,7 +478,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
         right={multi && 'multi-edit · a value you enter applies to all'}
         tip="Values of the selected fixture(s). Changes apply to the lights at once; the rig's Save writes them to the file"
       >
-        <div ref={editorRef} className="min-w-0">
+        <div ref={editorRef} onFocus={onDetailsFocus} className="min-w-0">
           {fx && (
             <div className={`grid gap-x-6 ${editorWidth >= 744 ? 'grid-cols-2' : ''}`}>
               <div>

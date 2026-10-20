@@ -51,14 +51,17 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   It is saved in the rig file as `mask_curve` and applies live.
 
 ### Changed
-- **Rig page, fixture list: keyboard navigation, like files in Finder or Explorer.** **W / S** or **↑ / ↓** move the selection
-  to the next fixture in the list; **Shift** with them extends it as a range from the anchor, by the same rule as Shift + click;
-  **Space** adds or removes the current fixture without moving; **D** or **→** moves the focus into the details, to the first
-  field; **Esc** leaves a field and goes back to the list, **A** does the same when you are not typing. ⏎ does nothing new (on a
-  focused list button it no longer selects that fixture alone, which would throw away a range). In a field the keys stay text and
-  ↑ / ↓ change a number as before. The footer names these keys on this page, also while a field has the focus (Esc: back to the
-  list; in a number field Esc first reverts what you typed), and the list has a thin outline on the current fixture when it is not
-  selected. The README's keys section says what differs on the Rig page.
+- **Rig page: keyboard navigation.** The fixture list works like files in Finder or Explorer: **W / S** or **↑ / ↓** move the
+  selection to the next fixture; **Shift** with them extends it as a range from the anchor, by the same rule as Shift + click;
+  **Space** adds or removes the current fixture without moving; **D** or **→** goes into the details. In the details the keys
+  only navigate and never change a value: the current field is highlighted like the selection on the other pages, **W / S**
+  or **↑ / ↓** move from field to field, **A / D** (or **← / →**) across a row, and **A** at the left edge, or **Esc**, goes
+  back to the list. **⏎ starts editing** the highlighted field (a number or text field takes the caret, a dropdown opens, a
+  switch or checkbox toggles); while editing, the keys are text and ↑ / ↓ change a number as before, and **⏎ or Esc stops
+  editing** and keeps the value. A click into a field edits it at once. ⏎ does nothing on the list (on a focused list button it
+  no longer selects that fixture alone, which would throw away a range). The footer names the keys of the list, of the
+  highlighted field and of an edited field, and the list has a thin outline on the current fixture when it is not selected.
+  The README's keys section says what differs on the Rig page.
 - **Rig page, fixture list: Shift + click selects a range, ⌘ / Ctrl + click adds or removes one fixture.** Shift + click
   selects every fixture between the one you clicked last and the one you click now, in the order the list shows
   (alphabetical); ⌘ (macOS) or Ctrl (Windows) + click does what Shift + click did before. ⌘ / Ctrl + Shift + click adds a

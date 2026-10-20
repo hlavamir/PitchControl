@@ -51,7 +51,8 @@ body {
 }
 
 /* bloom under selected / active elements — the "modern take" */
-.glow-sel {
+.glow-sel,
+[data-nav] {
   position: relative;
   z-index: 1;
   box-shadow:
