@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, byName, channelCount, modeOf, slotKind, type ChannelMode, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
+import { api, byName, channelCount, slotKind, type ChannelMode, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import type { Origin } from '../components/RigPanel'
+import { fixturesInMode, hasSameName, newModeId } from '../modes'
 import { OPEN_TYPE_KEY } from './Rig'
 
 type Kind = ReturnType<typeof slotKind>
@@ -27,7 +28,7 @@ function slotOfKind(slot: ChannelSlot, kind: Kind, firstMacro: string): ChannelS
   return { name, pixels: 'RGB' }
 }
 
-/** The DMX channels of a type, as "start–end: what" lines. */
+/** The DMX channels of one mode of a type, as "start–end: what" lines. */
 function channelMap(t: FixtureType, mode: ChannelMode): { from: number; to: number; text: string }[] {
   const rows: { from: number; to: number; text: string }[] = []
   let ch = 1
@@ -57,6 +58,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [modeAsk, setModeAsk] = useState<{ index: number; fixtures: string[] } | null>(null) // deleting a mode the rig uses
 
   const loadStatus = useCallback(() => api.get<Status>('/api/fixture-types/status').then(setStatus), [])
   const reload = useCallback(
@@ -158,12 +160,56 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
     setPrompt({ kind: 'name', action })
   }
 
-  const moveSlot = (i: number, d: -1 | 1) =>
+  const moveSlot = (mi: number, i: number, d: -1 | 1) =>
     edit((x) => {
+      const channels = x.modes[mi].channels
       const j = i + d
-      if (j < 0 || j >= x.modes[0].channels.length) return
-      ;[x.modes[0].channels[i], x.modes[0].channels[j]] = [x.modes[0].channels[j], x.modes[0].channels[i]]
+      if (j < 0 || j >= channels.length) return
+      ;[channels[i], channels[j]] = [channels[j], channels[i]]
     })
+
+  /** A new mode starts as a copy of the last one: a mode is mostly the one before it with a channel more or less. */
+  const addMode = () =>
+    edit((x) => {
+      const last = x.modes[x.modes.length - 1]
+      const copy = structuredClone(last)
+      copy.name = `${last.name} copy`
+      copy.id = newModeId(x.modes, copy.name)
+      x.modes.push(copy)
+    })
+
+  const removeMode = (mi: number) =>
+    edit((x) => {
+      const [gone] = x.modes.splice(mi, 1)
+      if (x.default_mode === gone.id) x.default_mode = x.modes[0].id
+    })
+
+  /** Deleting a mode: at once when no fixture of the active rig runs in it, else after asking (they move to the default mode). */
+  const askRemoveMode = async (mi: number) => {
+    if (!t) return
+    const gone = t.modes[mi]
+    const rig = await api.get<{ fixtures: { name: string; type: string; mode?: string | null }[] }>('/api/rig')
+    const users = fixturesInMode(rig.fixtures, t, gone.id)
+    if (users.length) setModeAsk({ index: mi, fixtures: users })
+    else removeMode(mi)
+  }
+
+  /** The confirmed deletion: the fixtures of the active rig that ran in the mode go to the default mode, live (the Rig page shows the rig unsaved). */
+  const removeUsedMode = async (mi: number, names: string[]) => {
+    if (!t) return
+    const fallback = t.modes[mi].id === t.default_mode ? t.modes.find((_, i) => i !== mi)!.id : t.default_mode
+    removeMode(mi)
+    setModeAsk(null)
+    try {
+      await live.current
+      const rig = await api.get<{ fixtures: { name: string; type: string; mode?: string | null }[] }>('/api/rig')
+      for (const f of rig.fixtures) if (f.type === t.name && names.includes(f.name)) f.mode = fallback
+      await api.put('/api/rig?persist=false', rig)
+      setMessage(`Mode deleted. ${names.join(', ')} now ${names.length === 1 ? 'runs' : 'run'} in the default mode; the rig has unsaved changes (Rig page).`)
+    } catch (e) {
+      setMessage(String(e))
+    }
+  }
 
   const hsb = (c: HSB) => (
     <>
@@ -193,6 +239,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
               <button
                 onClick={() => {
                   setSelected(x.name)
+                  setModeAsk(null)
                   setMessage(null)
                 }}
                 className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${x.name === selected ? 'glow-on bg-ink text-ground' : 'hover:bg-panel-2'}`}
@@ -347,84 +394,159 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
             </Row>
 
             <div className="mt-3 border-t border-seam pt-3">
-              <p className="lbl mb-2 text-[10px] text-dim">Channel layout · in DMX order from the fixture's address</p>
+              <p className="lbl mb-2 text-[10px] text-dim">
+                {t.transport === 'pitchpls_v2' ? 'Channel layout' : "Channel modes · one section per mode, channels in DMX order from the fixture's address"}
+              </p>
               {t.transport === 'pitchpls_v2' ? (
                 <p className="text-[12px] text-dim">The PitchPlease v2 serial protocol sends 3 bytes (RGB) per pixel; a channel layout isn't used.</p>
               ) : (
-                <div className="flex flex-col gap-1">
-                  {t.modes[0].channels.map((slot, i) => {
-                    const kind = slotKind(slot)
+                <div className="flex flex-col gap-2">
+                  {t.modes.map((mode, mi) => {
+                    const isDefault = mode.id === t.default_mode
+                    const duplicate = hasSameName(t.modes, mi)
                     return (
-                      <div key={i} data-tip={`DMX channel ${i + 1} of the fixture: what it does, its name, and its value`} className="flex flex-wrap items-center gap-1.5 bg-panel-2 px-2 py-1 text-[12px]">
-                        <span className="w-6 font-mono text-[11px] text-dim">{String(i + 1).padStart(2, '0')}</span>
-                        <select
-                          value={kind}
-                          data-tip="What this DMX channel does: a constant, a macro (e.g. a dimmer), the shutter, or the pixel colours"
-                          onChange={(e) => edit((x) => (x.modes[0].channels[i] = slotOfKind(slot, e.target.value as Kind, macroNames[0] ?? 'Dimmer 01')))}
-                        >
-                          {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
-                            <option key={k} value={k}>
-                              {KIND_LABEL[k]}
-                            </option>
-                          ))}
-                        </select>
+                      <div key={mode.id} className={`flex flex-col gap-1 border p-2 ${isDefault ? 'border-ink' : 'border-edge'}`}>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <input
+                            type="text"
+                            className="w-32"
+                            placeholder="mode name"
+                            value={mode.name}
+                            onChange={(e) => edit((x) => (x.modes[mi].name = e.target.value), false)}
+                            onBlur={() => applyLive(types[selected])}
+                            data-tip="Name of this mode, as the fixture's display or manual calls it (e.g. 6CH). Rigs store the mode's id, so renaming never breaks one"
+                          />
+                          <span className="lbl text-[10px] text-dim">{channelCount(t, mode.id)} ch</span>
+                          {isDefault ? (
+                            <span className="lbl glow-on bg-ink px-1.5 text-[10px] leading-[18px] text-ground" data-hint="info" data-tip="The default mode: a new fixture of this type starts in it, and a fixture without a mode uses it">
+                              default
+                            </span>
+                          ) : (
+                            <button
+                              className="lbl h-[18px] border border-edge px-1.5 text-[10px] text-dim hover:text-ink"
+                              data-tip="Make this the default mode: new fixtures of this type start in it"
+                              onClick={() => edit((x) => (x.default_mode = mode.id))}
+                            >
+                              make default
+                            </button>
+                          )}
+                          {duplicate && (
+                            <span className="lbl text-[10px] text-ink" data-hint="info" data-tip="Another mode of this type has the same name: the Mode dropdown on the Rig page would show two of the same">
+                              ⚠ same name as another mode
+                            </span>
+                          )}
+                          <button
+                            className="ml-auto px-1 text-dim hover:text-ink disabled:opacity-30"
+                            disabled={t.modes.length === 1}
+                            data-tip={t.modes.length === 1 ? 'A type needs at least one mode' : 'Delete this mode (asks first when a fixture of the rig runs in it)'}
+                            onClick={() => askRemoveMode(mi)}
+                          >
+                            ✕ delete mode
+                          </button>
+                        </div>
+                        {modeAsk?.index === mi && (
+                          <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2 text-[11px]">
+                            <span className="min-w-0 flex-1">
+                              {modeAsk.fixtures.join(', ')} {modeAsk.fixtures.length === 1 ? 'runs' : 'run'} in this mode in the active rig. Delete it anyway? {modeAsk.fixtures.length === 1 ? 'That fixture moves' : 'They move'} to the default mode.
+                            </span>
+                            <Button primary onClick={() => removeUsedMode(mi, modeAsk.fixtures)}>
+                              Delete mode
+                            </Button>
+                            <Button onClick={() => setModeAsk(null)}>Cancel</Button>
+                          </div>
+                        )}
                         <input
                           type="text"
-                          className="w-28"
-                          placeholder="name"
-                          value={slot.name ?? ''}
-                          onChange={(e) => edit((x) => (x.modes[0].channels[i].name = e.target.value || null), false)}
+                          className="w-full text-[12px]"
+                          placeholder="short description (optional), e.g. what the channels are"
+                          value={mode.description}
+                          onChange={(e) => edit((x) => (x.modes[mi].description = e.target.value), false)}
                           onBlur={() => applyLive(types[selected])}
-                          data-tip="Name of the channel. A named constant can be overridden per fixture on the Rig page"
+                          data-tip="A line about this mode, shown with it in the editor and as the tip of the Mode dropdown on the Rig page"
                         />
-                        {kind === 'value' && (
-                          <NumberInput value={slot.value} integer min={0} max={255} className="w-16" tip="Constant value sent on this channel (0–255)" onChange={(v) => edit((x) => (x.modes[0].channels[i].value = v))} />
-                        )}
-                        {kind === 'macro' && (
-                          <select value={slot.macro ?? ''} data-tip="Macro whose value (0–1) is sent on this channel, e.g. a dimmer fader" onChange={(e) => edit((x) => (x.modes[0].channels[i].macro = e.target.value))}>
-                            {!macroNames.includes(slot.macro ?? '') && <option value={slot.macro ?? ''}>{slot.macro} (missing)</option>}
-                            {macroNames.map((m) => (
-                              <option key={m}>{m}</option>
-                            ))}
-                          </select>
-                        )}
-                        {kind === 'shutter' && (
-                          <>
-                            <span className="lbl text-[10px] text-dim">open</span>
-                            <NumberInput value={slot.shutter?.open} integer min={0} max={255} className="w-14" tip="Shutter channel value for open (no strobe), 0–255" onChange={(v) => edit((x) => (x.modes[0].channels[i].shutter = { ...x.modes[0].channels[i].shutter!, open: v }))} />
-                            <span className="lbl text-[10px] text-dim">strobe</span>
-                            <NumberInput value={slot.shutter?.strobo} integer min={0} max={255} className="w-14" tip="Shutter channel value for the fixture's own strobe, 0–255" onChange={(v) => edit((x) => (x.modes[0].channels[i].shutter = { ...x.modes[0].channels[i].shutter!, strobo: v }))} />
-                          </>
-                        )}
-                        {kind === 'pixels' && (
-                          <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: R, RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[0].channels[i].pixels = e.target.value as PixelFormat))}>
-                            {FORMATS.map((f) => (
-                              <option key={f}>{f}</option>
-                            ))}
-                          </select>
-                        )}
-                        <span className="ml-auto flex gap-1">
-                          <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === 0} data-tip="Move this channel up: earlier in the DMX order" onClick={() => moveSlot(i, -1)}>
-                            ↑
-                          </button>
-                          <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === t.modes[0].channels.length - 1} data-tip="Move this channel down: later in the DMX order" onClick={() => moveSlot(i, 1)}>
-                            ↓
-                          </button>
-                          <button
-                            className="px-1 text-dim hover:text-ink disabled:opacity-30"
-                            disabled={t.modes[0].channels.length === 1}
-                            data-tip="Remove this channel from the layout"
-                            onClick={() => edit((x) => x.modes[0].channels.splice(i, 1))}
-                          >
-                            ✕
-                          </button>
-                        </span>
+                        <div className="flex flex-col gap-1">
+                {mode.channels.map((slot, i) => {
+                  const kind = slotKind(slot)
+                  return (
+                    <div key={i} data-tip={`DMX channel ${i + 1} of the fixture: what it does, its name, and its value`} className="flex flex-wrap items-center gap-1.5 bg-panel-2 px-2 py-1 text-[12px]">
+                      <span className="w-6 font-mono text-[11px] text-dim">{String(i + 1).padStart(2, '0')}</span>
+                      <select
+                        value={kind}
+                        data-tip="What this DMX channel does: a constant, a macro (e.g. a dimmer), the shutter, or the pixel colours"
+                        onChange={(e) => edit((x) => (x.modes[mi].channels[i] = slotOfKind(slot, e.target.value as Kind, macroNames[0] ?? 'Dimmer 01')))}
+                      >
+                        {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+                          <option key={k} value={k}>
+                            {KIND_LABEL[k]}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        className="w-28"
+                        placeholder="name"
+                        value={slot.name ?? ''}
+                        onChange={(e) => edit((x) => (x.modes[mi].channels[i].name = e.target.value || null), false)}
+                        onBlur={() => applyLive(types[selected])}
+                        data-tip="Name of the channel. A named constant can be overridden per fixture on the Rig page"
+                      />
+                      {kind === 'value' && (
+                        <NumberInput value={slot.value} integer min={0} max={255} className="w-16" tip="Constant value sent on this channel (0–255)" onChange={(v) => edit((x) => (x.modes[mi].channels[i].value = v))} />
+                      )}
+                      {kind === 'macro' && (
+                        <select value={slot.macro ?? ''} data-tip="Macro whose value (0–1) is sent on this channel, e.g. a dimmer fader" onChange={(e) => edit((x) => (x.modes[mi].channels[i].macro = e.target.value))}>
+                          {!macroNames.includes(slot.macro ?? '') && <option value={slot.macro ?? ''}>{slot.macro} (missing)</option>}
+                          {macroNames.map((m) => (
+                            <option key={m}>{m}</option>
+                          ))}
+                        </select>
+                      )}
+                      {kind === 'shutter' && (
+                        <>
+                          <span className="lbl text-[10px] text-dim">open</span>
+                          <NumberInput value={slot.shutter?.open} integer min={0} max={255} className="w-14" tip="Shutter channel value for open (no strobe), 0–255" onChange={(v) => edit((x) => (x.modes[mi].channels[i].shutter = { ...x.modes[mi].channels[i].shutter!, open: v }))} />
+                          <span className="lbl text-[10px] text-dim">strobe</span>
+                          <NumberInput value={slot.shutter?.strobo} integer min={0} max={255} className="w-14" tip="Shutter channel value for the fixture's own strobe, 0–255" onChange={(v) => edit((x) => (x.modes[mi].channels[i].shutter = { ...x.modes[mi].channels[i].shutter!, strobo: v }))} />
+                        </>
+                      )}
+                      {kind === 'pixels' && (
+                        <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: R, RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = e.target.value as PixelFormat))}>
+                          {FORMATS.map((f) => (
+                            <option key={f}>{f}</option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="ml-auto flex gap-1">
+                        <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === 0} data-tip="Move this channel up: earlier in the DMX order" onClick={() => moveSlot(mi, i, -1)}>
+                          ↑
+                        </button>
+                        <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === mode.channels.length - 1} data-tip="Move this channel down: later in the DMX order" onClick={() => moveSlot(mi, i, 1)}>
+                          ↓
+                        </button>
+                        <button
+                          className="px-1 text-dim hover:text-ink disabled:opacity-30"
+                          disabled={mode.channels.length === 1}
+                          data-tip="Remove this channel from the layout"
+                          onClick={() => edit((x) => x.modes[mi].channels.splice(i, 1))}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  )
+                })}
+                          <div className="mt-1">
+                            <Button onClick={() => edit((x) => x.modes[mi].channels.push({ name: null, value: 0 }))} tip="Append a constant channel (value 0) at the end of this mode's layout">
+                              Add channel
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     )
                   })}
-                  <div className="mt-1">
-                    <Button onClick={() => edit((x) => x.modes[0].channels.push({ name: null, value: 0 }))} tip="Append a constant channel (value 0) at the end of the layout">
-                      Add channel
+                  <div>
+                    <Button onClick={addMode} tip="Add a mode: it starts as a copy of the last one, since a mode is mostly the one before it with a channel more or less">
+                      Add mode
                     </Button>
                   </div>
                 </div>
@@ -437,26 +559,38 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
       <Section
         index="03"
         title="Channel map"
-        right={t && t.transport === 'dmx' && `${count} channels`}
+        right={t && t.transport === 'dmx' && (t.modes.length > 1 ? `${t.modes.length} modes` : `${count} channels`)}
         bodyClassName="p-3 min-h-0 overflow-auto"
-        tip="The DMX channels of one fixture, counted from its address, and how many fit one universe (512 channels)"
+        tip="The DMX channels of one fixture in each mode, counted from its address, and how many fit one universe (512 channels)"
       >
         {t && t.transport === 'dmx' && (
-          <>
-            <div className="flex flex-col gap-px font-mono text-[12px]">
-              {channelMap(t, modeOf(t)).map((r, i) => (
-                <div key={i} className="flex gap-3 bg-panel-2 px-2 py-1">
-                  <span className="w-16 flex-none text-dim">{r.from === r.to ? r.from : `${r.from}–${r.to}`}</span>
-                  <span className="min-w-0 flex-1 truncate" data-tip={r.text}>
-                    {r.text}
-                  </span>
+          <div className="flex flex-col gap-3">
+            {t.modes.map((mode) => {
+              const n = channelCount(t, mode.id)
+              return (
+                <div key={mode.id}>
+                  <p className="lbl mb-1 flex justify-between text-[10px] text-dim">
+                    <span>
+                      {mode.name}
+                      {mode.id === t.default_mode && ' · default'}
+                    </span>
+                    <span>{n} channels</span>
+                  </p>
+                  <div className="flex flex-col gap-px font-mono text-[12px]">
+                    {channelMap(t, mode).map((r, i) => (
+                      <div key={i} className="flex gap-3 bg-panel-2 px-2 py-1">
+                        <span className="w-16 flex-none text-dim">{r.from === r.to ? r.from : `${r.from}–${r.to}`}</span>
+                        <span className="min-w-0 flex-1 truncate" data-tip={r.text}>
+                          {r.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="lbl mt-1 text-[10px] text-dim">{Math.floor(512 / Math.max(n, 1))} fixtures in this mode fit one universe</p>
                 </div>
-              ))}
-            </div>
-            <p className="lbl mt-3 text-[10px] text-dim">
-              {count} channels · {Math.floor(512 / Math.max(count, 1))} fixtures of this type fit one universe
-            </p>
-          </>
+              )
+            })}
+          </div>
         )}
         {t && t.transport === 'pitchpls_v2' && (
           <p className="text-[12px] text-dim">

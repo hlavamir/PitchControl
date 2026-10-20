@@ -166,3 +166,14 @@ def test_modes_go_through_the_api_and_the_file(store):
     rig["fixtures"], rig["fog_machines"] = [{"name": "a", "type": "spot", "address": 1, "mode": "4ch"}], []
     assert client.put("/api/rig", json=rig).json()["problems"] == []
     assert store.rig_path(store.rig.name).read_text().count('"mode": "4ch"') == 1
+
+
+def test_a_type_with_three_modes_is_saved_and_reloaded(store):
+    ftype = FixtureType.model_validate(SPOT | {"name": "spot", "description": "three modes"})
+    store.save_fixture_type(ftype)
+    saved = json.loads((store.types_dir / "spot.json").read_text())
+    assert [m["id"] for m in saved["modes"]] == ["3ch", "4ch", "6ch"] and saved["default_mode"] == "4ch" and "channels" not in saved
+    again = ConfigStore(store.root)
+    again.load_all()
+    assert again.fixture_types["spot"].modes == ftype.modes and again.fixture_types["spot"].default_mode == "4ch"
+    assert [again.fixture_types["spot"].channel_count(m.id) for m in ftype.modes] == [3, 4, 6]

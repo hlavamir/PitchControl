@@ -35,8 +35,9 @@ The page for playing the show:
 
 The fixture types: everything shared by all fixtures of one model, one JSON file each in `config/fixtures/types/`.
 - **Fixture types:** the list, with New, Duplicate, Rename and Delete. Renaming updates every rig that uses the type; a type that a rig uses can't be deleted.
-- **Type editor:** description, output (DMX or the PitchPlease v2 serial protocol), pixel count, gamma and the strobo colour (HSB). Below that is the channel layout in DMX order. Each channel is a constant (e.g. master = 255), a macro (e.g. a strip dimmer following "Dimmer 01"), a shutter (open / strobe values) or the pixel block (R, RGB or RGBW). ↑ ↓ ✕ reorder and remove channels.
-- **Channel map:** the resulting DMX channels with their numbers, the total, and how many fixtures of the type fit one universe.
+- **Type editor:** description, output (DMX or the PitchPlease v2 serial protocol), pixel count, gamma and the strobo colour (HSB). Below that are the **channel modes**, one section per mode (at least one): a name (as the fixture's display or manual calls it, e.g. 6CH), a short description and the channel layout in DMX order. Each channel is a constant (e.g. master = 255), a macro (e.g. a strip dimmer following "Dimmer 01"), a shutter (open / strobe values) or the pixel block (R, RGB or RGBW). ↑ ↓ ✕ reorder and remove channels. The pixel count is the same in every mode.
+- **Modes:** **Add mode** appends a copy of the last mode (a new mode is mostly the old one with a channel more or less); **make default** marks the mode a new rig fixture starts in; **✕ delete mode** removes one (not the last). A mode that fixtures of the active rig run in asks first and names them; they move to the default mode (the rig then has unsaved changes). Two modes with the same name get a warning.
+- **Channel map:** the resulting DMX channels of every mode with their numbers, the total, and how many fixtures of the type fit one universe.
 
 Edits apply to the lights right away and mark the type unsaved; Save writes the file, Revert reloads it.
 

@@ -12,7 +12,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   file gets one line every 10 seconds (frames per second, the longest write, the largest gap between two frames,
   frames dropped before they were written) and one line for each frame that came more than twice the frame time after
   the one before. Nothing is measured or written while it is off.
-- **Channel modes per fixture type** (the model, the engine and the Rig page; the Fixtures page editor follows). Most DMX
+- **Channel modes per fixture type** (the model, the engine, the Rig page and the Fixtures page editor). Most DMX
   lights run in several channel modes (3CH, 4CH, 6CH, 9CH …); until now every mode needed a type of its own. A fixture
   type now holds one or more modes, each with a name, a short description and its channel layout, and one of them is the
   default; the pixel count, gamma and strobo colour stay per type. On the Rig page each fixture picks its mode in a
@@ -22,6 +22,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   type's default. The mode is part of the rig, not of scenes. It is saved in the rig file as the mode's stable `id`, so
   renaming a mode never breaks a rig; a fixture without a mode uses the default, an unknown one is listed as a rig problem
   (and noticed on load) and plays in the default mode.
+- **Fixtures page: the channel layout is a list of mode sections.** Each mode has a name, a short description and its own
+  channel editor; **Add mode** starts as a copy of the last mode, **make default** marks the mode new fixtures start in,
+  **delete mode** removes one (not the last). Deleting a mode that fixtures of the active rig run in asks first and names
+  them; they move to the default mode and the rig shows unsaved changes. Two modes with the same name get a warning. The
+  Channel map shows every mode.
 - **Shipped types with modes:** **Cameo Q-Spot 15** now has its five modes (2CH, 3CH-1, 3CH-2, 4CH, 9CH, default 4CH as
   before) and a new **Eurolite LED 4C-7** type has 3CH, 4CH, 5CH, 6CH and 9CH (default 4CH). Modes without colour mixing
   (the Cameo's 2CH and 3CH-1, the Eurolite's 5CH) send the brightness on the dimmer channel and hold the colour macro at
