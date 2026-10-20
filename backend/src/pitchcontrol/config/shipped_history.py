@@ -3,7 +3,8 @@ tools/shipped_config_history.py; don't edit by hand). Path relative to the confi
 
 _HASHES: dict[str, list[str]] = {
     'controllers/lcxl3.json': ['10f3371f085b9b15', '5f5c44138ca71943', '6bc13ad17192bf90', '781b0969581c85d9', '84358223e98f3048', 'aa196041acd41268', 'cae529030a3c0601', 'd5ccd653b0c8c06b'],
-    'fixtures/types/Cameo Q-Spot 15.json': ['c6921b0f700eed6f'],
+    'fixtures/types/Cameo Q-Spot 15.json': ['8494195b427aac79', 'c6921b0f700eed6f'],
+    'fixtures/types/Eurolite LED 4C-7.json': ['b0c6961f80aa4280'],
     'fixtures/types/Generic 1xRGB Fixture.json': ['7081ee0979c3abc0', 'db4ff6367f87d914'],
     'fixtures/types/Generic Addressable LED Strip.json': ['1e62fb4608e31b51'],
     'fixtures/types/PitchPls v2.json': ['a44023fb1934b671'],

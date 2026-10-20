@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.6.0 — 2026-10-20
+
 ### Added
 - **Network switch: open the UI on a phone or an iPad** (Settings → Network, **Allow other devices on this network**). Off
   by default, with a plain warning that anyone on the network can then control the lights and change the rig. When it is
