@@ -12,15 +12,15 @@ const INK_NAMES: [InkName, string][] = [
 ]
 
 const KEYMAP: [string, string][] = [
-  ['W  S', 'Move the selection up / down a row; on Fixtures, Rig, Inputs, Outputs, Fog and Settings: to the control above / below'],
-  ['A  D', 'Move the selection left / right; on those pages: along a row'],
-  ['↑  ↓', 'Change the selected value (General, Dimmers, Control Desk); in an edited field: the number'],
-  ['SHIFT', 'Fine steps while changing a value; on the Rig page: extends the selection'],
-  ['⏎', 'Press the selected button, load the selected scene; on Fixtures to Settings: edit the highlighted control (⏎ or Esc stops)'],
+  ['W  S', 'Up / down a row, or to the control above / below'],
+  ['A  D', 'Left / right, or along a row'],
+  ['↑  ↓', 'Change the selected value; in an edited field: the number'],
+  ['SHIFT', 'Fine steps; on the Rig page: extends the selection'],
+  ['⏎', 'Press the button, load the scene; edit the control (⏎ / Esc stops)'],
   ['SHIFT ⏎', 'Save the selected scene'],
-  ['SPACE', 'Rig page: add / remove the current fixture to / from the selection'],
+  ['SPACE', 'Rig page: add / remove the current fixture'],
   ['D  →', 'Fixtures and Rig: from the list into the details'],
-  ['ESC', 'Cancel a pending hue / saturation change; stop editing a field; back to the list'],
+  ['ESC', 'Cancel a pending change, stop editing, back to the list'],
   ['1 – 9', 'Switch page'],
   ['Q  E', 'Previous / next subpage (Control Desk)'],
   ['F', 'Full screen on / off (desktop app)'],
@@ -282,10 +282,10 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
 
       <div className="flex min-w-0 flex-col gap-1.5">
       <NetworkSection index="04" desktop={desktop} />
-      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. Every page can be used with the keys alone: General, Dimmers and Control Desk like a hardware device, the others control by control">
+      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-2.5 pt-1.5" tip="All keys of the UI. Every page can be used with the keys alone: General, Dimmers and Control Desk like a hardware device, the others control by control">
         {KEYMAP.map(([cap, what]) => (
-          <div key={cap} className="flex min-h-[34px] items-center gap-3.5 border-b border-[#1d1f21] py-1">
-            <span className="min-w-16 border border-ink px-1.5 py-0.5 text-center font-mono text-[12px]">{cap}</span>
+          <div key={cap} className="flex min-h-[25px] items-center gap-3.5 border-b border-[#1d1f21] py-0.5">
+            <span className="min-w-16 border border-ink px-1.5 text-center font-mono text-[12px]">{cap}</span>
             <span className="lbl text-[12px]">{what}</span>
           </div>
         ))}

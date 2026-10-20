@@ -77,6 +77,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   from the anchor, by the same rule as Shift + click, and **Space** adds or removes the current fixture without moving. ⏎ does
   nothing on the list (on a focused list button it no longer selects that fixture alone, which would throw away a range). The
   list has a thin outline on the current fixture when it is not selected.
+- **Settings page: the keyboard reference has one line per key, and the page fits 1512 × 915 again** (the Network section and the longer key descriptions had pushed the About box below the window).
 - **Settings: the Glow and UI brightness sliders can be focused (Tab, or ⏎ when highlighted) and changed with the arrow
   keys** (Shift = fine). The Settings page no longer has the one-control-always-selected grid; every control on it, including
   the Engine frame rate, the Network section and the links, can be reached by the keys.
