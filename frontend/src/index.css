@@ -51,8 +51,7 @@ body {
 }
 
 /* bloom under selected / active elements — the "modern take" */
-.glow-sel,
-[data-nav] {
+.glow-sel {
   position: relative;
   z-index: 1;
   box-shadow:
@@ -62,6 +61,18 @@ body {
 }
 .glow-on {
   box-shadow: 0 0 calc(16px * var(--glow)) rgb(var(--ink-rgb) / calc(0.3 * var(--glow)));
+}
+/* the control the keys have highlighted on the Rig page's details; after .glow-on, so a switch that is on shows it too,
+   and with an outline that no other shadow can replace */
+[data-nav] {
+  position: relative;
+  z-index: 1;
+  outline: 1px solid var(--color-ink);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px var(--color-ink),
+    0 0 calc(2px + 14px * var(--glow)) rgb(var(--ink-rgb) / calc(0.38 * var(--glow))),
+    0 0 calc(4px + 44px * var(--glow)) rgb(var(--ink-rgb) / calc(0.16 * var(--glow)));
 }
 .glow-held {
   box-shadow:
