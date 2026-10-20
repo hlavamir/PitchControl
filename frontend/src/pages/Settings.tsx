@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { api, type Settings as SettingsData } from '../api'
 import { Button, Row, Section } from '../components/forms'
+import { NetworkSection } from '../components/NetworkSection'
 import { DESIGN_SIZE, INKS, clampScale, fitScale, type InkName, type UiSettings } from '../theme'
 import { useGridNav, type NavItem } from '../useGridNav'
 
@@ -280,7 +281,8 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5">
-      <Section index="04" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. The pages with a grid (General, Dimmers, Control Desk, Settings) can be played with the keys alone">
+      <NetworkSection index="04" desktop={desktop} />
+      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. The pages with a grid (General, Dimmers, Control Desk, Settings) can be played with the keys alone">
         {KEYMAP.map(([cap, what]) => (
           <div key={cap} className="flex h-[34px] items-center gap-3.5 border-b border-[#1d1f21]">
             <span className="min-w-16 border border-ink px-1.5 py-0.5 text-center font-mono text-[12px]">{cap}</span>
@@ -289,7 +291,7 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
         ))}
       </Section>
       {desktop && (
-        <Section index="05" title="App" right="desktop app" tip="Desktop app only: the app is a window around the same UI that a browser can show">
+        <Section index="06" title="App" right="desktop app" tip="Desktop app only: the app is a window around the same UI that a browser can show">
           <div className="flex gap-1.5">
             <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Open this UI in the default browser, e.g. for a second screen" onClick={() => api.post('/api/open-browser')}>
               Open in browser
@@ -315,10 +317,10 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
               {ui.start_fullscreen ? 'On' : 'Off'}
             </button>
           </div>
-          <span className="lbl mt-3 text-[10px] text-dim">The browser view can also be used on a second screen or a phone (start with --host 0.0.0.0)</span>
+          <span className="lbl mt-3 text-[10px] text-dim">The browser view can also be used on a second screen, or on a phone or iPad (Network, above)</span>
         </Section>
       )}
-      <Section index={desktop ? '06' : '05'} title="About" right="version" tip="Which PitchControl this is, and where its source and releases are">
+      <Section index={desktop ? '07' : '06'} title="About" right="version" tip="Which PitchControl this is, and where its source and releases are">
         <div className="flex items-baseline justify-between gap-3">
           <span className="lbl text-[12px]">PitchControl</span>
           <span className="text-glow font-mono text-[16px]" data-hint="info" data-tip="Version; +N = commits after that release, (abc1234) = the commit, modified = unsaved changes in the source">

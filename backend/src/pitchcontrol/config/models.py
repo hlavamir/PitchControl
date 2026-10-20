@@ -540,6 +540,26 @@ class UiSettings(Model):
     scale: float = Field(default=1.0, ge=0.6, le=1.5)  # UI zoom; 1 = the 1512×915 design size
 
 
+DEFAULT_PORT = 8420  # where the UI is served; also the default port for other devices on the network
+PIN_LENGTHS = (4, 8)
+
+
+class NetworkSettings(Model):
+    """Other devices (a phone, an iPad) opening the UI over the network. Off unless this computer's owner turns
+    it on: anyone who can reach the port then controls the lights and changes the rig."""
+
+    enabled: bool = False
+    port: int = Field(default=DEFAULT_PORT, ge=1024, le=65535)  # fixed: never moved to another one when it is taken
+    pin: str = ""  # 4 to 8 digits; empty = no PIN. Asked from every device but this computer
+
+    @field_validator("pin", mode="after")
+    @classmethod
+    def _pin_is_digits(cls, v: str) -> str:
+        if v and not (v.isascii() and v.isdigit() and PIN_LENGTHS[0] <= len(v) <= PIN_LENGTHS[1]):
+            raise ValueError(f"the PIN is {PIN_LENGTHS[0]} to {PIN_LENGTHS[1]} digits (or empty for none)")
+        return v
+
+
 class Settings(Model):
     fps: float = 40.0
     preview_fps: float = 15.0
@@ -553,6 +573,7 @@ class Settings(Model):
     masks: MaskSettings = Field(default_factory=MaskSettings)
     auto_colors: list[HSB] = Field(default_factory=_default_palette)
     ui: UiSettings = Field(default_factory=UiSettings)
+    network: NetworkSettings = Field(default_factory=NetworkSettings)
 
 
 # --------------------------------------------------------------------------- MIDI controllers

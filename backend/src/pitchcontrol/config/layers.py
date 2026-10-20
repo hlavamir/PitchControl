@@ -17,12 +17,14 @@ from typing import Any
 # What belongs to one computer rather than to the show, along whole sections: the audio input
 # (device, channels, gain), the MIDI port, every output (which interface sends which internal
 # universe, Art-Net IPs, the serial port) and the UI (scale is per screen, brightness per booth).
-# Which universe a fixture writes to stays in the rig. ``None`` = the whole key.
+# Which universe a fixture writes to stays in the rig. The network switch and its PIN are this computer's own
+# too. ``None`` = the whole key.
 MACHINE_KEYS: dict[str, set[str] | None] = {
     "audio": {"device", "channels", "gain"},
     "midi_input": None,
     "outputs": None,
     "ui": None,
+    "network": None,
 }
 
 

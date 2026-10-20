@@ -12,6 +12,7 @@ dependencies = [
     "sounddevice>=0.4.6",
     "mido>=1.3",
     "python-rtmidi>=1.5",
+    "ifaddr>=0.2",  # the addresses of the network adapters (Settings → Network)
 ]
 
 [project.optional-dependencies]

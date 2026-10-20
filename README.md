@@ -108,6 +108,7 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 ![Settings page](screenshots/settings.png)
 
 - **Appearance:** ink colour (grey, amber, phosphor), glow, UI brightness for a dark booth, UI scale (with "Fit window" for small screens) and the key-hint footer. All of it is saved and restored next session.
+- **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
 - **Keyboard:** the complete keyboard reference.
 - **App** (desktop app only): open the UI in a browser, open the data folder, start in full screen.
 - **About:** the version (with the number of commits since the last release and whether the source was modified) and links to the project and its releases.
@@ -141,7 +142,7 @@ Open http://127.0.0.1:8420.
 
 Options:
 - `--no-hardware` runs without audio, MIDI and outputs.
-- `--host 0.0.0.0` lets other devices (a phone) on the LAN reach the UI.
+- Other devices (a phone) on the network are allowed in Settings → Network, not on the command line: `--host` is ignored (see [Other devices on the network](#other-devices-on-the-network)).
 - `--data <folder>` uses another data folder instead of the repo's `data/` (gitignored); `--machine <folder>` another folder for this computer's files (default: `.machine/` in the data folder); `--port`, `--logs` change the defaults.
 
 On Windows, use `.venv\Scripts\python -m pitchcontrol`. ASIO devices appear in the Inputs page device list.
@@ -169,7 +170,7 @@ The builds are unsigned. On first launch:
 
 macOS asks once for microphone access.
 
-App options (for example from a terminal) are the same as for the backend (`--data`, `--machine`, `--port`, `--host`, `--no-hardware`), plus `--no-window` (use the browser instead of a window). `--host 0.0.0.0` makes the UI reachable from a phone on the LAN.
+App options (for example from a terminal) are the same as for the backend (`--data`, `--machine`, `--port`, `--no-hardware`), plus `--no-window` (use the browser instead of a window).
 
 ### Releasing a version
 
@@ -214,6 +215,20 @@ In the fixture list, Shift + click selects every fixture from the one you clicke
 
 Hue and saturation apply on mouse release, or once keys / the MIDI knob rest; until then the fader shows the target with a dashed outline.
 
+## Other devices on the network
+
+The UI is a web page, so a phone or an iPad on the same wifi (or cable network) can open it, and play the lights with it. It is **off by default**: PitchControl listens on this computer only until you turn it on, **Settings → Network → Allow other devices on this network**. It applies at once, no restart.
+
+- **While it is on, anyone who can reach this computer on that network can control the lights and change the rig.** At home that is fine; on a venue's shared wifi, set a PIN, or leave it off.
+- **Port:** other devices use one fixed port (default 8420, from 1024 to 65535). It never moves by itself: when another program has it, Settings says so and PitchControl keeps trying, so a bookmark or a QR code stays valid. Choose another port there if you need to.
+- **Addresses:** every network adapter of this computer is listed as a link (with a Copy button), the wifi first; pick the one on the same network as the phone. The **QR code** beside it opens that address when scanned with the phone's camera. The address of a computer can change when it joins another network or its router hands out a new one.
+- **PIN (optional, 4 to 8 digits):** a device that isn't this computer first gets a PIN page, once; then a cookie keeps it signed in for 30 days, until the PIN is changed or PitchControl restarts. The API and the live connection refuse a device without the cookie. After five wrong PINs from one address, that address waits 30 seconds, then longer. **This computer is never asked.** The PIN keeps visitors off the lights; it is not strong security: the traffic is not encrypted, so someone who can listen on the network can read the PIN.
+- **What a device can't do:** change the network settings, or open folders, the browser or full screen on this computer; those work from the computer that runs PitchControl only.
+- The switch, port and PIN are per computer (`machine.json`, key `network`).
+- The UI is the same as on the computer, not a phone layout: use a tablet or turn the phone sideways, and the UI scale (Settings → Appearance) makes it fit.
+
+To try it with a phone: turn the switch on, connect the phone to the same wifi as the computer, scan the QR code, and enter the PIN if there is one. If the page doesn't open, the computer's firewall probably blocks the port: allow PitchControl (Windows asks once, "Allow access"; on macOS, System Settings → Network → Firewall).
+
 ## Folders
 
 | Folder | Where | What |
@@ -229,7 +244,7 @@ A file in your data folder wins over a default of the same name (ignoring case);
 | Path | Content |
 |---|---|
 | `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, Auto Color palette, masks, audio analysis |
-| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`) |
+| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`), the network switch with its port and PIN (`network`) |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
 | `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`); the rig's mask curve (`mask_curve`, 0 if missing) |
 | `controllers/*.json` | MIDI controller mappings (CC or note → macro), edited on the Inputs page |

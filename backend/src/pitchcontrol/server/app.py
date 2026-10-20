@@ -18,20 +18,21 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .. import __version__
 from ..config.loader import CONTROLLERS, RIGS, VERSION_KEY, report_unknown_keys, save_model
-from ..config.models import Controller, FixtureType, FogMachine, Rig, Settings
+from ..config.models import Controller, FixtureType, FogMachine, NetworkSettings, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..version import version_label
+from .network import Network, NetworkGate
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,19 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     store = engine.store
     folders = {**(folders or {}), **{k: v for k, v in (desktop or {}).items() if k in ("data_dir", "logs_dir")}}
 
+    # other devices on the network: the gate lets this computer in always and the rest as the switch and PIN say;
+    # the caller starts ``app.state.network`` (the listeners) once the app is up
+    network = Network(app, lambda: store.settings.network)
+    app.state.network = network
+    app.add_middleware(NetworkGate, network=network)
+
+    def require_local(request: Request) -> None:
+        """For what acts on this computer or on the network switch itself: a device on the network can't."""
+        if not request.scope.get("pc_local"):
+            raise HTTPException(403, "this works only on the computer that runs PitchControl")
+
+    local_only = [Depends(require_local)]
+
     @app.exception_handler(OSError)
     async def file_error(_request: Request, exc: OSError):
         # a full disk, a read-only or vanished data folder: say what failed instead of a bare 500
@@ -121,10 +135,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         return {"ok": True}
 
     @app.get("/api/app-info")
-    def app_info():
+    def app_info(request: Request):
         fs = (desktop or {}).get("fullscreen")
         return {
             "desktop": desktop is not None,
+            "local": bool(request.scope.get("pc_local")),  # false: a device on the network (no folders, no network settings)
             "config_dir": str(store.root),
             "url": (desktop or {}).get("url"),
             "data_dir": folders.get("data_dir", str(store.root)),
@@ -136,7 +151,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             "version": version_label(),
         }
 
-    @app.post("/api/fullscreen")
+    @app.post("/api/fullscreen", dependencies=local_only)
     def fullscreen(body: dict | None = None):
         fs = (desktop or {}).get("fullscreen")
         if fs is None:
@@ -144,21 +159,23 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         on = (body or {}).get("on")
         return {"fullscreen": fs.toggle() if on is None else fs.set(bool(on))}
 
-    @app.post("/api/open-browser")
+    @app.post("/api/open-browser", dependencies=local_only)
     def open_browser():
         if desktop is None:
             raise HTTPException(404)
         webbrowser.open(desktop["url"])
         return {"ok": True}
 
-    # the project's own pages: the only addresses the UI may ask the desktop app to open
+    # the project's own pages and this app's network addresses: the only addresses the UI may ask the desktop app to open
     allowed_links = ("https://github.com/hlavamir", "https://ko-fi.com/zeys_hlvmr")
 
     def is_allowed_link(url: str) -> bool:
         # the address itself or something below it ("…/zeys_hlvmr.evil.example" is neither)
+        if any(url == a["url"] for a in network.status()["addresses"]):  # this computer's own network addresses (Settings → Network)
+            return True
         return any(url == base or url.startswith((base + "/", base + "?", base + "#")) for base in allowed_links)
 
-    @app.post("/api/open-url")
+    @app.post("/api/open-url", dependencies=local_only)
     def open_url(data: dict):
         """Open one of the project's pages in the default browser (desktop app; see allowed_links)."""
         if desktop is None:
@@ -179,11 +196,11 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", folder])
         return {"ok": True}
 
-    @app.post("/api/open-data-folder")
+    @app.post("/api/open-data-folder", dependencies=local_only)
     def open_data_folder():
         return reveal((desktop or {}).get("data_dir", ""))
 
-    @app.post("/api/open-logs-folder")
+    @app.post("/api/open-logs-folder", dependencies=local_only)
     def open_logs_folder():
         return reveal((desktop or {}).get("logs_dir", ""))
 
@@ -250,7 +267,22 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     # ------------------------------------------------------------------ settings
     @app.get("/api/settings")
     def get_settings():
-        return store.settings.model_dump(mode="json")
+        return store.settings.model_dump(mode="json", exclude={"network"})  # the PIN stays out: /api/network (this computer only)
+
+    @app.get("/api/network", dependencies=local_only)
+    def get_network():
+        return network.status()
+
+    @app.put("/api/network", dependencies=local_only)
+    def put_network(data: dict):
+        """The network switch, its port and PIN. Applies at once: the listeners follow, the page reads the result
+        (``listening``, ``error`` when the port is taken)."""
+        new = NetworkSettings.model_validate(data)
+        with engine.lock:
+            store.settings = store.settings.model_copy(update={"network": new})
+        store.save_settings()
+        network.sync()
+        return network.status()
 
     @app.get("/api/osc/files")
     def osc_files():
@@ -262,6 +294,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         new = Settings.model_validate(data)
         report_unknown_keys(new, "settings (from UI)")
         old = store.settings
+        new = new.model_copy(update={"network": old.network})  # only /api/network changes these (the PIN isn't in what the pages read)
         with engine.lock:
             store.settings = new
         store.save_settings()

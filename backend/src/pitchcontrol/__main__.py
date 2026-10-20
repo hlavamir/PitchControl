@@ -12,6 +12,7 @@ from pathlib import Path
 
 import uvicorn
 
+from .config.models import DEFAULT_PORT
 from .engine.engine import Engine
 from .logsetup import setup_logging
 from .paths import open_store, resolve_paths
@@ -26,8 +27,8 @@ def main() -> None:
     parser.add_argument("--data", "--config", dest="data", type=Path, default=None, help="folder with your rigs, scenes and settings (default: the repo's data/)")
     parser.add_argument("--machine", type=Path, default=None, help="folder for this computer's settings, autosave and logs (default: .machine/ in the data folder)")
     parser.add_argument("--logs", type=Path, default=None, help="log folder (default: logs/ in the machine folder)")
-    parser.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to allow other devices (phone) on the LAN")
-    parser.add_argument("--port", type=int, default=8420)
+    parser.add_argument("--host", default="127.0.0.1", help=argparse.SUPPRESS)  # replaced by Settings → Network
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-hardware", action="store_true", help="run without audio, MIDI and outputs")
     args = parser.parse_args()
 
@@ -42,9 +43,13 @@ def main() -> None:
     engine.start()
 
     app = create_app(engine, static_dir=PROJECT_ROOT / "frontend" / "dist", folders={"data_dir": str(paths.user), "logs_dir": str(args.logs or paths.logs)})
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        log.warning("--host %s is ignored: other devices are allowed in Settings → Network (the switch, a fixed port, an optional PIN)", args.host)
+    app.state.network.start()  # other devices on the network, when the switch is on
     try:
-        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+        uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     finally:
+        app.state.network.stop()
         engine.stop()
         log.info("PitchControl stopped")
 

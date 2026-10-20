@@ -7,6 +7,18 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
+- **Network switch: open the UI on a phone or an iPad** (Settings → Network, **Allow other devices on this network**). Off
+  by default, with a plain warning that anyone on the network can then control the lights and change the rig. When it is
+  on, PitchControl also listens on every network address of the computer, on one fixed port (a setting, default 8420; when
+  another program has it, Settings says so and the port is never moved). It applies at once, without a restart. The page
+  lists every address as a link with a Copy button and a QR code to scan with the phone. An optional **PIN** (4 to 8
+  digits): a device that isn't this computer first gets a PIN page, then a cookie (30 days); the API and the live
+  connection refuse it without. Five wrong PINs from one address make it wait, 30 seconds and then longer. This computer
+  is never asked. A device on the network can't change the network settings or open folders and windows on the computer.
+  The switch, port and PIN are per computer (`machine.json`). The PIN keeps visitors out; it is not strong security (the
+  traffic is not encrypted). There is no phone layout yet. The command-line option `--host` is gone (it is ignored with
+  a note in the log): the switch replaces it, and it put no PIN in front of the UI. New dependency: `ifaddr` (lists the
+  network adapters).
 - **Open DMX interface: "Log frame timing"** (Outputs page, the interface's Advanced settings, off by default). For
   finding out why the lights go dark for a frame now and then on a bare Open DMX interface. While it is on, the log
   file gets one line every 10 seconds (frames per second, the longest write, the largest gap between two frames,

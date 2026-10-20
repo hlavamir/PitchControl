@@ -24,6 +24,7 @@ from pathlib import Path
 
 import uvicorn
 
+from .config.models import DEFAULT_PORT
 from .engine.engine import Engine
 from .logsetup import setup_logging
 from .paths import APP_NAME, open_store, resolve_paths
@@ -31,7 +32,7 @@ from .quitguard import confirm_quit, quit_reasons
 from .server.app import create_app
 from .version import version_label
 
-DEFAULT_PORT = 8420
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 log = logging.getLogger("pitchcontrol.desktop")
 
 
@@ -82,7 +83,7 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=None, help="folder with your rigs, scenes and settings (default: Documents/PitchControl)")
     parser.add_argument("--machine", type=Path, default=None, help="folder for this computer's settings, autosave and logs")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to allow a phone on the LAN")
+    parser.add_argument("--host", default="127.0.0.1", help=argparse.SUPPRESS)  # replaced by Settings → Network
     parser.add_argument("--no-hardware", action="store_true", help="run without audio, MIDI and outputs")
     parser.add_argument("--no-window", action="store_true", help="no window: serve the UI and open the browser")
     parser.add_argument("--smoke-test", action="store_true", help="start, check the API, quit (for builds)")
@@ -103,11 +104,13 @@ def main() -> None:
     engine = Engine(store, enable_hardware=not args.no_hardware)
     engine.start()
 
+    if args.host not in LOCAL_HOSTS:
+        log.warning("--host %s is ignored: other devices are allowed in Settings → Network (the switch, a fixed port, an optional PIN)", args.host)
     port = free_port(args.port)
     url = f"http://127.0.0.1:{port}"
     desktop_hooks: dict = {"url": url, "data_dir": str(paths.user), "logs_dir": str(paths.logs)}
     app = create_app(engine, static_dir=bundled_frontend(res), desktop=desktop_hooks)
-    server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=port, log_level="warning"))
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     server_thread = threading.Thread(target=server.run, name="server", daemon=True)
     server_thread.start()
 
@@ -117,12 +120,14 @@ def main() -> None:
         if stopped.is_set():
             return
         stopped.set()
+        app.state.network.stop()
         server.should_exit = True
         server_thread.join(timeout=5)
         engine.stop()
         log.info("%s stopped", APP_NAME)
 
     atexit.register(shutdown)
+    app.state.network.start()  # other devices on the network, when the switch is on (stopped with the app)
 
     if not wait_until_up(url):
         log.error("server did not start on %s", url)
