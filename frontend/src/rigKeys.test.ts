@@ -117,13 +117,32 @@ describe('rigKeyAction, in the details (not editing)', () => {
   })
 })
 
-// two rows of fields in a left column, one field in a right column
+describe('rigKeyAction, on a page without a list', () => {
+  const form = { hasList: false }
+
+  it('W A S D and the arrows go into the controls from the start, and highlight only', () => {
+    for (const k of ['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) expect(act(k, {}, form)).toEqual({ kind: 'details' })
+    expect(navStep(nav('list', 0), { kind: 'details' }, BOXES)).toEqual({ state: nav('details', 0), effect: 'blur' })
+  })
+
+  it('Space and ⏎ are not ours before a control is highlighted', () => {
+    expect(act(' ', {}, form)).toBeNull()
+    expect(act('Enter', {}, form)).toBeNull()
+  })
+
+  it('once in the controls it is the same as in the details of the Rig page', () => {
+    expect(inDetails('s', {}, form)).toEqual({ kind: 'field', dir: 'down' })
+    expect(inDetails('Enter', {}, form)).toEqual({ kind: 'edit' })
+  })
+})
+
+// rows of fields in a left column, one field in a right column
 const BOXES: FieldBox[] = [
-  { cx: 100, cy: 20, h: 20, col: 0 }, // 0: name
-  { cx: 100, cy: 50, h: 20, col: 0 }, // 1: type
-  { cx: 60, cy: 80, h: 20, col: 0 }, // 2: universe
-  { cx: 140, cy: 80, h: 20, col: 0 }, // 3: address
-  { cx: 400, cy: 52, h: 20, col: 1 }, // 4: hue source
+  { l: 50, r: 200, cy: 20, h: 20 }, // 0: name
+  { l: 50, r: 200, cy: 50, h: 20 }, // 1: type
+  { l: 40, r: 80, cy: 80, h: 20 }, // 2: universe
+  { l: 120, r: 160, cy: 80, h: 20 }, // 3: address
+  { l: 380, r: 450, cy: 52, h: 20 }, // 4: hue source
 ]
 const nav = (zone: NavState['zone'], index: number): NavState => ({ zone, index })
 
@@ -138,7 +157,7 @@ describe('navStep', () => {
 
   it('W S ↑ ↓ move the highlight and do nothing to the page, so no value can change', () => {
     expect(navStep(nav('details', 0), { kind: 'field', dir: 'down' }, BOXES)).toEqual({ state: nav('details', 1), effect: 'none' })
-    expect(navStep(nav('details', 1), { kind: 'field', dir: 'down' }, BOXES)).toEqual({ state: nav('details', 2), effect: 'none' })
+    expect(navStep(nav('details', 1), { kind: 'field', dir: 'down' }, BOXES)).toEqual({ state: nav('details', 3), effect: 'none' })
     expect(navStep(nav('details', 3), { kind: 'field', dir: 'up' }, BOXES)).toEqual({ state: nav('details', 1), effect: 'none' })
   })
 
@@ -182,6 +201,7 @@ describe('editKind', () => {
     expect(editKind({ tagName: 'BUTTON', type: 'button' })).toBe('press')
     expect(editKind({ tagName: 'INPUT', type: 'checkbox' })).toBe('press')
     expect(editKind({ tagName: 'A' })).toBe('press')
+    expect(editKind({ tagName: 'DIV', role: 'slider' })).toBe('adjust') // a slider takes the focus, the arrows then change it
   })
 })
 

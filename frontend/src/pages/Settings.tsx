@@ -3,7 +3,7 @@ import { api, type Settings as SettingsData } from '../api'
 import { Button, Row, Section } from '../components/forms'
 import { NetworkSection } from '../components/NetworkSection'
 import { DESIGN_SIZE, INKS, clampScale, fitScale, type InkName, type UiSettings } from '../theme'
-import { useGridNav, type NavItem } from '../useGridNav'
+import { useFieldNav } from '../useFieldNav'
 
 const INK_NAMES: [InkName, string][] = [
   ['grey', 'Grey'],
@@ -12,21 +12,26 @@ const INK_NAMES: [InkName, string][] = [
 ]
 
 const KEYMAP: [string, string][] = [
-  ['W  S', 'Move the selection up / down a row'],
-  ['A  D', 'Move the selection left / right'],
-  ['↑  ↓', 'Change the selected value'],
-  ['SHIFT', 'Fine steps while changing a value'],
-  ['⏎', 'Press the selected button · load the selected scene'],
+  ['W  S', 'Move the selection up / down a row; on Fixtures, Rig, Inputs, Outputs, Fog and Settings: to the control above / below'],
+  ['A  D', 'Move the selection left / right; on those pages: along a row'],
+  ['↑  ↓', 'Change the selected value (General, Dimmers, Control Desk); in an edited field: the number'],
+  ['SHIFT', 'Fine steps while changing a value; on the Rig page: extends the selection'],
+  ['⏎', 'Press the selected button, load the selected scene; on Fixtures to Settings: edit the highlighted control (⏎ or Esc stops)'],
   ['SHIFT ⏎', 'Save the selected scene'],
-  ['ESC', 'Cancel a pending hue / saturation change'],
+  ['SPACE', 'Rig page: add / remove the current fixture to / from the selection'],
+  ['D  →', 'Fixtures and Rig: from the list into the details'],
+  ['ESC', 'Cancel a pending hue / saturation change; stop editing a field; back to the list'],
   ['1 – 9', 'Switch page'],
   ['Q  E', 'Previous / next subpage (Control Desk)'],
   ['F', 'Full screen on / off (desktop app)'],
   ['⌘ / CTRL  + −', 'UI scale up / down (= works as +); 0 = 100 %'],
 ]
 
-/** Horizontal segmented slider: click or drag anywhere, ←/→ style keyboard handled by the page grid. */
-function HSlider({ value, min, max, onChange, selected, onSelect, tip }: { value: number; min: number; max: number; onChange: (v: number) => void; selected: boolean; onSelect: () => void; tip?: string }) {
+/**
+ * Horizontal segmented slider: click or drag anywhere. With the focus (⏎ on it when the keys have highlighted it,
+ * or Tab) ← ↓ / → ↑ change it by ``step`` (Shift = ``fine``).
+ */
+function HSlider({ value, min, max, onChange, step, fine, label, tip }: { value: number; min: number; max: number; onChange: (v: number) => void; step: number; fine: number; label: string; tip?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const t = (value - min) / (max - min)
   const set = (e: PointerEvent<HTMLDivElement>) => {
@@ -38,11 +43,22 @@ function HSlider({ value, min, max, onChange, selected, onSelect, tip }: { value
   return (
     <div
       ref={ref}
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={Number(value.toFixed(2))}
       data-hint="slider"
       data-tip={tip}
-      className={`flex h-[22px] cursor-ew-resize touch-none ${selected ? 'glow-sel' : ''}`}
+      className="flex h-[22px] cursor-ew-resize touch-none"
+      onKeyDown={(e) => {
+        const dir = e.key === 'ArrowUp' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowDown' || e.key === 'ArrowLeft' ? -1 : 0
+        if (!dir) return
+        e.preventDefault()
+        onChange(Math.min(max, Math.max(min, value + dir * (e.shiftKey ? fine : step))))
+      }}
       onPointerDown={(e) => {
-        onSelect()
         e.currentTarget.setPointerCapture(e.pointerId)
         set(e)
       }}
@@ -118,24 +134,14 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-  const inkItems: NavItem[] = INK_NAMES.map(([name, label]) => ({ id: `ink-${name}`, label: `Ink ${label}`, value: ui.ink === name ? 'ON' : '', hint: 'press' as const, tip: `${label} ink: colour of all text, lines and lit elements`, press: (down) => down && change({ ink: name }) }))
-  const glowItem: NavItem = { id: 'glow', label: 'Glow', value: pct(ui.glow), hint: 'slider', tip: 'Bloom under selected and active elements', adjust: (d, fine) => change({ glow: clamp(ui.glow + d * (fine ? 0.01 : 0.05), 0, 1) }) }
-  const brightItem: NavItem = {
-    id: 'brightness',
-    label: 'UI brightness',
-    value: pct(ui.brightness),
-    hint: 'slider',
-    tip: 'Dims the ink: less light on the DJ at the booth',
-    adjust: (d, fine) => change({ brightness: clamp(ui.brightness + d * (fine ? 0.01 : 0.05), 0.4, 1) }),
-  }
-  const setScale = (s: number) => change({ scale: clampScale(s) })
-  const scaleItem: NavItem = { id: 'scale', label: 'UI scale', value: pct(ui.scale), hint: 'slider', tip: 'Size of the whole UI, 60–150 %; ⌘ / Ctrl with + − works on every page, 0 resets to 100 %', adjust: (d, fine) => setScale(ui.scale + d * (fine ? 0.01 : 0.05)) }
-  const hintsItem: NavItem = { id: 'hints', label: 'Key hints', value: ui.key_hints ? 'ON' : 'OFF', hint: 'toggle', tip: 'Show or hide this footer with the keys and tips for the control under the mouse', press: (down) => down && change({ key_hints: !ui.key_hints }) }
-  const { selectedId, select } = useGridNav('Settings', [inkItems, [glowItem], [brightItem], [scaleItem], [hintsItem]])
+  const setScale = (v: number) => change({ scale: clampScale(v) })
+
+  // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ presses, toggles or starts editing the highlighted one
+  const pageRef = useRef<HTMLDivElement>(null)
+  useFieldNav({ root: pageRef })
 
   return (
-    <div className="grid gap-1.5 wide:grid-cols-2">
+    <div ref={pageRef} className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-1.5">
       <Section
         index="01"
@@ -154,11 +160,8 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
                   key={name}
                   data-hint="press"
                   data-tip={`${label} ink: colour of all text, lines and lit elements`}
-                  onClick={() => {
-                    select(`ink-${name}`)
-                    change({ ink: name })
-                  }}
-                  className={`flex h-[92px] flex-col justify-between bg-panel p-3 text-left ${on ? 'glow-sel' : 'glow-hover'} ${selectedId === `ink-${name}` && !on ? 'outline outline-1 outline-offset-[-1px] outline-dim' : ''}`}
+                  onClick={() => change({ ink: name })}
+                  className={`flex h-[92px] flex-col justify-between bg-panel p-3 text-left ${on ? 'glow-sel' : 'glow-hover'}`}
                   style={{ color: on ? INKS[name] : '#8a8c87' }}
                 >
                   <span className="flex items-center justify-between">
@@ -178,25 +181,25 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
         </div>
 
         {[
-          { item: glowItem, value: ui.glow, min: 0, max: 1, note: 'Bloom under selected and active elements', key: 'glow' as const },
-          { item: brightItem, value: ui.brightness, min: 0.4, max: 1, note: 'Dims the ink — less light on the DJ at the booth (40–100 %)', key: 'brightness' as const },
-        ].map(({ item, value, min, max, note, key }) => (
-          <div key={item.id} className="flex flex-col gap-2">
+          { id: 'glow', label: 'Glow', tip: 'Bloom under selected and active elements', value: ui.glow, min: 0, max: 1, note: 'Bloom under selected and active elements', key: 'glow' as const },
+          { id: 'brightness', label: 'UI brightness', tip: 'Dims the ink: less light on the DJ at the booth', value: ui.brightness, min: 0.4, max: 1, note: 'Dims the ink — less light on the DJ at the booth (40–100 %)', key: 'brightness' as const },
+        ].map(({ id, label, tip, value, min, max, note, key }) => (
+          <div key={id} className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between">
-              <span className={`lbl text-[12px] ${selectedId === item.id ? 'bg-ink px-1.5 text-ground' : ''}`}>{item.label}</span>
+              <span className="lbl text-[12px]">{label}</span>
               <span className="text-glow font-mono text-[16px]">{pct(value)}</span>
             </div>
-            <HSlider value={value} min={min} max={max} onChange={(v) => change({ [key]: v })} selected={selectedId === item.id} onSelect={() => select(item.id)} tip={item.tip} />
+            <HSlider value={value} min={min} max={max} onChange={(v) => change({ [key]: v })} step={0.05} fine={0.01} label={label} tip={tip} />
             <span className="lbl text-[10px] text-dim">{note}</span>
           </div>
         ))}
 
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
-            <span className={`lbl text-[12px] ${selectedId === 'scale' ? 'bg-ink px-1.5 text-ground' : ''}`}>UI scale</span>
+            <span className="lbl text-[12px]">UI scale</span>
             <span className="text-glow font-mono text-[16px]">{pct(ui.scale)}</span>
           </div>
-          <div className="flex gap-1.5" onClick={() => select('scale')}>
+          <div className="flex gap-1.5">
             <Button onClick={() => setScale(ui.scale - 0.05)} disabled={ui.scale <= 0.6} tip="Smaller UI by 5 % (minimum 60 %); ⌘ / Ctrl + − does the same">
               −
             </Button>
@@ -224,11 +227,8 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
           <button
             data-hint="toggle"
             data-tip="Show or hide this footer with the keys and tips for the control under the mouse"
-            onClick={() => {
-              select('hints')
-              change({ key_hints: !ui.key_hints })
-            }}
-            className={`lbl h-[34px] px-4 text-[12px] ${ui.key_hints ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge'} ${selectedId === 'hints' ? 'glow-sel' : ''}`}
+            onClick={() => change({ key_hints: !ui.key_hints })}
+            className={`lbl h-[34px] px-4 text-[12px] ${ui.key_hints ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge'}`}
           >
             {ui.key_hints ? 'On' : 'Off'}
           </button>
@@ -282,9 +282,9 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
 
       <div className="flex min-w-0 flex-col gap-1.5">
       <NetworkSection index="04" desktop={desktop} />
-      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. The pages with a grid (General, Dimmers, Control Desk, Settings) can be played with the keys alone">
+      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-3.5 pt-1.5" tip="All keys of the UI. Every page can be used with the keys alone: General, Dimmers and Control Desk like a hardware device, the others control by control">
         {KEYMAP.map(([cap, what]) => (
-          <div key={cap} className="flex h-[34px] items-center gap-3.5 border-b border-[#1d1f21]">
+          <div key={cap} className="flex min-h-[34px] items-center gap-3.5 border-b border-[#1d1f21] py-1">
             <span className="min-w-16 border border-ink px-1.5 py-0.5 text-center font-mono text-[12px]">{cap}</span>
             <span className="lbl text-[12px]">{what}</span>
           </div>

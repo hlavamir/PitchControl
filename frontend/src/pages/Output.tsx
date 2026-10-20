@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type DeviceRef, type OscStatus, type SerialDevice } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { ARTNET_UNIVERSES, Button, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect, useSettings } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
 import { usePolling } from '../usePolling'
+import { useFieldNav } from '../useFieldNav'
 
 function deviceKey(d: DeviceRef | SerialDevice): string {
   return d.serial_number ? `sn:${d.serial_number}` : `port:${d.port ?? ''}`
@@ -55,6 +56,10 @@ function oscDot(osc: OscStatus | null | undefined, file: string): { ok: boolean 
 const KIND_NAMES = { pro: 'Enttec DMX USB Pro or compatible', open: 'Enttec Open DMX USB (bare FTDI)' } as const
 
 export function Output({ engine }: { engine: EngineConnection }) {
+  // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ edits the highlighted one
+  const pageRef = useRef<HTMLDivElement>(null)
+  useFieldNav({ root: pageRef })
+
   const { settings, update, save, dirty, reload, message } = useSettings()
   const [devices, setDevices] = useState<SerialDevice[]>([])
   const [advanced, setAdvanced] = useState<Record<number, boolean>>({}) // interface index -> the unusual settings are open
@@ -83,7 +88,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
 
   return (
     // settings and live output take half the page width each, or the full width under each other
-    <div className="grid gap-1.5 wide:grid-cols-2">
+    <div ref={pageRef} className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex justify-between">
         <Button onClick={refresh} tip="Look for newly plugged-in USB devices; unplugged ones stay selected and show as not connected">

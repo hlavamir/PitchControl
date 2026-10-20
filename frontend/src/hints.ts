@@ -63,7 +63,7 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
   override: [['CLICK', 'override the type value'], ['SPACE', 'on / off (focused)'], ['UNTICKED', 'type value applies, yours is kept']],
   undo: [['CLICK', 'back to the type value']],
   channel: [['DRAG ↕', 'override'], ['↑ ↓', 'override'], ['SHIFT', 'fine'], ['⏎', 'override on / off'], ['Q E', 'subpage'], ...MOVE],
-  list: [['CLICK', 'select']],
+  list: [['CLICK', 'select'], ['W S ↑ ↓', 'move'], ['D →', 'details']],
   // the Rig page's fixture list: the keys move like files in Finder / Explorer (rigKeys.ts)
   'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'range'], [`${MOD} CLICK`, 'add / remove'], ['W S ↑ ↓', 'move'], ['SHIFT W S', 'range'], ['SPACE', 'add / remove'], ['D →', 'details']],
   // the Rig page's details: the keys move from field to field, ⏎ starts editing (rigKeys.ts)
@@ -82,6 +82,7 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
 export function rigFieldKeys(kind: HintKind, keys: Keys): Keys {
   if (kind === 'number') return keys.map(([cap, what]) => (cap === 'ESC' ? [cap, 'revert, done'] : cap === '⏎' ? [cap, 'apply, done'] : [cap, what]))
   if (kind === 'text' || kind === 'select') return [...keys, ['⏎ ESC', 'done']]
+  if (kind === 'slider') return [...keys.filter(([cap]) => cap !== 'W A S D'), ['⏎ ESC', 'done']]
   return keys
 }
 

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLeaveGuard } from '../leaveGuard'
 import { api, type FogMachine } from '../api'
 import { Button, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
+import { useFieldNav } from '../useFieldNav'
 
 const NEW_MACHINE: FogMachine = {
   name: 'Fog',
@@ -63,12 +64,16 @@ function useRigFog() {
 }
 
 export function Fog({ engine }: { engine: EngineConnection }) {
+  // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ edits the highlighted one
+  const pageRef = useRef<HTMLDivElement>(null)
+  useFieldNav({ root: pageRef })
+
   const { rig, machines, update, save, dirty, reload, message } = useRigFog()
   if (!machines) return null
 
   return (
     // machines take half the page width side by side, or the full width under each other
-    <div className="grid gap-1.5 wide:grid-cols-2">
+    <div ref={pageRef} className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-between wide:col-span-2">
         <span className="flex items-center gap-3">
           <Button onClick={() => update((ms) => ms.push({ ...NEW_MACHINE }))} tip="Add a fog machine: a DMX channel that is switched on and off by a timer or by the Fog Machine button">

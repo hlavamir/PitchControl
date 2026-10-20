@@ -28,7 +28,7 @@ export function isTyping(e: KeyboardEvent): boolean {
 export function isTypingTarget(t: HTMLElement | null): boolean {
   if (!t) return false
   const tag = t.tagName
-  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable || t.getAttribute('role') === 'slider'
 }
 
 // remember the selection per page while switching pages

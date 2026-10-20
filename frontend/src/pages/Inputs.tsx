@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
 import { MidiMappingSection } from '../components/MidiMapping'
@@ -8,6 +8,7 @@ import { savedPortState } from '../savedPort'
 import { unchanged, usePolling } from '../usePolling'
 import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
+import { useFieldNav } from '../useFieldNav'
 
 interface BandInfo {
   edges: number[]
@@ -16,6 +17,10 @@ interface BandInfo {
 }
 
 export function Inputs({ engine }: { engine: EngineConnection }) {
+  // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ edits the highlighted one
+  const pageRef = useRef<HTMLDivElement>(null)
+  useFieldNav({ root: pageRef })
+
   const { settings, update, applySaved, save, dirty, reload, message } = useSettings()
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [midiPorts, setMidiPorts] = useState<string[]>([])
@@ -70,7 +75,7 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
 
   return (
     // sections take half the page width side by side, or the full width under each other
-    <div className="grid gap-1.5 wide:grid-cols-2">
+    <div ref={pageRef} className="grid gap-1.5 wide:grid-cols-2">
       <div className="flex justify-end wide:col-span-2">
         <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
       </div>

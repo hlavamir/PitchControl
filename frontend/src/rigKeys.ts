@@ -24,6 +24,7 @@ export interface KeyContext {
   typing: boolean // the focus is in a text field or a select, where keys are text
   onList: boolean // nothing but the list (or the page) has the focus: Space belongs to the list
   zone: Zone // where the keys navigate
+  hasList?: boolean // the page has a list to select in first (default); without one 'list' means that nothing is highlighted yet
   inDetails: boolean // the focus is in the details section
   multiline?: boolean // the field is a text area (⏎ is a line break)
 }
@@ -52,6 +53,7 @@ export function rigKeyAction(e: KeyInfo, ctx: KeyContext): RigKeyAction | null {
     if (key === 'Enter' && !e.repeat) return { kind: 'edit' }
     return null
   }
+  if (ctx.hasList === false) return ['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key) ? { kind: 'details' } : null
   if (key === 'w' || key === 'ArrowUp') return { kind: 'move', step: -1, shift: e.shiftKey }
   if (key === 's' || key === 'ArrowDown') return { kind: 'move', step: 1, shift: e.shiftKey }
   if (key === 'd' || key === 'ArrowRight') return { kind: 'details' }
@@ -94,8 +96,9 @@ export function navStep(s: NavState, a: RigKeyAction, boxes: FieldBox[]): { stat
   }
 }
 
-/** What ⏎ does to a control: a text or number field takes the caret, a select opens, a switch / checkbox / button is pressed. */
-export function editKind(el: { tagName: string; type?: string }): 'caret' | 'open' | 'press' {
+/** What ⏎ does to a control: a text or number field takes the caret, a select opens, a slider takes the focus, a switch / checkbox / button is pressed. */
+export function editKind(el: { tagName: string; type?: string; role?: string | null }): 'caret' | 'open' | 'press' | 'adjust' {
+  if (el.role === 'slider') return 'adjust' // takes the focus; the arrows then change it
   if (el.tagName === 'SELECT') return 'open'
   if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(el.type ?? 'text'))) return 'caret'
   return 'press'

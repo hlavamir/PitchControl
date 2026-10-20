@@ -61,17 +61,23 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   It is saved in the rig file as `mask_curve` and applies live.
 
 ### Changed
-- **Rig page: keyboard navigation.** The fixture list works like files in Finder or Explorer: **W / S** or **↑ / ↓** move the
-  selection to the next fixture; **Shift** with them extends it as a range from the anchor, by the same rule as Shift + click;
-  **Space** adds or removes the current fixture without moving; **D** or **→** goes into the details. In the details the keys
-  only navigate and never change a value: the current field is highlighted like the selection on the other pages, **W / S**
-  or **↑ / ↓** move from field to field, **A / D** (or **← / →**) across a row, and **A** at the left edge, or **Esc**, goes
-  back to the list. **⏎ starts editing** the highlighted field (a number or text field takes the caret, a dropdown opens, a
-  switch or checkbox toggles); while editing, the keys are text and ↑ / ↓ change a number as before, and **⏎ or Esc stops
-  editing** and keeps the value. A click into a field edits it at once. ⏎ does nothing on the list (on a focused list button it
-  no longer selects that fixture alone, which would throw away a range). The footer names the keys of the list, of the
-  highlighted field and of an edited field, and the list has a thin outline on the current fixture when it is not selected.
-  The README's keys section says what differs on the Rig page.
+- **Keyboard navigation on the pages Fixtures, Rig, Inputs, Outputs, Fog and Settings.** Every control can be reached and
+  used with the keys, without a mouse. The keys only navigate and never change a value by themselves: **W / S** or **↑ / ↓**
+  move the highlight to the control above / below, **A / D** (or **← / →**) along a row, and **A** at the left edge, or **Esc**,
+  takes it away (on the Rig and Fixtures pages it goes back to the list). The highlighted control looks like the selected one
+  on the other pages. **⏎ starts editing** it: a number or text field gets the caret, a dropdown opens, a slider takes the
+  focus, a button is pressed, a switch or checkbox toggles. While editing, the keys are text and ↑ / ↓ change a number (or a
+  slider) as before, and **⏎ or Esc stops editing** and keeps the value. A click into a field edits it at once. The footer
+  names the keys of the highlighted control and of an edited one.
+- **Rig and Fixtures pages: the lists work like files in Finder or Explorer.** **W / S** or **↑ / ↓** select the next fixture
+  (the Rig page) or fixture type (Fixtures); at the first or last one the keys carry on to the controls above or below the
+  list. **D** or **→** goes into the details. On the Rig page **Shift** with the movement keys extends the selection as a range
+  from the anchor, by the same rule as Shift + click, and **Space** adds or removes the current fixture without moving. ⏎ does
+  nothing on the list (on a focused list button it no longer selects that fixture alone, which would throw away a range). The
+  list has a thin outline on the current fixture when it is not selected.
+- **Settings: the Glow and UI brightness sliders can be focused (Tab, or ⏎ when highlighted) and changed with the arrow
+  keys** (Shift = fine). The Settings page no longer has the one-control-always-selected grid; every control on it, including
+  the Engine frame rate, the Network section and the links, can be reached by the keys.
 - **Rig page, fixture list: Shift + click selects a range, ⌘ / Ctrl + click adds or removes one fixture.** Shift + click
   selects every fixture between the one you clicked last and the one you click now, in the order the list shows
   (alphabetical); ⌘ (macOS) or Ctrl (Windows) + click does what Shift + click did before. ⌘ / Ctrl + Shift + click adds a

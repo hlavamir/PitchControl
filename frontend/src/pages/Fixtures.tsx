@@ -4,6 +4,7 @@ import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import type { Origin } from '../components/RigPanel'
 import { fixturesInMode, hasSameName, newModeId } from '../modes'
+import { useFieldNav } from '../useFieldNav'
 import { OPEN_TYPE_KEY } from './Rig'
 
 type Kind = ReturnType<typeof slotKind>
@@ -86,6 +87,29 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   }, [reload])
 
   const t = types[selected]
+
+  // keys (rigKeys.ts, useFieldNav.ts): W S ↑ ↓ choose the type in the list, D → goes into the editor, which is navigated field by field
+  const pageRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
+  useFieldNav({
+    root: pageRef,
+    list: listRef,
+    entry: editorRef,
+    onListAction: (action) => {
+      if (action.kind !== 'move') return
+      const names = Object.values(types).sort((a, b) => byName(a.name, b.name)).map((x) => x.name)
+      const to = names[names.indexOf(selected) + action.step]
+      if (!to) return false
+      setSelected(to)
+      setModeAsk(null)
+      setMessage(null)
+    },
+    listFooter: t ? { label: t.name, hint: 'list', tip: 'The fixture types: W S ↑ ↓ choose one, D or → goes into its editor' } : null,
+  })
+  useEffect(() => {
+    ;[...(listRef.current?.querySelectorAll<HTMLElement>('[data-name]') ?? [])].find((el) => el.dataset.name === selected)?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
   const unsaved = status.unsaved.includes(selected)
   const usedIn = status.usage[selected] ?? []
   const origin: Origin = status.origins[selected] ?? 'user'
@@ -223,7 +247,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const count = t ? channelCount(t) : 0
 
   return (
-    <div className="grid gap-1.5 wide:h-full wide:grid-cols-[17rem_minmax(0,1fr)_22rem] wide:grid-rows-[minmax(0,1fr)]">
+    <div ref={pageRef} className="grid gap-1.5 wide:h-full wide:grid-cols-[17rem_minmax(0,1fr)_22rem] wide:grid-rows-[minmax(0,1fr)]">
       <Section
         index="01"
         title="Fixture types"
@@ -231,7 +255,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         bodyClassName="p-2.5 min-h-0 gap-2"
         tip="Fixture types: what a kind of light is (pixels, channels, defaults). Some come with the app, your own are files in your data folder (fixtures/types); rigs place them"
       >
-        <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
+        <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
           {Object.values(types)
             .sort((a, b) => byName(a.name, b.name))
             .map((x) => (
@@ -244,6 +268,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                 }}
                 className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${x.name === selected ? 'glow-on bg-ink text-ground' : 'hover:bg-panel-2'}`}
                 data-hint="list"
+                data-name={x.name}
                 data-tip={status.usage[x.name]?.length ? `Used in: ${status.usage[x.name].join(', ')}` : 'Not used in any rig'}
               >
                 <span className="flex-1 truncate">{x.name}</span>
@@ -361,7 +386,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         tip="Editor of the selected fixture type. Edits apply to the lights at once; Save writes the file"
       >
         {t && (
-          <>
+          <div ref={editorRef} className="flex flex-col">
             <Row label="Description" hint="Free text about this light; shown as the tip of the type in the Rig page's fixture list">
               <textarea
                 rows={2}
@@ -552,7 +577,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </Section>
 

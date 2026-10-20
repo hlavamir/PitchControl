@@ -50,7 +50,20 @@ const KEYS: [string, string][] = [
   [`${MOD} + −`, 'UI scale'],
 ]
 
-/** The general keys on the Rig page: the fixture list moves like a file list (rigKeys.ts). */
+/** The general keys on the Rig and Fixtures pages: the list moves like a file list, the details field by field (rigKeys.ts). */
+/** The general keys on the pages that are forms (Inputs, Outputs, Fog, Settings): W S A D move over the controls, ⏎ edits. */
+const FORM_KEYS: [string, string][] = [
+  ['W S A D', 'control'],
+  ['⏎', 'edit'],
+  ['ESC', 'stop'],
+  ['1–9', 'page'],
+  ['F', 'full screen'],
+  [`${MOD} + −`, 'UI scale'],
+]
+
+const LIST_PAGES: string[] = ['Fixtures', 'Rig']
+const FORM_PAGES: string[] = ['Inputs', 'Outputs', 'Fog', 'Settings']
+
 const RIG_KEYS: [string, string][] = [
   ['W S ↑ ↓', 'fixture'],
   ['SHIFT', 'range'],
@@ -280,10 +293,10 @@ export default function App() {
   // footer keys: for the hovered / keyboard-selected control, or the general ones
   const context = inputMode === 'keys' ? (footer?.hint ? { kind: footer.hint, tip: footer.tip } : null) : hover
   const footerKeys = context
-    ? page === 'Rig'
+    ? LIST_PAGES.includes(page) || FORM_PAGES.includes(page)
       ? rigFieldKeys(context.kind, HINT_KEYS[context.kind])
       : HINT_KEYS[context.kind]
-    : [...(page === 'Rig' ? RIG_KEYS : KEYS).filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(page === 'Control Desk' ? ([['Q E', 'subpage']] as [string, string][]) : [])]
+    : [...(LIST_PAGES.includes(page) ? RIG_KEYS : FORM_PAGES.includes(page) ? FORM_KEYS : KEYS).filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(page === 'Control Desk' ? ([['Q E', 'subpage']] as [string, string][]) : [])]
   const overrideCount = Object.values(s?.overrides ?? {}).reduce((n, chans) => n + Object.keys(chans).length, 0)
   // In full screen on a MacBook the camera notch covers the top 32 pt; below 100 % UI scale the top
   // row grows so that it still measures 38 pt on screen.
