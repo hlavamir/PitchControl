@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
 import { Button, StatusDot } from './components/forms'
 import { LeaveGuardContext, type Guard } from './leaveGuard'
-import { HINT_KEYS, MOD, hintAt, type HintKind } from './hints'
+import { HINT_KEYS, MOD, hintAt, rigFieldKeys, type HintKind } from './hints'
 import { Dimmers } from './pages/Dimmers'
 import { Fixtures } from './pages/Fixtures'
 import { Fog } from './pages/Fog'
@@ -14,7 +14,7 @@ import { ControlDesk } from './pages/ControlDesk'
 import { Settings } from './pages/Settings'
 import { DEFAULT_UI, applyScale, applyTheme, clampScale, type UiSettings } from './theme'
 import { useEngine } from './useEngine'
-import { SelectionContext, isTyping, type FooterSelection } from './useGridNav'
+import { SelectionContext, isTyping, isTypingTarget, type FooterSelection } from './useGridNav'
 
 const PAGES = ['General', 'Dimmers', 'Fixtures', 'Rig', 'Inputs', 'Outputs', 'Fog', 'Settings', 'Control Desk'] as const
 type Page = (typeof PAGES)[number]
@@ -45,6 +45,18 @@ const KEYS: [string, string][] = [
   ['SHIFT', 'fine'],
   ['⏎', 'press'],
   ['ESC', 'cancel'],
+  ['1–9', 'page'],
+  ['F', 'full screen'],
+  [`${MOD} + −`, 'UI scale'],
+]
+
+/** The general keys on the Rig page: the fixture list moves like a file list (rigKeys.ts). */
+const RIG_KEYS: [string, string][] = [
+  ['W S ↑ ↓', 'fixture'],
+  ['SHIFT', 'range'],
+  ['SPACE', 'add / remove'],
+  ['D →', 'details'],
+  ['ESC A', 'list'],
   ['1–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
@@ -199,12 +211,18 @@ export default function App() {
   useEffect(() => {
     const onOver = (e: PointerEvent) => setHover(hintAt(e.target))
     // Tab / click focus: the footer describes the focused control, like under the mouse
-    const onFocus = (e: FocusEvent) => setHover(hintAt(e.target))
+    const onFocus = (e: FocusEvent) => {
+      setHover(hintAt(e.target))
+      // a field got the focus (a click, Tab, or D on the Rig page): the footer describes it
+      if (e.target instanceof HTMLElement && isTypingTarget(e.target)) setInputMode('mouse')
+    }
     const onMove = () => setInputMode('mouse')
     const onLeave = () => setHover(null)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Tab') setInputMode('mouse') // focus moves: the footer follows the focused control
-      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
+      // asked after the page's own key handling: Esc has left a field (a number field blurs, the Rig page goes back
+      // to its list) and D on the Rig page has entered one, so the focus now says whether the keys are in use
+      if (isTypingTarget(document.activeElement as HTMLElement | null) || e.metaKey || e.ctrlKey || e.altKey) return
       if (['w', 'a', 's', 'd', 'q', 'e'].includes(e.key.toLowerCase()) || ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) setInputMode('keys')
     }
     document.addEventListener('pointerover', onOver)
@@ -262,8 +280,10 @@ export default function App() {
   // footer keys: for the hovered / keyboard-selected control, or the general ones
   const context = inputMode === 'keys' ? (footer?.hint ? { kind: footer.hint, tip: footer.tip } : null) : hover
   const footerKeys = context
-    ? HINT_KEYS[context.kind]
-    : [...KEYS.filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(page === 'Control Desk' ? ([['Q E', 'subpage']] as [string, string][]) : [])]
+    ? page === 'Rig'
+      ? rigFieldKeys(context.kind, HINT_KEYS[context.kind])
+      : HINT_KEYS[context.kind]
+    : [...(page === 'Rig' ? RIG_KEYS : KEYS).filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(page === 'Control Desk' ? ([['Q E', 'subpage']] as [string, string][]) : [])]
   const overrideCount = Object.values(s?.overrides ?? {}).reduce((n, chans) => n + Object.keys(chans).length, 0)
   // In full screen on a MacBook the camera notch covers the top 32 pt; below 100 % UI scale the top
   // row grows so that it still measures 38 pt on screen.

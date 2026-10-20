@@ -22,7 +22,10 @@ export type NavGrid = (NavItem | null)[][]
 
 /** Something is being typed: keys belong to the field, not to navigation. */
 export function isTyping(e: KeyboardEvent): boolean {
-  const t = e.target as HTMLElement | null
+  return isTypingTarget(e.target as HTMLElement | null)
+}
+
+export function isTypingTarget(t: HTMLElement | null): boolean {
   if (!t) return false
   const tag = t.tagName
   return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable

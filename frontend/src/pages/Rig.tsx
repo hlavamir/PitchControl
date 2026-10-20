@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, byName, channelCount, modeOf, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { Preview } from '../components/Preview'
@@ -9,6 +9,8 @@ import type { EngineConnection } from '../useEngine'
 import { useElementWidth } from '../useElementWidth'
 import { MOD_NAME } from '../hints'
 import { clickSelection } from '../listSelection'
+import { rigKeyAction, stepSelection, toggleCurrent } from '../rigKeys'
+import { SelectionContext, isTyping } from '../useGridNav'
 
 const NEW_FIXTURE: FixtureInstance = {
   name: 'New fixture',
@@ -42,6 +44,8 @@ export const OPEN_TYPE_KEY = 'pitchcontrol.openFixtureType'
 
 const WHITE: HSB = { h: 0, s: 0, b: 1 }
 
+const LIST_TIP = `The lights of the rig: group, name and universe:address. Click one to edit it, or move with W S / ↑ ↓; Shift + click or Shift + a key selects a range, ${MOD_NAME} + click or Space adds or removes one, D / → goes into the details, Esc / A comes back`
+
 /**
  * The rig of one event: the rig file, the fixtures in it and everything that differs per fixture.
  * Fixture types (pixels, channel layout, defaults) are edited on the Fixtures page; a fixture can
@@ -52,9 +56,12 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const [rigs, setRigs] = useState<RigList>({ active: '', available: [], origins: {} })
   const [types, setTypes] = useState<Record<string, FixtureType>>({})
   // indices into rig.fixtures (multi-edit): click selects one, Shift + click a range from the anchor,
-  // Ctrl / Cmd + click adds or removes one (see listSelection.ts)
+  // Ctrl / Cmd + click adds or removes one (see listSelection.ts). The keys (rigKeys.ts) move the cursor,
+  // the current fixture, which Space toggles.
   const [selection, setSelection] = useState<number[]>([0])
   const anchor = useRef<number | null>(0)
+  const [cursor, setCursor] = useState<number | null>(0)
+  const listRef = useRef<HTMLUListElement>(null)
   const [dirty, setDirty] = useState(false)
   const [problems, setProblems] = useState<string[]>([])
   const [editorRef, editorWidth] = useElementWidth<HTMLDivElement>()
@@ -99,16 +106,66 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const select = (selected: number[], at: number | null = selected[0] ?? null) => {
     anchor.current = at
     setSelection(selected)
+    setCursor(selected[0] ?? null)
   }
+  const order = shown.map(([, j]) => j)
   const clickFixture = (i: number, e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
-    const next = clickSelection(
-      shown.map(([, j]) => j),
-      { selected: sel, anchor: anchor.current },
-      i,
-      { shift: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
-    )
+    const next = clickSelection(order, { selected: sel, anchor: anchor.current }, i, { shift: e.shiftKey, toggle: e.ctrlKey || e.metaKey })
     select(next.selected, next.anchor)
+    setCursor(i)
   }
+
+  // Keys on the fixture list, like files in Finder / Explorer (rigKeys.ts); one listener, the handler is
+  // replaced on every render so it sees the current selection
+  const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined)
+  const current = cursor != null && rig && cursor < rig.fixtures.length ? cursor : (sel[0] ?? null)
+  onKey.current = (e) => {
+    if (!rig) return
+    const t = e.target as HTMLElement | null
+    const onList = !t || t === document.body || !!listRef.current?.contains(t)
+    // ⏎ does nothing new: on a focused list button it would select that one alone (the browser's click),
+    // which throws away a range the keys just made
+    if (e.key === 'Enter' && !isTyping(e) && listRef.current?.contains(t)) return e.preventDefault()
+    const action = rigKeyAction(e, isTyping(e), onList)
+    if (!action) return
+    e.preventDefault()
+    if (action.kind === 'list') {
+      // out of the field: the keys belong to the list again
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    } else if (action.kind === 'details') {
+      editorRef.current?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])')?.focus()
+    } else {
+      const from = { selected: sel, anchor: anchor.current, cursor: current }
+      const next = action.kind === 'move' ? stepSelection(order, from, action.step, action.shift) : toggleCurrent(order, from)
+      anchor.current = next.anchor
+      setSelection(next.selected)
+      setCursor(next.cursor)
+    }
+  }
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => onKey.current(e)
+    // a focused list button would also take Space as a click (a plain select) when the key comes up
+    const up = (e: KeyboardEvent) => {
+      if (e.key === ' ' && listRef.current?.contains(e.target as Node)) e.preventDefault()
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [])
+  // keep the cursor in view while the keys move it
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-index="${current}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [current])
+  // the footer names the list's keys while they are in use
+  const setFooter = useContext(SelectionContext)
+  const footerLabel = rig ? (sel.length > 1 ? `${sel.length} fixtures` : (rig.fixtures[current ?? -1]?.name ?? '')) : ''
+  useEffect(() => {
+    setFooter(footerLabel ? { label: footerLabel, hint: 'list-multi', tip: LIST_TIP } : null)
+  }, [footerLabel, setFooter])
+  useEffect(() => () => setFooter(null), [setFooter])
 
   /** The value all selected fixtures share, or MIXED. */
   const same = <T,>(get: (f: FixtureInstance) => T): Mixed<T> => {
@@ -292,19 +349,20 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           right={rig && `${rig.fixtures.length} in rig`}
           className="min-h-0 flex-1"
           bodyClassName="p-2.5 min-h-0"
-          tip={`The lights of the rig: group, name and universe:address. Click one to edit it; Shift + click selects a range, ${MOD_NAME} + click adds or removes one`}
+          tip={LIST_TIP}
         >
-          <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
+          <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto select-none">
             {/* alphabetical (natural order): rename or number the fixtures to arrange them */}
             {shown.map(([f, i]) => (
               <li key={i}>
                 <button
                   onClick={(e) => clickFixture(i, e)}
+                  data-index={i}
                   data-hint="list-multi"
                   data-tip={`${f.name}: fixture type ${f.type}, group ${f.group}${f.enabled ? '' : '; disabled, sends nothing'}`}
                   className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
                     sel.includes(i) ? 'glow-on bg-ink text-ground' : 'hover:bg-panel-2'
-                  } ${f.enabled ? '' : 'text-dim'}`}
+                  } ${f.enabled ? '' : 'text-dim'} ${i === current && !sel.includes(i) ? 'outline outline-1 -outline-offset-1 outline-ink' : ''}`}
                 >
                   <span className="flex-none border border-edge px-1 font-mono text-[10px] leading-[14px] text-dim">{f.group}</span>
                   <span className="flex-1 truncate">{f.name}</span>
@@ -318,6 +376,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           <p className="lbl mt-2 text-[10px] text-dim">
             Shift + click: select a range · {MOD_NAME} + click: add / remove one
           </p>
+          <p className="lbl mt-1 text-[10px] text-dim">W S ↑ ↓: move (+ Shift: range) · Space: add / remove · D →: details · Esc A: back</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Button onClick={() => addFixture()} tip="Add a new fixture to the rig (first fixture type, default placement)">
               Add
