@@ -7,6 +7,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
+- **Open DMX interface: "Log frame timing"** (Outputs page, the interface's Advanced settings, off by default). For
+  finding out why the lights go dark for a frame now and then on a bare Open DMX interface. While it is on, the log
+  file gets one line every 10 seconds (frames per second, the longest write, the largest gap between two frames,
+  frames dropped before they were written) and one line for each frame that came more than twice the frame time after
+  the one before. Nothing is measured or written while it is off.
 - **A mask curve for the whole rig** (Rig page, Rig panel, under the description). One number from -3 to +3 bends the
   brightness curve of the mask for all fixtures at once: it is applied before each fixture's own idle remap curve, so
   the two add up (`mask ^ 2^(rig curve + fixture curve)`). 0 is as before, so existing rigs and scenes look the same.

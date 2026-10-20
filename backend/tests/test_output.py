@@ -310,3 +310,154 @@ def test_auto_type_uses_the_detected_device(monkeypatch):
     assert op.frames[0] == bytes([5] * 512)
     assert forced.frames[0][:2] == bytes([0x7E, 6])
     assert [x["kind"] for x in m.status()["enttec"]] == ["pro", "open", "pro"]
+
+
+# -- the opt-in timing log of the Open DMX writer ("Log frame timing")
+
+
+def _timing_lines(caplog, kind):
+    return [r.getMessage() for r in caplog.records if r.name.endswith("io.workers") and kind in r.getMessage()]
+
+
+def test_frame_timing_log_summary_every_10_seconds(caplog):
+    import logging
+
+    from pitchcontrol.io.workers import FrameTimingLog
+
+    caplog.set_level(logging.INFO)
+    t = FrameTimingLog("opendmx1", lambda: 0.025)
+    starts = [100.0 + 0.025 * i + (0.020 if i >= 200 else 0.0) for i in range(402)]   # 40 fps, one gap of 45 ms
+    for i, start in enumerate(starts):
+        t.frame(start, start + (0.012 if i == 100 else 0.005))                          # one write of 12 ms
+    summary = _timing_lines(caplog, "timing,")
+    assert len(summary) == 1
+    assert "opendmx1: timing, last 10.0 s" in summary[0]
+    assert "longest write 12.0 ms" in summary[0]
+    assert "largest gap 45.0 ms" in summary[0]
+    assert "late frames 0" in summary[0] and "dropped 0" in summary[0]   # 45 ms is under 2 x 25 ms: not late
+    assert "fps (target 40.0)" in summary[0]
+    assert _timing_lines(caplog, "late frame:") == []
+
+
+def test_frame_timing_log_outlier_line_and_dropped_frames(caplog):
+    import logging
+
+    from pitchcontrol.io.workers import FrameTimingLog
+
+    caplog.set_level(logging.INFO)
+    t = FrameTimingLog("opendmx1", lambda: 0.025)
+    t.frame(10.0, 10.004)
+    t.frame(10.025, 10.029)            # on time
+    t.dropped += 2                      # the engine submitted over two frames the writer never took
+    t.frame(10.100, 10.130)            # gap 75 ms, write 30 ms
+    late = _timing_lines(caplog, "late frame:")
+    assert len(late) == 1
+    assert "gap 75.0 ms (target 25.0 ms)" in late[0]
+    assert "write 30.0 ms" in late[0] and "start +0.100 s, end +0.130 s" in late[0]
+    assert "2 dropped since the last frame" in late[0]
+    # the next on-time frame says nothing, and the dropped count is reported once
+    t.frame(10.125, 10.129)
+    assert len(_timing_lines(caplog, "late frame:")) == 1
+    t.reset()                           # an outage: the first gap after it is not measured
+    t.frame(10.5, 10.504)
+    assert len(_timing_lines(caplog, "late frame:")) == 1
+
+
+def test_frame_timing_log_follows_the_target_frame_rate(caplog):
+    import logging
+
+    from pitchcontrol.io.workers import FrameTimingLog
+
+    caplog.set_level(logging.INFO)
+    period = {"s": 0.1}                 # 10 fps: a gap of 150 ms is fine
+    t = FrameTimingLog("opendmx1", lambda: period["s"])
+    t.frame(1.0, 1.001)
+    t.frame(1.15, 1.151)
+    assert _timing_lines(caplog, "late frame:") == []
+    period["s"] = 0.025                 # the frame rate went up to 40: the same gap is late now
+    t.frame(1.30, 1.301)
+    assert len(_timing_lines(caplog, "late frame:")) == 1
+
+
+def test_open_dmx_writer_logs_timing_through_the_thread(monkeypatch, caplog):
+    import logging
+    import time as real_time
+
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    caplog.set_level(logging.INFO)
+    _FakePort.instances = []
+    monkeypatch.setattr(workers.serial, "Serial", _FakePort)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
+    monkeypatch.setattr(workers, "TIMING_SUMMARY_S", 0.15)
+    w = workers.OpenDmxWorker(DeviceRef(), "opendmx1")
+    w.timing = workers.FrameTimingLog("opendmx1", lambda: 0.001)   # target 1 ms: frames 20 ms apart are late
+    w.start()
+    try:
+        for i in range(12):
+            w.submit(bytes([i] * 512))
+            real_time.sleep(0.02)
+    finally:
+        w.stop()
+    assert w.frames_sent >= 10
+    assert _timing_lines(caplog, "late frame:")
+    assert _timing_lines(caplog, "timing,")
+
+
+def test_open_dmx_writer_counts_the_frames_it_never_took(monkeypatch):
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    w = workers.OpenDmxWorker(DeviceRef(), "opendmx1")   # the thread isn't started: nothing takes a frame
+    w.timing = workers.FrameTimingLog("opendmx1", lambda: 0.025)
+    for i in range(4):
+        w.submit(bytes([i] * 512))
+    assert w.timing.dropped == 3                          # each submit after the first replaced a frame
+
+
+def test_open_dmx_writer_does_nothing_extra_with_timing_off(monkeypatch, caplog):
+    import logging
+
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    caplog.set_level(logging.INFO)
+    w = workers.OpenDmxWorker(DeviceRef(), "opendmx1")
+    assert w.timing is None
+    w.submit(b"\x01" * 512)
+    w.submit(b"\x02" * 512)
+    assert w._pending is False                            # no bookkeeping when off
+    assert _timing_lines(caplog, "timing") == []
+
+
+def test_log_timing_setting_reaches_only_the_open_dmx_worker(monkeypatch):
+    from pitchcontrol.config.models import EnttecSettings, OutputSettings
+    from pitchcontrol.io import outputs as out
+
+    assert EnttecSettings().log_timing is False   # off by default
+
+    class Rec:
+        def __init__(self, *a, **k):
+            self.a, self.timing = a, None
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def submit(self, f):
+            pass
+
+    monkeypatch.setattr(out, "SerialWorker", Rec)
+    monkeypatch.setattr(out, "OpenDmxWorker", Rec)
+    s = OutputSettings.model_validate({"enttec": [
+        {"enabled": True, "universe": 0, "type": "open", "log_timing": True, "device": {"serial_number": "A"}},
+        {"enabled": True, "universe": 1, "type": "open", "device": {"serial_number": "B"}},
+    ]})
+    m = out.OutputManager(s, frame_period=lambda: 0.02)
+    m.start()
+    on, off = m.enttec
+    assert on.timing is not None and on.timing.target_period() == 0.02
+    assert off.timing is None

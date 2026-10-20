@@ -107,7 +107,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
               className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-40"
               onClick={() =>
                 update((s) =>
-                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'auto', break_method: 'baud', universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
+                  s.outputs.enttec.push({ enabled: true, device: {}, type: 'auto', break_method: 'baud', log_timing: false, universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
                 )
               }
             >
@@ -148,7 +148,7 @@ export function Output({ engine }: { engine: EngineConnection }) {
                 {(() => {
                   const found = devices.find((d) => deviceKey(d) === deviceKey(e.device))?.dmx_type ?? null
                   const kind = st?.kind ?? (e.type === 'auto' ? found ?? 'pro' : e.type)
-                  const custom = e.type !== 'auto' || e.break_method !== 'baud'
+                  const custom = e.type !== 'auto' || e.break_method !== 'baud' || e.log_timing
                   return (
                     <>
                       <div className="flex items-center justify-between gap-2 text-[12px] text-dim">
@@ -193,6 +193,17 @@ export function Output({ engine }: { engine: EngineConnection }) {
                                 <option value="baud">one byte at a lower baud rate (default)</option>
                                 <option value="break">the port's break line</option>
                               </select>
+                            </div>
+                          )}
+                          {kind === 'open' && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-28 text-dim">Log frame timing</span>
+                              <Toggle
+                                checked={e.log_timing}
+                                tip="Writes the timing of every frame to the log file: a summary every 10 seconds (frames per second, longest write, largest gap, dropped frames) and one line for each frame that came more than twice the frame time after the one before. For finding out why a frame is lost now and then. Open the log with Settings → Open logs folder. Leave it off otherwise"
+                                onChange={(v) => update((s) => (s.outputs.enttec[i].log_timing = v))}
+                              />
+                              <span className="text-dim">{e.log_timing ? 'on: writing to the log file' : 'off'}</span>
                             </div>
                           )}
                         </div>

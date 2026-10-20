@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 import serial
 
@@ -12,6 +13,63 @@ from ..config.models import DeviceRef
 from .devices import resolve_port
 
 log = logging.getLogger(__name__)
+
+TIMING_SUMMARY_S = 10.0  # one summary line per this many seconds
+TIMING_LATE_FACTOR = 2.0  # a frame is late when its gap to the previous one is over this x the target frame time
+
+
+class FrameTimingLog:
+    """The opt-in timing log of a writer (Open DMX, "Log frame timing"): per frame the start, the end, the
+    gap to the previous frame (start to start, so it compares with the target frame time) and the frames the
+    worker dropped; one summary line every TIMING_SUMMARY_S and one line per late frame. Only the writer's
+    thread calls frame(); dropped is counted by LatestFrameWorker.submit."""
+
+    def __init__(self, name: str, target_period: Callable[[], float]) -> None:
+        self.name = name
+        self.target_period = target_period  # the engine's frame time in seconds, read live
+        self.dropped = 0  # frames replaced before the writer took them, since the last summary
+        self._origin: float | None = None  # the first frame's start: the times in the lines are seconds after it
+        self._prev_start: float | None = None
+        self._window_start = 0.0
+        self._frames = 0
+        self._longest_write = 0.0
+        self._largest_gap = 0.0
+        self._late = 0
+        self._dropped_at_last_frame = 0
+
+    def reset(self) -> None:
+        """After an error or a reconnect: the next gap would only measure the outage."""
+        self._prev_start = None
+
+    def frame(self, start: float, end: float) -> None:
+        if self._origin is None:
+            self._origin = self._window_start = start
+        gap = start - self._prev_start if self._prev_start is not None else None
+        self._prev_start = start
+        write = end - start
+        self._frames += 1
+        self._longest_write = max(self._longest_write, write)
+        if gap is not None:
+            self._largest_gap = max(self._largest_gap, gap)
+            period = self.target_period()
+            if gap > TIMING_LATE_FACTOR * period:
+                self._late += 1
+                log.info(
+                    "%s: late frame: gap %.1f ms (target %.1f ms), write %.1f ms (start +%.3f s, end +%.3f s), %d dropped since the last frame",
+                    self.name, gap * 1000, period * 1000, write * 1000,
+                    start - self._origin, end - self._origin, self.dropped - self._dropped_at_last_frame,
+                )
+        self._dropped_at_last_frame = self.dropped
+        elapsed = end - self._window_start
+        if elapsed >= TIMING_SUMMARY_S:
+            log.info(
+                "%s: timing, last %.1f s: %.1f fps (target %.1f), longest write %.1f ms, largest gap %.1f ms, late frames %d, dropped %d",
+                self.name, elapsed, self._frames / elapsed, 1 / self.target_period(), self._longest_write * 1000,
+                self._largest_gap * 1000, self._late, self.dropped,
+            )
+            self._window_start, self._frames = end, 0
+            self._longest_write = self._largest_gap = 0.0
+            self._late = self.dropped = self._dropped_at_last_frame = 0
 
 
 class LatestFrameWorker:
@@ -27,6 +85,8 @@ class LatestFrameWorker:
         self.connected = False
         self.last_error: str | None = None
         self.frames_sent = 0
+        self.timing: FrameTimingLog | None = None  # set before start() to log the timing of each frame
+        self._pending = False  # a submitted frame the thread has not taken yet (only kept while timing is on)
 
     def start(self) -> None:
         self._thread.start()
@@ -38,6 +98,11 @@ class LatestFrameWorker:
         self.close()
 
     def submit(self, frame: object) -> None:
+        timing = self.timing
+        if timing is not None:
+            if self._pending:
+                timing.dropped += 1  # the thread never wrote the frame this one replaces
+            self._pending = True
         self._frame = frame
         self._event.set()
 
@@ -45,19 +110,29 @@ class LatestFrameWorker:
         while not self._stop.is_set():
             self._event.wait(timeout=0.5)
             self._event.clear()
+            timing = self.timing
+            if timing is not None:
+                self._pending = False  # before the frame is read: a submit in between counts as fresh
             frame = self._frame
             if frame is None or self._stop.is_set():
                 continue
             try:
                 if not self.connected:
                     self.open()
-                self.write(frame)
+                if timing is None:
+                    self.write(frame)
+                else:
+                    start = time.monotonic()
+                    self.write(frame)
+                    timing.frame(start, time.monotonic())
                 self.frames_sent += 1
             except Exception as exc:  # noqa: BLE001 - hardware errors must never kill the thread
                 if self.connected or self.last_error != str(exc):
                     log.warning("%s: %s", self.name, exc)
                 self.last_error = str(exc)
                 self.close()
+                if timing is not None:
+                    timing.reset()
                 time.sleep(1.0)  # retry rate while the device is missing
 
     def status(self) -> dict:

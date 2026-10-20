@@ -12,7 +12,7 @@ from ..config.models import OutputSettings
 from .devices import detect_dmx_type
 from .osc import OscOutput
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
-from .workers import LatestFrameWorker, OpenDmxWorker, SerialWorker
+from .workers import FrameTimingLog, LatestFrameWorker, OpenDmxWorker, SerialWorker
 
 log = logging.getLogger(__name__)
 
@@ -46,8 +46,14 @@ class ArtNetWorker(LatestFrameWorker):
 
 
 class OutputManager:
-    def __init__(self, settings: OutputSettings, find_osc_file: Callable[[str], Path | None] = lambda name: None):
+    def __init__(
+        self,
+        settings: OutputSettings,
+        find_osc_file: Callable[[str], Path | None] = lambda name: None,
+        frame_period: Callable[[], float] = lambda: 1 / 40,
+    ):
         self.settings = settings
+        self.frame_period = frame_period  # the target frame time in seconds, for the timing log
         self.find_osc_file = find_osc_file  # name -> the file in the osc folder
         self.osc: OscOutput | None = None
         # parallel to settings.enttec; None = disabled
@@ -79,6 +85,8 @@ class OutputManager:
                         taken[key] = i
                     if kind == "open":
                         worker = OpenDmxWorker(e.device, f"opendmx{i + 1}", e.break_method)
+                        if e.log_timing:
+                            worker.timing = FrameTimingLog(f"opendmx{i + 1}", self.frame_period)
                     else:
                         worker = SerialWorker(e.device, ENTTEC_BAUD, f"enttec{i + 1}")
                     worker.start()

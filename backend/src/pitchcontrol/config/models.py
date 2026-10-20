@@ -391,6 +391,9 @@ class EnttecSettings(Model):
     # lower baud rate; "break" = the serial port's break condition (the macOS FTDI driver stops
     # sending data after it, 2026-10-11)
     break_method: Literal["break", "baud"] = "baud"
+    # open only: log the timing of each frame the writer sends (a summary every 10 s, and a line per late
+    # frame), to find out why a frame is lost now and then
+    log_timing: bool = False
 
 
 class ArtNetTarget(Model):

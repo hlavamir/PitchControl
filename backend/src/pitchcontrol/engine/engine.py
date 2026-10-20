@@ -92,7 +92,7 @@ class Engine:
         self.preview_u, self.preview_v = np.meshgrid(grid, grid)
         self._preview_inputs: tuple[MaskParams, bool] = (MaskParams(), False)
 
-        self.outputs = OutputManager(store.settings.outputs, store.find_osc)
+        self.outputs = OutputManager(store.settings.outputs, store.find_osc, lambda: 1.0 / max(store.settings.fps, 1.0))
         self.audio: AudioInput | None = None
         self.midi: MidiInput | None = None
 
