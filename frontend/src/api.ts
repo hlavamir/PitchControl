@@ -225,6 +225,7 @@ export interface Settings {
 export interface FixtureInstance {
   name: string
   type: string
+  mode?: string | null // id of a channel mode of the type; missing = the type's default mode (not in scenes)
   enabled: boolean
   group: 'A' | 'B'
   universe: number
@@ -274,12 +275,21 @@ export interface ChannelSlot {
   shutter?: { open: number; strobo: number } | null
 }
 
+/** One DMX channel mode of a fixture type: what a rig fixture picks. `id` is stored in the rig, so renaming never breaks it. */
+export interface ChannelMode {
+  id: string
+  name: string
+  description: string
+  channels: ChannelSlot[]
+}
+
 export interface FixtureType {
   name: string
   description: string
   transport: 'dmx' | 'pitchpls_v2'
-  pixels: number
-  channels: ChannelSlot[]
+  pixels: number // the same in every mode
+  modes: ChannelMode[] // at least one
+  default_mode: string // a mode's id: new rig fixtures start in it
   gamma: number // device curve per channel; 1 = values sent unchanged
   strobo_color: HSB
   [key: string]: unknown
@@ -288,9 +298,16 @@ export interface FixtureType {
 export const slotKind = (s: ChannelSlot): 'value' | 'pixels' | 'macro' | 'shutter' =>
   s.value != null ? 'value' : s.pixels ? 'pixels' : s.macro ? 'macro' : 'shutter'
 
-/** Number of DMX channels of a type (the pixel block counts pixels × format length). */
-export const channelCount = (t: FixtureType) =>
-  t.channels.reduce((n, s) => n + (s.pixels ? t.pixels * s.pixels.length : 1), 0)
+/** The mode with this id; none or an unknown id gives the type's default mode (as the engine does). */
+export const modeOf = (t: FixtureType, id?: string | null): ChannelMode =>
+  t.modes.find((m) => m.id === id) ?? t.modes.find((m) => m.id === t.default_mode) ?? t.modes[0]
+
+/** Number of DMX channels of a mode (the pixel block counts pixels × format length). */
+export const modeChannelCount = (t: FixtureType, m: ChannelMode) =>
+  m.channels.reduce((n, s) => n + (s.pixels ? t.pixels * s.pixels.length : 1), 0)
+
+/** Number of DMX channels a fixture takes in a mode (none: the type's default mode). */
+export const channelCount = (t: FixtureType, modeId?: string | null) => modeChannelCount(t, modeOf(t, modeId))
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {

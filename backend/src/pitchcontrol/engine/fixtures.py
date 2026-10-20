@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..config.models import HSB, FixtureInstance, FixtureType
+from ..config.models import HSB, ChannelMode, FixtureInstance, FixtureType
 from .colors import GroupColors, hsv_to_rgb
 from .phase import map_clamp
 
@@ -50,6 +50,11 @@ class Fixture:
     @property
     def pixels(self) -> int:
         return self.ftype.pixels
+
+    @property
+    def mode(self) -> ChannelMode:
+        """The channel mode this fixture runs in (a missing or unknown one: the type's default)."""
+        return self.ftype.mode_of(self.inst.mode)
 
     @property
     def react_to_strobo(self) -> bool:
@@ -143,7 +148,7 @@ class Fixture:
 
     def dmx_bytes(self, macros) -> list[int]:
         out: list[int] = []
-        for ch in self.ftype.channels:
+        for ch in self.mode.channels:
             if ch.pixels:
                 out += self.pixel_bytes(ch.pixels)
             elif ch.value is not None:

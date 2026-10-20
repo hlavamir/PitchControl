@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, byName, channelCount, slotKind, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
+import { api, byName, channelCount, modeOf, slotKind, type ChannelMode, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import type { Origin } from '../components/RigPanel'
@@ -28,10 +28,10 @@ function slotOfKind(slot: ChannelSlot, kind: Kind, firstMacro: string): ChannelS
 }
 
 /** The DMX channels of a type, as "start–end: what" lines. */
-function channelMap(t: FixtureType): { from: number; to: number; text: string }[] {
+function channelMap(t: FixtureType, mode: ChannelMode): { from: number; to: number; text: string }[] {
   const rows: { from: number; to: number; text: string }[] = []
   let ch = 1
-  for (const s of t.channels) {
+  for (const s of mode.channels) {
     const n = s.pixels ? t.pixels * s.pixels.length : 1
     const label = s.name ? `${s.name} ` : ''
     let text: string
@@ -161,8 +161,8 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const moveSlot = (i: number, d: -1 | 1) =>
     edit((x) => {
       const j = i + d
-      if (j < 0 || j >= x.channels.length) return
-      ;[x.channels[i], x.channels[j]] = [x.channels[j], x.channels[i]]
+      if (j < 0 || j >= x.modes[0].channels.length) return
+      ;[x.modes[0].channels[i], x.modes[0].channels[j]] = [x.modes[0].channels[j], x.modes[0].channels[i]]
     })
 
   const hsb = (c: HSB) => (
@@ -206,7 +206,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                     {status.origins[x.name] === 'default' ? 'app' : 'mod'}
                   </span>
                 )}
-                <span className="font-mono text-[11px] opacity-70">{x.transport === 'pitchpls_v2' ? 'serial' : `${channelCount(x)} ch`}</span>
+                <span className="font-mono text-[11px] opacity-70">{x.transport === 'pitchpls_v2' ? 'serial' : x.modes.length > 1 ? `${x.modes.length} modes` : `${channelCount(x)} ch`}</span>
               </button>
             </li>
           ))}
@@ -352,7 +352,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                 <p className="text-[12px] text-dim">The PitchPlease v2 serial protocol sends 3 bytes (RGB) per pixel; a channel layout isn't used.</p>
               ) : (
                 <div className="flex flex-col gap-1">
-                  {t.channels.map((slot, i) => {
+                  {t.modes[0].channels.map((slot, i) => {
                     const kind = slotKind(slot)
                     return (
                       <div key={i} data-tip={`DMX channel ${i + 1} of the fixture: what it does, its name, and its value`} className="flex flex-wrap items-center gap-1.5 bg-panel-2 px-2 py-1 text-[12px]">
@@ -360,7 +360,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                         <select
                           value={kind}
                           data-tip="What this DMX channel does: a constant, a macro (e.g. a dimmer), the shutter, or the pixel colours"
-                          onChange={(e) => edit((x) => (x.channels[i] = slotOfKind(slot, e.target.value as Kind, macroNames[0] ?? 'Dimmer 01')))}
+                          onChange={(e) => edit((x) => (x.modes[0].channels[i] = slotOfKind(slot, e.target.value as Kind, macroNames[0] ?? 'Dimmer 01')))}
                         >
                           {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
                             <option key={k} value={k}>
@@ -373,15 +373,15 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                           className="w-28"
                           placeholder="name"
                           value={slot.name ?? ''}
-                          onChange={(e) => edit((x) => (x.channels[i].name = e.target.value || null), false)}
+                          onChange={(e) => edit((x) => (x.modes[0].channels[i].name = e.target.value || null), false)}
                           onBlur={() => applyLive(types[selected])}
                           data-tip="Name of the channel. A named constant can be overridden per fixture on the Rig page"
                         />
                         {kind === 'value' && (
-                          <NumberInput value={slot.value} integer min={0} max={255} className="w-16" tip="Constant value sent on this channel (0–255)" onChange={(v) => edit((x) => (x.channels[i].value = v))} />
+                          <NumberInput value={slot.value} integer min={0} max={255} className="w-16" tip="Constant value sent on this channel (0–255)" onChange={(v) => edit((x) => (x.modes[0].channels[i].value = v))} />
                         )}
                         {kind === 'macro' && (
-                          <select value={slot.macro ?? ''} data-tip="Macro whose value (0–1) is sent on this channel, e.g. a dimmer fader" onChange={(e) => edit((x) => (x.channels[i].macro = e.target.value))}>
+                          <select value={slot.macro ?? ''} data-tip="Macro whose value (0–1) is sent on this channel, e.g. a dimmer fader" onChange={(e) => edit((x) => (x.modes[0].channels[i].macro = e.target.value))}>
                             {!macroNames.includes(slot.macro ?? '') && <option value={slot.macro ?? ''}>{slot.macro} (missing)</option>}
                             {macroNames.map((m) => (
                               <option key={m}>{m}</option>
@@ -391,13 +391,13 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                         {kind === 'shutter' && (
                           <>
                             <span className="lbl text-[10px] text-dim">open</span>
-                            <NumberInput value={slot.shutter?.open} integer min={0} max={255} className="w-14" tip="Shutter channel value for open (no strobe), 0–255" onChange={(v) => edit((x) => (x.channels[i].shutter = { ...x.channels[i].shutter!, open: v }))} />
+                            <NumberInput value={slot.shutter?.open} integer min={0} max={255} className="w-14" tip="Shutter channel value for open (no strobe), 0–255" onChange={(v) => edit((x) => (x.modes[0].channels[i].shutter = { ...x.modes[0].channels[i].shutter!, open: v }))} />
                             <span className="lbl text-[10px] text-dim">strobe</span>
-                            <NumberInput value={slot.shutter?.strobo} integer min={0} max={255} className="w-14" tip="Shutter channel value for the fixture's own strobe, 0–255" onChange={(v) => edit((x) => (x.channels[i].shutter = { ...x.channels[i].shutter!, strobo: v }))} />
+                            <NumberInput value={slot.shutter?.strobo} integer min={0} max={255} className="w-14" tip="Shutter channel value for the fixture's own strobe, 0–255" onChange={(v) => edit((x) => (x.modes[0].channels[i].shutter = { ...x.modes[0].channels[i].shutter!, strobo: v }))} />
                           </>
                         )}
                         {kind === 'pixels' && (
-                          <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: R, RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.channels[i].pixels = e.target.value as PixelFormat))}>
+                          <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: R, RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[0].channels[i].pixels = e.target.value as PixelFormat))}>
                             {FORMATS.map((f) => (
                               <option key={f}>{f}</option>
                             ))}
@@ -407,14 +407,14 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                           <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === 0} data-tip="Move this channel up: earlier in the DMX order" onClick={() => moveSlot(i, -1)}>
                             ↑
                           </button>
-                          <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === t.channels.length - 1} data-tip="Move this channel down: later in the DMX order" onClick={() => moveSlot(i, 1)}>
+                          <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === t.modes[0].channels.length - 1} data-tip="Move this channel down: later in the DMX order" onClick={() => moveSlot(i, 1)}>
                             ↓
                           </button>
                           <button
                             className="px-1 text-dim hover:text-ink disabled:opacity-30"
-                            disabled={t.channels.length === 1}
+                            disabled={t.modes[0].channels.length === 1}
                             data-tip="Remove this channel from the layout"
-                            onClick={() => edit((x) => x.channels.splice(i, 1))}
+                            onClick={() => edit((x) => x.modes[0].channels.splice(i, 1))}
                           >
                             ✕
                           </button>
@@ -423,7 +423,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                     )
                   })}
                   <div className="mt-1">
-                    <Button onClick={() => edit((x) => x.channels.push({ name: null, value: 0 }))} tip="Append a constant channel (value 0) at the end of the layout">
+                    <Button onClick={() => edit((x) => x.modes[0].channels.push({ name: null, value: 0 }))} tip="Append a constant channel (value 0) at the end of the layout">
                       Add channel
                     </Button>
                   </div>
@@ -444,7 +444,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         {t && t.transport === 'dmx' && (
           <>
             <div className="flex flex-col gap-px font-mono text-[12px]">
-              {channelMap(t).map((r, i) => (
+              {channelMap(t, modeOf(t)).map((r, i) => (
                 <div key={i} className="flex gap-3 bg-panel-2 px-2 py-1">
                   <span className="w-16 flex-none text-dim">{r.from === r.to ? r.from : `${r.from}–${r.to}`}</span>
                   <span className="min-w-0 flex-1 truncate" data-tip={r.text}>

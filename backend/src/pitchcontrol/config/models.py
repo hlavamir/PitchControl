@@ -126,12 +126,39 @@ class ChannelSlot(Model):
         return "shutter"
 
 
+def _mode_id(text: str) -> str:
+    """A mode's id from its name: ``6CH`` -> ``6ch``, ``3CH-1`` -> ``3ch-1`` (what the UI makes for a new mode)."""
+    slug = "".join(c if c.isalnum() else "-" for c in text.lower())
+    return "-".join(part for part in slug.split("-") if part) or "mode"
+
+
+class ChannelMode(Model):
+    """One DMX channel mode of a fixture type: a name (free text, e.g. "6CH"), a short description and the
+    channel layout. ``id`` is what a rig fixture stores, so renaming a mode never breaks a rig."""
+
+    id: str = ""
+    name: str = ""
+    description: str = ""
+    channels: list[ChannelSlot] = Field(default_factory=lambda: [ChannelSlot(pixels="RGB")])
+
+    def channel_count(self, pixels: int) -> int:
+        total = 0
+        for ch in self.channels:
+            total += pixels * len(ch.pixels) if ch.pixels else 1
+        return total
+
+
 class FixtureType(Model):
     name: str = ""
     description: str = ""
     transport: Literal["dmx", "pitchpls_v2"] = "dmx"
+    # the pixel count is the same in every mode; a mode only changes the channels around the pixels
     pixels: int = Field(default=1, ge=1)
-    channels: list[ChannelSlot] = Field(default_factory=lambda: [ChannelSlot(pixels="RGB")])
+    # One or more channel modes; a rig fixture picks one (FixtureInstance.mode). Files before 1.6 have a
+    # bare ``channels`` list: it loads as one mode, named by its channel count, and is written back as
+    # ``modes`` when the type is next saved.
+    modes: list[ChannelMode] = Field(default_factory=lambda: [ChannelMode()])
+    default_mode: str = ""  # a mode's id: a new rig fixture starts in it, and a fixture without a mode uses it
     # Decodes the perceptual values the engine works with into what the device expects, per output
     # channel: device value = value ** gamma. 1 = send perceptual values unchanged, for devices that
     # decode themselves (PitchPlease v2 / v3 firmware apply 2.2). Must be > 0 (an invalid value falls
@@ -146,10 +173,18 @@ class FixtureType(Model):
     @model_validator(mode="before")
     @classmethod
     def _legacy(cls, data):
-        data = _merge_legacy_gamma(data, f"fixture type {data.get('name', '') if isinstance(data, dict) else ''}".strip())
+        where = f"fixture type {data.get('name', '') if isinstance(data, dict) else ''}".strip()
+        data = _merge_legacy_gamma(data, where)
         if isinstance(data, dict) and "react_to_strobo" in data:
             data = dict(data)
             data["legacy_react_to_strobo"] = data.pop("react_to_strobo")
+        if isinstance(data, dict) and "channels" in data:  # before 1.6: one channel layout, no modes
+            data = dict(data)
+            channels = data.pop("channels")
+            if data.get("modes"):
+                log.warning("%s: has both channels and modes, channels ignored", where)
+            else:
+                data["modes"] = [{"channels": channels}]
         return data
 
     @field_validator("gamma", mode="before")
@@ -160,12 +195,42 @@ class FixtureType(Model):
             return 1.0
         return v
 
-    def channel_count(self, pixels: int | None = None) -> int:
-        px = pixels if pixels is not None else self.pixels
-        total = 0
-        for ch in self.channels:
-            total += px * len(ch.pixels) if ch.pixels else 1
-        return total
+    @model_validator(mode="after")
+    def _complete_modes(self) -> "FixtureType":
+        """At least one mode; every mode has a name (its channel count) and a unique id; the default exists."""
+        if not self.modes:
+            log.warning("fixture type %s: no channel mode, using one with an RGB pixel block", self.name)
+            self.modes = [ChannelMode()]
+        seen: set[str] = set()
+        for mode in self.modes:
+            if not mode.name:
+                mode.name = f"{mode.channel_count(self.pixels)}CH"
+            wanted = mode.id or _mode_id(mode.name)
+            mode.id, n = wanted, 2
+            while mode.id in seen:
+                mode.id, n = f"{wanted}-{n}", n + 1
+            if mode.id != wanted:
+                log.warning("fixture type %s: mode id '%s' is used twice, this one is now '%s'", self.name, wanted, mode.id)
+            seen.add(mode.id)
+        if self.default_mode not in seen:
+            if self.default_mode:
+                log.warning("fixture type %s: default mode '%s' does not exist, using '%s'", self.name, self.default_mode, self.modes[0].id)
+            self.default_mode = self.modes[0].id
+        return self
+
+    def mode_of(self, mode_id: str | None) -> ChannelMode:
+        """The mode with this id; none or an unknown id gives the default mode."""
+        for mode in self.modes:
+            if mode.id == mode_id:
+                return mode
+        return next(m for m in self.modes if m.id == self.default_mode)
+
+    def has_mode(self, mode_id: str) -> bool:
+        return any(m.id == mode_id for m in self.modes)
+
+    def channel_count(self, mode_id: str | None = None, pixels: int | None = None) -> int:
+        """Channels one fixture takes in this mode (none: the default mode)."""
+        return self.mode_of(mode_id).channel_count(pixels if pixels is not None else self.pixels)
 
 
 # --------------------------------------------------------------------------- rigs
@@ -227,6 +292,8 @@ class IdleMaskRange(Model):
 class FixtureInstance(Model):
     name: str = ""
     type: str = ""
+    # the id of a channel mode of the type (see ChannelMode); missing = the type's default mode. Not in scenes.
+    mode: str | None = None
     enabled: bool = True
     group: Literal["A", "B"] = "A"
 

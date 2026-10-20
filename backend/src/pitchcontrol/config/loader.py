@@ -620,7 +620,7 @@ class ConfigStore:
         self.fill_legacy_react_to_strobo(self.rig)
         problems = self.validate_rig()
         for p in problems:
-            if "unknown type" in p:
+            if "unknown type" in p or "unknown mode" in p:
                 self.notice(f"Rig “{self.rig.name}”: {p}.")
         log.info("loaded rig '%s' with %d fixtures", self.rig.name, len(self.rig.fixtures))
 
@@ -643,7 +643,12 @@ class ConfigStore:
                 continue
             if not fx.enabled or ftype.transport != "dmx":
                 continue
-            count = ftype.channel_count()
+            if fx.mode and not ftype.has_mode(fx.mode):
+                problems.append(
+                    f"fixture '{fx.name}': unknown mode '{fx.mode}' of type '{fx.type}' "
+                    f"(the default mode '{ftype.mode_of(None).name}' is used)"
+                )
+            count = ftype.channel_count(fx.mode)
             end = fx.address + count - 1
             if end > 512:
                 problems.append(f"fixture '{fx.name}': channels {fx.address}-{end} exceed 512")

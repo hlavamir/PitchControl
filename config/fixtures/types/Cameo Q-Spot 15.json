@@ -1,17 +1,105 @@
 {
-  "description": "Cameo Q-Spot 15 RGBW pinspot in 4-channel mode (R, G, B, W).",
+  "description": "Cameo Q-Spot 15 RGBW pinspot (18 W RGBW LED). Five DMX modes; the fixture's display picks one, the Rig page must say the same. 4CH is the default (plain RGBW, as in the first versions).",
   "transport": "dmx",
   "pixels": 1,
-  "channels": [
+  "modes": [
     {
-      "pixels": "RGBW"
+      "id": "2ch",
+      "name": "2CH",
+      "description": "Dimmer (follows the brightness) and a colour macro held at White. No colour mixing.",
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "R"
+        },
+        {
+          "name": "Colour macro",
+          "value": 114
+        }
+      ]
+    },
+    {
+      "id": "3ch-1",
+      "name": "3CH-1",
+      "description": "Dimmer (follows the brightness), strobe and a colour macro held at White. No colour mixing.",
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "R"
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "name": "Colour macro",
+          "value": 114
+        }
+      ]
+    },
+    {
+      "id": "3ch-2",
+      "name": "3CH-2",
+      "description": "Red, green, blue.",
+      "channels": [
+        {
+          "pixels": "RGB"
+        }
+      ]
+    },
+    {
+      "id": "4ch",
+      "name": "4CH",
+      "description": "Red, green, blue, white. The plain colour mode.",
+      "channels": [
+        {
+          "pixels": "RGBW"
+        }
+      ]
+    },
+    {
+      "id": "9ch",
+      "name": "9CH",
+      "description": "Dimmer, dimmer fine, strobe, red, green, blue, white, colour macro, colour temperature. The dimmer is held at full, the colours carry the brightness.",
+      "channels": [
+        {
+          "name": "Dimmer",
+          "value": 255
+        },
+        {
+          "name": "Dimmer fine",
+          "value": 0
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 250
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Colour macro",
+          "value": 0
+        },
+        {
+          "name": "Colour temperature",
+          "value": 0
+        }
+      ]
     }
   ],
+  "default_mode": "4ch",
   "gamma": 1.0,
   "strobo_color": {
     "h": 0.666,
     "s": 0.15,
     "b": 1.0
   },
-  "_note": "4-channel mode confirmed 2026-10-05. Hardware strobe would need the 9-channel mode (see wiki port-design, Future: Hardware Strobe)."
+  "_note": "Modes and channel tables from the manual (raw/fixtures/Cameo_Q_Spot_15_RGBW.pdf in the PitchPlease wiki). 4-channel mode confirmed 2026-10-05. Colour macro 114 = White (110-117); strobe 250 = fastest before the 'open' range of the 9CH mode."
 }

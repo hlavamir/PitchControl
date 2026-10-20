@@ -47,7 +47,7 @@ Edits apply to the lights right away and mark the type unsaved; Save writes the 
 The rig: the fixtures of one event and everything that differs per fixture.
 - **Rig:** load, save, revert, rename, duplicate, create or delete rig files, and edit the description. Unsaved changes are flagged, and loading another rig asks first.
 - **Fixtures:** the list of fixtures with Add / Duplicate / Remove. Shift + click selects a range, ⌘ / Ctrl + click adds or removes one, to edit them together.
-- **Fixture editor:** name, type (with a summary and an "edit type" link), group, DMX universe (a dropdown of 0–3) and address, placement (position, rotation, length), dimmer, whether it reacts to strobo, colour sources and idle remap. Number fields step with ↑ / ↓ or a right-mouse drag.
+- **Fixture editor:** name, type (with a summary and an "edit type" link), the channel mode (a dropdown, only for a type with more than one mode: it must be the mode set on the fixture itself, because it decides how many channels the fixture takes; a new fixture starts in the type's default mode; scenes don't store it), group, DMX universe (a dropdown of 0–3) and address, placement (position, rotation, length), dimmer, whether it reacts to strobo, colour sources and idle remap. Number fields step with ↑ / ↓ or a right-mouse drag.
 - **Fixture type values:** gamma, the strobo colour and the named constant channels can be overridden per fixture. The checkbox switches an override on. Switched off, the field is greyed out but keeps its value, so switching it on again restores it; "default" shows the type's value, and ↺ goes back to it.
 - **Placement:** the selected fixtures highlighted in the scene preview, their live output colours and, with "show channel values", a table of the DMX channels they write.
 
@@ -239,16 +239,28 @@ Unknown keys (typos) are reported in `logs/YYMMDD_hhmmss.log` (one file per star
 
 **From 1.3:** on the first start of 1.4 an old `Documents/PitchControl/config/` is moved into this layout once: `state/` and `logs/` go to this computer's folder, `settings.json` is split into the sparse show part and `machine.json`, and files identical to a version the app ever shipped are dropped (the current defaults apply). Your own files stay. A source checkout used the repo's `config/` as its data before; that setup is in git history (`git show v1.3.0:config/rigs/Default.json`) and can be copied into `data/` or `~/Documents/PitchControl/`.
 
-A fixture **profile** is the ordered `channels` list of a fixture type:
+A fixture type holds one or more **channel modes** (the DMX modes a device offers: 3CH, 4CH, 6CH …), each with an `id`, a `name`, a `description` and its **profile**, the ordered `channels` list. `default_mode` is the id of the mode a new rig fixture starts in. The pixel count (`pixels`), gamma and strobo colour belong to the type and are the same in every mode:
 
 ```json
-"channels": [
-  { "name": "master", "value": 255 },
-  { "name": "dimmer", "macro": "Dimmer 03" },
-  { "name": "strobe", "shutter": { "open": 0, "strobo": 200 } },
-  { "pixels": "RGB" }
-]
+"pixels": 1,
+"modes": [
+  { "id": "4ch", "name": "4CH", "description": "Red, green, blue, white", "channels": [{ "pixels": "RGBW" }] },
+  {
+    "id": "9ch",
+    "name": "9CH",
+    "description": "Master, strobe, colours",
+    "channels": [
+      { "name": "master", "value": 255 },
+      { "name": "dimmer", "macro": "Dimmer 03" },
+      { "name": "strobe", "shutter": { "open": 0, "strobo": 200 } },
+      { "pixels": "RGBW" }
+    ]
+  }
+],
+"default_mode": "4ch"
 ```
+
+A rig fixture names its mode with `"mode": "<id>"`. The id is what counts, so renaming a mode never breaks a rig; a fixture without `mode` runs in the type's default mode, and an unknown id is listed as a rig problem (the default mode is used meanwhile). Type files from before 1.6 have a bare `channels` list instead of `modes`: it loads as one mode named by its channel count (`4CH`) and is written back in the new shape when the type is next saved. An older app reads a type file written by 1.6 as one RGB pixel block, so keep a copy of your fixture types before going back.
 
 `value` is a constant (a rig can override it by name with `channel_values`). `macro` sends a macro's value as 0–255. `shutter` sends `strobo` on a peak frame when the instance has `real_strobo` enabled. `pixels` expands to pixel count × `R` / `RGB` / `RGBW`.
 

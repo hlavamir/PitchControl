@@ -20,7 +20,7 @@ def test_missing_keys_get_defaults(tmp_path):
     ftype = load_model(path, FixtureType, name="minimal")
     assert ftype.name == "minimal"
     assert ftype.gamma == 1.0
-    assert ftype.channels[0].pixels == "RGB"
+    assert ftype.modes[0].channels[0].pixels == "RGB"
     assert ftype.channel_count() == 9
 
 
@@ -164,7 +164,7 @@ def test_fixture_types_rigs_and_fog_machines_with_the_1_4_macro_names_read_the_n
         )
     )
     ftype = load_model(path, FixtureType, name="mine")
-    assert [c.macro for c in ftype.channels] == ["Mask Param B", None, "Fog Machine"]
+    assert [c.macro for c in ftype.modes[0].channels] == ["Mask Param B", None, "Fog Machine"]
     assert FixtureInstance.model_validate({"idle_mask_range": {"macro": "Preset A"}}).idle_mask_range.macro == "Mask A"  # a rig's fixture
     assert FogMachine.model_validate({"manual_macro": "Preset B"}).manual_macro == "Mask B"
     assert FogMachine.model_validate({"manual_macro": None}).manual_macro is None

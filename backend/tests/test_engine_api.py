@@ -192,11 +192,11 @@ def test_fixture_type_management(store):
 
     # new / duplicate; names are unique ignoring case and file-safe
     assert client.post("/api/fixture-types", json={"name": "spot"}).json()["ok"]
-    assert (store.types_dir / "spot.json").exists() and "name" not in (store.types_dir / "spot.json").read_text()
+    assert (store.types_dir / "spot.json").exists() and "name" not in json.loads((store.types_dir / "spot.json").read_text())
     assert client.post("/api/fixture-types", json={"name": "SPOT"}).status_code == 409
     assert client.post("/api/fixture-types", json={"name": "a/b"}).status_code == 409
     assert client.post("/api/fixture-types", json={"name": "copy", "copy_of": rig_type}).json()["ok"]
-    assert store.fixture_types["copy"].channels == store.fixture_types[rig_type].channels
+    assert store.fixture_types["copy"].modes == store.fixture_types[rig_type].modes
 
     # rename updates every rig that uses the type (files and the live rig)
     res = client.post(f"/api/fixture-types/{rig_type}/rename", json={"name": "renamed"}).json()

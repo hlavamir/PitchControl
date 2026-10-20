@@ -12,6 +12,22 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   file gets one line every 10 seconds (frames per second, the longest write, the largest gap between two frames,
   frames dropped before they were written) and one line for each frame that came more than twice the frame time after
   the one before. Nothing is measured or written while it is off.
+- **Channel modes per fixture type** (the model, the engine and the Rig page; the Fixtures page editor follows). Most DMX
+  lights run in several channel modes (3CH, 4CH, 6CH, 9CH …); until now every mode needed a type of its own. A fixture
+  type now holds one or more modes, each with a name, a short description and its channel layout, and one of them is the
+  default; the pixel count, gamma and strobo colour stay per type. On the Rig page each fixture picks its mode in a
+  **Mode** dropdown next to Type (shown for a type with more than one mode, "multiple" when several fixtures differ);
+  the address checks ("overlaps", "beyond 512"), the channel map, the output monitor and the DMX output follow the
+  fixture's mode. A new fixture starts in its type's default mode, and changing the type resets the mode to the new
+  type's default. The mode is part of the rig, not of scenes. It is saved in the rig file as the mode's stable `id`, so
+  renaming a mode never breaks a rig; a fixture without a mode uses the default, an unknown one is listed as a rig problem
+  (and noticed on load) and plays in the default mode.
+- **Shipped types with modes:** **Cameo Q-Spot 15** now has its five modes (2CH, 3CH-1, 3CH-2, 4CH, 9CH, default 4CH as
+  before) and a new **Eurolite LED 4C-7** type has 3CH, 4CH, 5CH, 6CH and 9CH (default 4CH). Modes without colour mixing
+  (the Cameo's 2CH and 3CH-1, the Eurolite's 5CH) send the brightness on the dimmer channel and hold the colour macro at
+  White; the 5CH and 9CH preset-colour, program and speed channels are named constants a fixture can override. If you
+  have your own saved copy of Cameo Q-Spot 15 (marked **mod**), press **Reset** on the Fixtures page to get its modes.
+
 - **A mask curve for the whole rig** (Rig page, Rig panel, under the description). One number from -3 to +3 bends the
   brightness curve of the mask for all fixtures at once: it is applied before each fixture's own idle remap curve, so
   the two add up (`mask ^ 2^(rig curve + fixture curve)`). 0 is as before, so existing rigs and scenes look the same.
@@ -25,6 +41,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - **Rig page, placement view: the first pixel's mark is drawn on top of all pixels.** On a short strip, where the
   pixels overlap, the ring round the first pixel is no longer covered by the pixels drawn after it. It is now a wider
   ring round the pixel; a selected fixture has a thin ring round every pixel, and its first pixel keeps the wider one.
+
+### File format
+- **Fixture type files have `modes` and `default_mode` instead of `channels`** (1.6). Old files keep working: a bare
+  `channels` list loads as one mode, named by its channel count, and is written in the new shape when the type is saved.
+  Old rigs have no `mode` and use each type's default mode, so a rig and a type folder from 1.5 load and play unchanged.
+  An older app reads a new type file as one RGB pixel block, so keep a copy of your types before going back.
 
 ## 1.5.3 — 2026-10-17
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, byName, channelCount, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
+import { api, byName, channelCount, modeOf, type FixtureInstance, type FixtureType, type HSB, type MacroDef, type Override, type Rig } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { Preview } from '../components/Preview'
 import { RigPanel, type RigList } from '../components/RigPanel'
@@ -216,7 +216,9 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const addFixture = (copyOf?: FixtureInstance) => {
     if (!rig) return
     const next = structuredClone(rig)
-    const base = copyOf ? structuredClone(copyOf) : { ...NEW_FIXTURE, type: Object.keys(types).sort(byName)[0] ?? '' }
+    const newType = Object.keys(types).sort(byName)[0] ?? ''
+    // a new fixture starts in its type's default mode
+    const base = copyOf ? structuredClone(copyOf) : { ...NEW_FIXTURE, type: newType, mode: types[newType]?.default_mode }
     base.name = copyOf ? `${copyOf.name} copy` : base.name
     next.fixtures.push(base)
     select([next.fixtures.length - 1])
@@ -233,6 +235,16 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
 
   const fx = fxs[0] // the fixture in single mode, the first selected one in multi-edit
   const typeOf = (f: FixtureInstance): FixtureType | undefined => types[f.type]
+  /** The channel layout a fixture runs in (its mode; the type's default when it has none or an unknown one). */
+  const channelsOf = (f: FixtureInstance) => {
+    const t = typeOf(f)
+    return t ? modeOf(t, f.mode).channels : []
+  }
+  /** The mode id as the dropdown shows it: the fixture's own, even an unknown one, else the type's default. */
+  const modeIdOf = (f: FixtureInstance) => {
+    const t = typeOf(f)
+    return !t ? '' : f.mode && !t.modes.some((m) => m.id === f.mode) ? f.mode : modeOf(t, f.mode).id
+  }
   const openType = (name: string) => {
     try {
       sessionStorage.setItem(OPEN_TYPE_KEY, name)
@@ -243,6 +255,8 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   const dimmerNames = Object.values(defs).filter((d) => d.page === 'dimmers')
   const sharedType = same((f) => f.type)
   const ftype = sharedType === MIXED ? undefined : types[sharedType]
+  const sharedMode = same(modeIdOf)
+  const fmode = ftype && sharedMode !== MIXED ? modeOf(ftype, sharedMode) : undefined
   const enabled = same((f) => f.enabled)
   const hueSource = opt((f) => f.hue_source)
   const satSource = opt((f) => f.saturation_source)
@@ -340,7 +354,15 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                   />
                 </Row>
                 <Row label="Type" hint="Fixture type (pixels, channel layout, defaults), defined on the Fixtures page">
-                  <select value={opt((f) => f.type)} onChange={(e) => edit((f) => (f.type = e.target.value))}>
+                  <select
+                    value={opt((f) => f.type)}
+                    onChange={(e) =>
+                      edit((f) => {
+                        f.type = e.target.value
+                        f.mode = types[f.type]?.default_mode // another type, another set of modes: start in its default
+                      })
+                    }
+                  >
                     {mixedOption(opt((f) => f.type))}
                     {sharedType !== MIXED && !types[sharedType] && <option value={sharedType}>{sharedType} (missing)</option>}
                     {Object.keys(types).sort(byName).map((t) => (
@@ -348,11 +370,24 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                     ))}
                   </select>
                 </Row>
+                {ftype && ftype.modes.length > 1 && ftype.transport === 'dmx' && (
+                  <Row label="Mode" hint={`The channel mode this fixture runs in: it must be the mode set on the device itself, since it decides how many channels the fixture takes. The modes of a type are defined on the Fixtures page; scenes don't store it${fmode?.description ? `. ${fmode.name}: ${fmode.description}` : ''}`}>
+                    <select value={sharedMode === MIXED ? MIXED_OPTION : sharedMode} onChange={(e) => edit((f) => (f.mode = e.target.value))}>
+                      {mixedOption(sharedMode === MIXED ? MIXED_OPTION : sharedMode)}
+                      {sharedMode !== MIXED && !ftype.modes.some((m) => m.id === sharedMode) && <option value={sharedMode}>{sharedMode} (missing)</option>}
+                      {ftype.modes.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} · {channelCount(ftype, m.id)} ch{m.id === ftype.default_mode ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </Row>
+                )}
                 {ftype && (
                   <Row label="" plain>
                     <span className="lbl text-[10px] text-dim">
-                      {ftype.pixels} px {ftype.channels.find((c) => c.pixels)?.pixels ?? 'RGB'} ·{' '}
-                      {ftype.transport === 'pitchpls_v2' ? 'v2 serial' : `${channelCount(ftype)} DMX ch`}
+                      {ftype.pixels} px {fmode?.channels.find((c) => c.pixels)?.pixels ?? 'RGB'} ·{' '}
+                      {ftype.transport === 'pitchpls_v2' ? 'v2 serial' : fmode ? `${channelCount(ftype, fmode.id)} DMX ch` : 'channels differ by mode'}
                     </span>
                     <a href="#Fixtures" data-hint="button" data-tip="Open this fixture type on the Fixtures page" className="lbl text-[10px] text-ink hover:underline" onClick={() => openType(ftype.name)}>
                       edit type ›
@@ -402,7 +437,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                     onChange={(v) => edit((f) => (f.react_to_strobo = v))}
                   />
                 </Row>
-                {fxs.every((f) => typeOf(f)?.channels.some((c) => c.shutter)) && (
+                {fxs.every((f) => channelsOf(f).some((c) => c.shutter)) && (
                   <Row label="Real strobo" hint="Also drive the fixture's own shutter channel on strobo peaks, for a hardware flash">
                     <Toggle
                       checked={same((f) => f.real_strobo) === true}
@@ -507,8 +542,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                 input: hsbInputs,
               })}
               {ftype &&
-                ftype.channels
-                  .filter((c) => c.value != null && c.name)
+                [...new Map(fxs.flatMap(channelsOf).filter((c) => c.value != null && c.name).map((c) => [c.name, c])).values()] // the named constants of the selected fixtures' modes
                   .map((c) =>
                     overrideRow<number>({
                       label: `Channel “${c.name}”`,

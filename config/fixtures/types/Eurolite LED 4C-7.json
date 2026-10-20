@@ -1,0 +1,119 @@
+{
+  "description": "Eurolite LED 4C-7 Silent Slim Spot (7 x 8 W RGBW, fanless). Five DMX modes (3, 4, 5, 6, 9 channels); the menu 'Addr' of the fixture picks one, the Rig page must say the same. 4CH (plain RGBW) is the default.",
+  "transport": "dmx",
+  "pixels": 1,
+  "modes": [
+    {
+      "id": "3ch",
+      "name": "3CH",
+      "description": "Red, green, blue.",
+      "channels": [
+        {
+          "pixels": "RGB"
+        }
+      ]
+    },
+    {
+      "id": "4ch",
+      "name": "4CH",
+      "description": "Red, green, blue, white. The plain colour mode.",
+      "channels": [
+        {
+          "pixels": "RGBW"
+        }
+      ]
+    },
+    {
+      "id": "5ch",
+      "name": "5CH",
+      "description": "Master dimmer (follows the brightness), strobe, preset colour held at White, program and speed off. No colour mixing.",
+      "channels": [
+        {
+          "name": "Master dimmer",
+          "pixels": "R"
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "name": "Preset colour",
+          "value": 190
+        },
+        {
+          "name": "Program",
+          "value": 0
+        },
+        {
+          "name": "Speed",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "6ch",
+      "name": "6CH",
+      "description": "Red, green, blue, white, master dimmer (held at full), function (strobe).",
+      "channels": [
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Master dimmer",
+          "value": 255
+        },
+        {
+          "name": "Function",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        }
+      ]
+    },
+    {
+      "id": "9ch",
+      "name": "9CH",
+      "description": "Master dimmer (held at full), strobe, red, green, blue, white, preset colour, program and speed (these three off).",
+      "channels": [
+        {
+          "name": "Master dimmer",
+          "value": 255
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Preset colour",
+          "value": 0
+        },
+        {
+          "name": "Program",
+          "value": 0
+        },
+        {
+          "name": "Speed",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "default_mode": "4ch",
+  "gamma": 1.0,
+  "strobo_color": {
+    "h": 0.0,
+    "s": 0.0,
+    "b": 1.0
+  },
+  "_note": "Modes and channel tables from the manual 00123366 v1.0 (raw/fixtures/Eurolite_LED_4C-7.pdf in the PitchPlease wiki). Value 0-9 of the preset colour, program and function channels is 'no function'; preset colour 190-255 = White."
+}
