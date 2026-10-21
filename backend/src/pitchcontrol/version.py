@@ -5,6 +5,7 @@ a release."""
 from __future__ import annotations
 
 import json
+import platform
 import re
 import subprocess
 import sys
@@ -53,3 +54,19 @@ def version_label() -> str:
             return __version__
         return label_from_describe(info.get("describe"))
     return label_from_describe(git_describe(Path(__file__).resolve().parents[3]))
+
+
+def system_label() -> str:
+    """The operating system of this computer for a bug report: "Windows 11 (10.0.26300, AMD64)", "macOS 15.1 (arm64)"."""
+    machine = platform.machine()
+    if sys.platform == "win32":
+        win = sys.getwindowsversion()  # type: ignore[attr-defined]
+        name = "Windows 11" if win.major == 10 and win.build >= 22000 else f"Windows {platform.release()}"  # 11 still reports 10.0
+        return f"{name} ({win.major}.{win.minor}.{win.build}, {machine})"
+    if sys.platform == "darwin":
+        return f"macOS {platform.mac_ver()[0]} ({machine})"
+    try:
+        name = platform.freedesktop_os_release().get("PRETTY_NAME", "Linux")
+    except OSError:
+        name = platform.system()
+    return f"{name} ({platform.release()}, {machine})"

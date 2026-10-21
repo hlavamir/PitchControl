@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feature ideas and voting
+    url: https://github.com/hlavamir/PitchControl/discussions/categories/ideas
+    about: Suggest a feature or vote on the ideas of others in Discussions.
+  - name: Questions
+    url: https://github.com/hlavamir/PitchControl/discussions
+    about: Ask how something works.

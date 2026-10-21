@@ -1,0 +1,57 @@
+name: Report a problem
+description: Something in PitchControl doesn't work as it should. The app's Settings → About → Report a problem fills in the version and the system for you.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The quickest way is **Settings → About → Report a problem** in PitchControl itself: it opens this page with the version and the system filled in.
+  - type: input
+    id: version
+    attributes:
+      label: PitchControl version
+      description: Settings → About shows it, e.g. 1.6.0 or 1.6.0+3 (abc1234).
+      placeholder: "1.6.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: The operating system and its version of the computer that runs PitchControl.
+      placeholder: "Windows 11 (10.0.26100) / macOS 15.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Opened from
+      options:
+        - desktop app
+        - browser on the same computer (run from source)
+        - browser on another device on the network
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: How to make it happen again, one step per line.
+      placeholder: |
+        1.
+        2.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: Please attach the newest log file (drag it into this box). It is on the computer that runs PitchControl, Settings → App → Open logs folder; the newest file is the current run.

@@ -31,7 +31,7 @@ from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
-from ..version import version_label
+from ..version import system_label, version_label
 from .network import Network, NetworkGate
 
 log = logging.getLogger(__name__)
@@ -149,6 +149,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             "fullscreen_supported": fs is not None,
             "fullscreen": bool(fs and fs.active),
             "version": version_label(),
+            "system": system_label(),  # for Settings → Report a problem
         }
 
     @app.post("/api/fullscreen", dependencies=local_only)

@@ -301,6 +301,22 @@ def test_open_url_only_for_the_projects_pages(store, monkeypatch):
     assert len(opened) == 2
 
 
+def test_app_info_names_the_system_for_a_bug_report(store, monkeypatch):
+    import sys
+    import webbrowser
+
+    system = TestClient(create_app(Engine(store, enable_hardware=False))).get("/api/app-info").json()["system"]
+    assert system.startswith({"win32": "Windows ", "darwin": "macOS "}.get(sys.platform, ""))
+    assert any(ch.isdigit() for ch in system)  # the version of the OS
+    # Settings → Report a problem: the desktop app may open a new issue with its body
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    client = TestClient(create_app(Engine(store, enable_hardware=False), desktop={"url": "http://127.0.0.1:1", "data_dir": "x"}))
+    url = "https://github.com/hlavamir/PitchControl/issues/new?title=&body=**PitchControl%3A**+1.6.0%0A%0A%23%23%23+What+happened"
+    assert client.post("/api/open-url", json={"url": url}).status_code == 200
+    assert opened == [url]
+
+
 def test_frame_rate_is_a_setting_the_engine_follows(store):
     engine = Engine(store, enable_hardware=False)
     client = TestClient(create_app(engine))

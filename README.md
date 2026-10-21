@@ -111,8 +111,8 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 - **Appearance:** ink colour (grey, amber, phosphor), glow, UI brightness for a dark booth, UI scale (with "Fit window" for small screens) and the key-hint footer. All of it is saved and restored next session.
 - **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
 - **Keyboard:** the complete keyboard reference.
-- **App** (desktop app only): open the UI in a browser, open the data folder, start in full screen.
-- **About:** the version (with the number of commits since the last release and whether the source was modified) and links to the project and its releases.
+- **App** (desktop app only): open the UI in a browser, open the data folder, open the logs folder, start in full screen.
+- **About:** the version (with the number of commits since the last release and whether the source was modified), links to the project and its releases, and **Report a problem**: it opens a new issue on GitHub in the browser with the version, the system (the computer's operating system and its version) and where the UI was opened from already filled in, under the headings What happened, What you expected and Steps. You see and edit everything before you send it; PitchControl itself sends nothing. Please attach the newest log file: Settings → App → Open logs folder, the newest file is the current run. On a phone or tablet on the network it is a plain link that opens on that device. Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas), where they can be voted on.
 
 ### 9 · Control Desk
 

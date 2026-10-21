@@ -1,0 +1,21 @@
+name: Feature idea
+description: Something PitchControl could do. Ideas are collected and voted on in Discussions.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas)**, where others can vote on them with 👍 and add to them. Please look there first: your idea may already be there, then a vote helps more than a new issue.
+
+        Use this form only for a small, concrete change you'd like tracked as an issue.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like PitchControl to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What for
+      description: The show or the situation where you'd use it.
