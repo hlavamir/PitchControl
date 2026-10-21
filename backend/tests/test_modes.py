@@ -74,7 +74,7 @@ def test_a_type_level_pixel_count_of_an_old_file_is_every_modes_count():
     old = FixtureType.model_validate({"pixels": 4, "modes": [{"channels": [{"pixels": "RGB"}]}, {"channels": [{"value": 0}, {"pixels": "RGBW"}]}]})
     assert [m.pixels for m in old.modes] == [4, 4] and [old.channel_count(m.id) for m in old.modes] == [12, 17]
     assert FixtureType.model_validate({"pixels": 3, "channels": [{"pixels": "RGB"}]}).modes[0].pixels == 3  # before 1.6 as well
-    own = FixtureType.model_validate({"pixels": 4, "modes": [{"pixels": 8, "channels": [{"pixels": "R"}]}, {"channels": [{"pixels": "R"}]}]})
+    own = FixtureType.model_validate({"pixels": 4, "modes": [{"pixels": 8, "channels": [{"pixels": "I"}]}, {"channels": [{"pixels": "I"}]}]})
     assert [m.pixels for m in own.modes] == [8, 4]  # a mode's own count wins
     saved = old.model_dump(mode="json", exclude_none=True)
     assert "pixels" not in saved and [m["pixels"] for m in saved["modes"]] == [4, 4]  # written in the new shape
@@ -250,3 +250,13 @@ def test_the_api_takes_a_pixel_count_per_mode(store):
     assert client.put("/api/fixture-types/bar", json=body).json()["ok"]
     saved = json.loads((store.types_dir / "bar.json").read_text())
     assert "pixels" not in saved and [m["pixels"] for m in saved["modes"]] == [4, 16]
+
+
+def test_the_old_single_channel_format_r_loads_as_i_and_sends_the_brightest_value():
+    old = FixtureType.model_validate({"modes": [{"channels": [{"pixels": "R"}, {"pixels": "RGB"}]}]})
+    assert [c.pixels for c in old.modes[0].channels] == ["I", "RGB"]
+    saved = old.model_dump(mode="json", exclude_none=True)
+    assert saved["modes"][0]["channels"][0]["pixels"] == "I"  # written back as I
+    fx = Fixture(FixtureInstance(name="x", type="t"), old)
+    fx.rgb = np.array([[0.2, 0.8, 0.5]])
+    assert fx.dmx_bytes(MacroBank()) == [204, 51, 204, 128]  # I: the brightest of R, G, B; then RGB

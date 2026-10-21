@@ -10,7 +10,7 @@ import { OPEN_TYPE_KEY } from './Rig'
 type Kind = ReturnType<typeof slotKind>
 
 const KIND_LABEL: Record<Kind, string> = { value: 'constant', macro: 'macro', shutter: 'shutter', pixels: 'pixels' }
-const FORMATS: PixelFormat[] = ['R', 'RGB', 'RGBW']
+const FORMATS: PixelFormat[] = ['I', 'RGB', 'RGBW']
 
 interface Status {
   unsaved: string[]
@@ -546,9 +546,11 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                         </>
                       )}
                       {kind === 'pixels' && (
-                        <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: R, RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = e.target.value as PixelFormat))}>
+                        <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: I (one brightness channel per pixel, for a single-colour light), RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = e.target.value as PixelFormat))}>
                           {FORMATS.map((f) => (
-                            <option key={f}>{f}</option>
+                            <option key={f} value={f}>
+                              {f === 'I' ? 'I (one brightness channel)' : f}
+                            </option>
                           ))}
                         </select>
                       )}

@@ -7,6 +7,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Changed
+- **The single-channel pixel format `R` is now called `I`** (one brightness channel). It never sent the red channel: it
+  sends one value per pixel, the brightest of the pixel's R, G and B after gamma, so it can drive any single-colour
+  light, a white or UV spot, or a dimmer channel. Only the name changes (the Fixtures page's format dropdown says
+  "I (one brightness channel)"); a type file with `R` still loads, as `I`, and is written as `I` when you next save the
+  type. An older version of PitchControl does not know `I`, so keep a copy of your types before going back.
 - **The pixel count belongs to each channel mode, not to the fixture type.** Many lights change their pixel count with
   the DMX mode: a tube with 1, 8, 16 or 32 pixels, a bar with 1, 6, 9 or 18. A mode now has its own **Pixels** field on
   the Fixtures page (next to its name); the engine's pixel sampling, the channel count, the channel map, the Rig page's

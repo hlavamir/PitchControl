@@ -142,7 +142,7 @@ class Fixture:
         elif fmt == "RGBW":
             w = rgb.min(axis=1, keepdims=True)
             data = np.hstack([rgb - w, w])
-        else:  # "R": single channel per pixel
+        else:  # "I": one brightness channel per pixel
             data = rgb.max(axis=1, keepdims=True)
         return [int(round(x * 255)) for x in data.reshape(-1)]
 

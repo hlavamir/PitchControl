@@ -80,7 +80,8 @@ class HSB(Model):
 
 # --------------------------------------------------------------------------- fixture types
 
-PixelFormat = Literal["R", "RGB", "RGBW"]
+# "I": one brightness value per pixel (the brightest of its R, G, B), for any single-colour light. Called "R" up to 1.6.
+PixelFormat = Literal["I", "RGB", "RGBW"]
 
 
 class Shutter(Model):
@@ -107,6 +108,11 @@ class ChannelSlot(Model):
     @classmethod
     def _renamed_macro(cls, v: Any) -> Any:
         return current_macro_name(v) if isinstance(v, str) else v
+
+    @field_validator("pixels", mode="before")
+    @classmethod
+    def _renamed_format(cls, v: Any) -> Any:
+        return "I" if v == "R" else v  # the single-channel format was called R until 1.6
 
     @model_validator(mode="after")
     def _exactly_one_kind(self) -> "ChannelSlot":

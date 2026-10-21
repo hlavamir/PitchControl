@@ -10,7 +10,7 @@
       "channels": [
         {
           "name": "Dimmer",
-          "pixels": "R"
+          "pixels": "I"
         },
         {
           "name": "Colour macro",
@@ -25,7 +25,7 @@
       "channels": [
         {
           "name": "Dimmer",
-          "pixels": "R"
+          "pixels": "I"
         },
         {
           "name": "Strobe",

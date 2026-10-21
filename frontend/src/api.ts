@@ -264,7 +264,7 @@ export interface Override<T> {
   value: T
 }
 
-export type PixelFormat = 'R' | 'RGB' | 'RGBW'
+export type PixelFormat = 'I' | 'RGB' | 'RGBW'
 
 /** One slot of a fixture profile: exactly one of value / pixels / macro / shutter. */
 export interface ChannelSlot {

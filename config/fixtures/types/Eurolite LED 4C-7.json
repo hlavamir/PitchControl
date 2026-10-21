@@ -30,7 +30,7 @@
       "channels": [
         {
           "name": "Master dimmer",
-          "pixels": "R"
+          "pixels": "I"
         },
         {
           "name": "Strobe",
