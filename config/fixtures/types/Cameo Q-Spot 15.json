@@ -1,11 +1,11 @@
 {
-  "description": "Cameo Q-Spot 15 RGBW pinspot (18 W RGBW LED). Five DMX modes; the fixture's display picks one, the Rig page must say the same. 4CH is the default (plain RGBW, as in the first versions).",
+  "description": "Cameo Q-Spot 15 RGBW pinspot (18 W RGBW LED). Five DMX modes; the fixture's display picks one, the Rig page must say the same. The modes are named as the display and the manual print them (manual p. 15); 04CH is the default (plain RGBW, as in the first versions).",
   "transport": "dmx",
   "pixels": 1,
   "modes": [
     {
       "id": "2ch",
-      "name": "2CH",
+      "name": "02CH",
       "description": "Dimmer (follows the brightness) and a colour macro held at White. No colour mixing.",
       "channels": [
         {
@@ -20,7 +20,7 @@
     },
     {
       "id": "3ch-1",
-      "name": "3CH-1",
+      "name": "03CH1",
       "description": "Dimmer (follows the brightness), strobe and a colour macro held at White. No colour mixing.",
       "channels": [
         {
@@ -42,7 +42,7 @@
     },
     {
       "id": "3ch-2",
-      "name": "3CH-2",
+      "name": "03CH2",
       "description": "Red, green, blue.",
       "channels": [
         {
@@ -52,7 +52,7 @@
     },
     {
       "id": "4ch",
-      "name": "4CH",
+      "name": "04CH",
       "description": "Red, green, blue, white. The plain colour mode.",
       "channels": [
         {
@@ -62,7 +62,7 @@
     },
     {
       "id": "9ch",
-      "name": "9CH",
+      "name": "09CH",
       "description": "Dimmer, dimmer fine, strobe, red, green, blue, white, colour macro, colour temperature. The dimmer is held at full, the colours carry the brightness.",
       "channels": [
         {

@@ -84,7 +84,7 @@ def test_the_shipped_types_have_their_modes():
     shipped = ConfigStore(Path(__file__).resolve().parents[2] / "config")  # the repo's config/ read as a data folder
     shipped.load_fixture_types()
     cameo, euro = shipped.fixture_types["Cameo Q-Spot 15"], shipped.fixture_types["Eurolite LED 4C-7"]
-    assert [m.name for m in cameo.modes] == ["2CH", "3CH-1", "3CH-2", "4CH", "9CH"] and cameo.default_mode == "4ch"
+    assert [m.name for m in cameo.modes] == ["02CH", "03CH1", "03CH2", "04CH", "09CH"] and cameo.default_mode == "4ch"  # as the display prints them; the ids (2ch, 3ch-1 ...) are what rigs store
     assert [cameo.channel_count(m.id) for m in cameo.modes] == [2, 3, 3, 4, 9]
     assert [m.name for m in euro.modes] == ["3CH", "4CH", "5CH", "6CH", "9CH"] and euro.default_mode == "4ch"
     assert [euro.channel_count(m.id) for m in euro.modes] == [3, 4, 5, 6, 9]

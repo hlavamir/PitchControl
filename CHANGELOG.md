@@ -10,7 +10,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - **A built-in fixture library: ten popular fixtures come with the app**, each with every DMX mode PitchControl can drive
   (pick the type on the Rig page, the mode as set on the fixture): Stairville LED Flood Panel 150, LED Bar 240-8 (also the
   Varytec Giga Bar Pix 8 RGB / Frost), xBrick Quad 16x8W RGBW, SonicPulse LED Bar 10, Eurolite LED PT-100-32 Pixel DMX Tube,
-  Ape Labs Neon Tube PIX, Astera FP1 Titan Tube (24 of its 64 profile tables), Cameo ROOT Par 6 (all 14 modes, with the
+  Ape Labs Neon Tube PIX, Astera FP1 Titan Tube (the 7 profile tables people use), Cameo ROOT Par 6 (all 14 modes, with the
   delay variants), Cameo Q-Spot 40 and Stairville BTL-30. Pixel counts, strobe values and held constants are set per mode
   (a strobe's open and fastest values are the fixture's real ones, e.g. 0 and 250 on the ROOT Par and Q-Spot multifunction
   strobes). Most were generated from the [Open Fixture Library](https://open-fixture-library.org) (MIT licence; the notice
@@ -20,6 +20,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   edited (a copy goes to your data folder) and reset to default.
 
 ### Changed
+- **The Cameo Q-Spot 15's modes are named as its display and manual print them:** 02CH, 03CH1, 03CH2, 04CH, 09CH (they were
+  2CH, 3CH-1, 3CH-2, 4CH, 9CH), the same spelling as the new Q-Spot 40. Only the names change; the modes' ids, which rigs
+  store, stay, so existing rigs load unchanged and send the same DMX.
 - **The single-channel pixel format `R` is now called `I`** (one brightness channel). It never sent the red channel: it
   sends one value per pixel, the brightest of the pixel's R, G and B after gamma, so it can drive any single-colour
   light, a white or UV spot, or a dimmer channel. Only the name changes (the Fixtures page's format dropdown says

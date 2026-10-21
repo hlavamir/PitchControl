@@ -219,41 +219,24 @@ MANUAL = {
         "11CH": (1, "DFSRGBWAUxx"),
         "D12CH": (1, "DFSRGBWAUxxL"),
     },
-    "Cameo Q-Spot 40": {  # REV 03, English tables on pp. 75 to 77
-        "2CH": (1, "Dx"),
-        "3CH1": (1, "DSx"),
-        "3CH2": (1, "RGB"),
-        "4CH": (1, "RGBW"),
-        "9CH": (1, "DFSRGBWxx"),
+    "Cameo Q-Spot 40": {  # REV 03, English tables on pp. 75 to 77; the mode names as the display prints them (p. 6)
+        "02CH": (1, "Dx"),
+        "03CH1": (1, "DSx"),
+        "03CH2": (1, "RGB"),
+        "04CH": (1, "RGBW"),
+        "09CH": (1, "DFSRGBWxx"),
     },
     "Stairville BTL-30": {  # Thomann 361459
         "7CH": (1, "DRGBWxx"),
     },
-    "Astera FP1 Titan Tube": {  # the manual's profile tables, by number (pixels, letters of the table)
+    "Astera FP1 Titan Tube": {  # the manual's profile tables that people use, by number (pixels, letters of the table)
         "1: RGB": (1, "RGB"),
-        "2: RGBW": (1, "RGBW"),
-        "3: RGBAW": (1, "RGBAW"),
         "4: Dim RGB": (1, "DRGB"),
         "5: Dim RGBW": (1, "DRGBW"),
-        "6: Dim RGBAW": (1, "DRGBAW"),
-        "7: RGB CCT Dim Ind": (1, "RGBxDx"),
-        "8: RGBS": (1, "RGBS"),
-        "9: RGBWS": (1, "RGBWS"),
-        "10: RGBAWS": (1, "RGBAWS"),
-        "11: Dim RGBS": (1, "DRGBS"),
-        "12: Dim RGBWS": (1, "DRGBWS"),
-        "13: Dim RGBAWS": (1, "DRGBAWS"),
-        "14: RGB CCT Dim Ind S": (1, "RGBxDxS"),
         "18: RGB RGB 4pix": (4, "RGB" * 4),
         "19: RGBW RGBW 4pix": (4, "RGBW" * 4),
-        "26: RGB RGB .. S 4pix": (4, "RGB" * 4 + "S"),
-        "27: RGBW RGBW .. S 4pix": (4, "RGBW" * 4 + "S"),
-        "34: RGB RGB .. SS 4pix": (4, "RGB" * 4 + "S" * 4),
         "42: RGB RGB 16pix": (16, "RGB" * 16),
         "43: RGBW RGBW 16pix": (16, "RGBW" * 16),
-        "50: RGB RGB .. S 16pix": (16, "RGB" * 16 + "S"),
-        "51: RGBW RGBW .. S 16pix": (16, "RGBW" * 16 + "S"),
-        "58: RGB RGB .. SS 16pix": (16, "RGB" * 16 + "S" * 16),
     },
 }
 
@@ -267,7 +250,7 @@ DEFAULTS = {
     "Ape Labs Neon Tube PIX": "128CH",
     "Astera FP1 Titan Tube": "42: RGB RGB 16pix",
     "Cameo ROOT Par 6": "8CH",
-    "Cameo Q-Spot 40": "4CH",
+    "Cameo Q-Spot 40": "04CH",
     "Stairville BTL-30": "7CH",
 }
 
@@ -302,14 +285,12 @@ MANUAL_VALUES = [
     ("Cameo ROOT Par 6", "11CH", "Sound Control", 0),  # 0..5 off
     ("Cameo ROOT Par 6", "2CH", "Color Preset", 114),  # the only colour of the mode: white (110..117)
     ("Cameo ROOT Par 6", "D12CH", "DMX Delay", 0),  # 0..5 no delay
-    ("Cameo Q-Spot 40", "3CH1", "Strobe", (0, 255)),  # 0..5 open, 6..255 slow to fast
-    ("Cameo Q-Spot 40", "9CH", "Strobe functions", (0, 250)),  # 128..250 slow to fast, 251..255 open again
-    ("Cameo Q-Spot 40", "9CH", "Color Macros", 0),  # 0..5 off: above overrides RGBW
-    ("Cameo Q-Spot 40", "9CH", "Color Temperature", 0),  # 0..5 off: colours unchanged
-    ("Cameo Q-Spot 40", "2CH", "Color Macros", 114),  # white
+    ("Cameo Q-Spot 40", "03CH1", "Strobe", (0, 255)),  # 0..5 open, 6..255 slow to fast
+    ("Cameo Q-Spot 40", "09CH", "Strobe functions", (0, 250)),  # 128..250 slow to fast, 251..255 open again
+    ("Cameo Q-Spot 40", "09CH", "Color Macros", 0),  # 0..5 off: above overrides RGBW
+    ("Cameo Q-Spot 40", "09CH", "Color Temperature", 0),  # 0..5 off: colours unchanged
+    ("Cameo Q-Spot 40", "02CH", "Color Macros", 114),  # white
     ("Stairville BTL-30", "7CH", "Program", 0),  # 0..50: the colour channels act
-    ("Astera FP1 Titan Tube", "8: RGBS", "Strobe Master", (0, 255)),  # 0..3 off, 7..255 variable
-    ("Astera FP1 Titan Tube", "58: RGB RGB .. SS 16pix", "Strobe 16", (0, 255)),
 ]
 
 
@@ -374,6 +355,15 @@ def test_the_master_dimmer_is_held_at_full_when_the_mode_mixes_colours_and_follo
             for slot in mode.channels:
                 if slot.name and slot.name.lower().startswith("dimmer") and "fine" not in slot.name.lower() and "delay" not in slot.name.lower():
                     assert slot.value in (255, 0) and slot.pixels is None, f"{ftype} {mode.name}"  # 0: a dimmer that does nothing in this function
+
+
+def test_both_q_spot_types_name_their_modes_as_the_display_prints_them(library):
+    """02CH, 03CH1, 03CH2, 04CH, 09CH (Q-Spot 15 manual p. 15, Q-Spot 40 manual p. 6). The ids are what rigs store: they stay."""
+    q15, q40 = library.fixture_types["Cameo Q-Spot 15"], library.fixture_types["Cameo Q-Spot 40"]
+    assert [m.name for m in q15.modes] == ["02CH", "03CH1", "03CH2", "04CH", "09CH"]
+    assert [(m.id, m.name) for m in q15.modes] == [(m.id, m.name) for m in q40.modes]
+    assert [m.id for m in q15.modes] == ["2ch", "3ch-1", "3ch-2", "4ch", "9ch"] and q15.default_mode == q40.default_mode == "4ch"
+    assert q15.mode_of("3ch-2").name == "03CH2"
 
 
 def test_a_rig_with_one_of_each_has_no_problems(library):

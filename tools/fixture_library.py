@@ -87,6 +87,8 @@ class LibraryFixture:
     skip: dict[str, str] = field(default_factory=dict)  # OFL mode name -> why it is left out
     corrections: list[Correction] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # what the manual leaves open, kept in the type's _note
+    keep: list[str] = field(default_factory=list)  # only these OFL modes, by the number before the colon in their name (the rest are left out as little used)
+    renames: dict[str, tuple[str, str]] = field(default_factory=dict)  # converted mode name -> (name, id) as the manual / a sibling type has it
 
 
 LIBRARY: list[LibraryFixture] = [
@@ -161,17 +163,18 @@ LIBRARY: list[LibraryFixture] = [
     LibraryFixture(
         name="Astera FP1 Titan Tube",
         intro=(
-            "Astera FP1 Titan Tube (battery pixel tube, 16 pixels). The modes are the manual's DMX profile tables: the name starts with the table "
-            "number, which is set on the tube under DMX TABLE (the white of the RGBW tables is the tube's emulated white, the amber channel is held off). "
-            "Tables with a dimmer, amber or strobe per pixel, the effect tables and the hue tables are left out: PitchControl can't drive them."
+            "Astera FP1 Titan Tube (battery pixel tube, 16 pixels). The modes are the manual's DMX profile tables that people use, named with the table "
+            "number, which is set on the tube under DMX TABLE: 1 (RGB), 4 (dimmer, RGB), 5 (dimmer, RGBW), 18 and 19 (RGB and RGBW on 4 pixels), 42 and 43 (RGB and RGBW on 16 pixels). "
+            "The white of the RGBW tables is the tube's emulated white."
         ),
         default="42: RGB RGB 16pix",
         ofl="astera/fp1-titan-tube",
         manual="astera-fp1-titan-tube",
+        keep=["1", "4", "5", "18", "19", "42", "43"],
         notes=["the manual does not say how many LEDs one pixel of the 4-pixel tables has", "on battery the tube dims itself to meet its set runtime, a DMX show may be dimmer than on AC"],
         skip={
-            "15: Effect Fix": "effect table: the colours are effect colours, not pixels",
-            "16: Effect RGB": "effect table: the colours are effect colours, not pixels",
+            "15: Effect Fix": "the effect tables: the colours are effect colours, not pixels",
+            "16: Effect RGB": "the effect tables: the colours are effect colours, not pixels",
             "89: D CCT GM CRO RGB": "a table of OFL that is not among the manual's 64 profile tables",
             "90: D CCT GM HUE SAT": "a table of OFL that is not among the manual's 64 profile tables",
             "91: D16 CCT GM CRO RGB": "a table of OFL that is not among the manual's 64 profile tables",
@@ -190,10 +193,14 @@ LIBRARY: list[LibraryFixture] = [
     ),
     LibraryFixture(
         name="Cameo Q-Spot 40",
-        intro="Cameo Q-Spot 40 RGBW (40 W RGBW pinspot). The same five modes as the Q-Spot 15; 3CH1 and 3CH2 are different layouts, the display shows 03CH1 and 03CH2.",
-        default="4CH",
+        intro=(
+            "Cameo Q-Spot 40 RGBW (40 W RGBW pinspot). The same five modes as the Q-Spot 15, named as the display and the manual print them "
+            "(Q-Spot 40 manual p. 6, Q-Spot 15 manual p. 15); 03CH1 and 03CH2 are different layouts."
+        ),
+        default="04CH",
         ofl="cameo/q-spot-40-rgbw",
         manual="cameo-q-spot-40-rgbw",
+        renames={"2CH": ("02CH", "2ch"), "3CH1": ("03CH1", "3ch-1"), "3CH2": ("03CH2", "3ch-2"), "4CH": ("04CH", "4ch"), "9CH": ("09CH", "9ch")},
     ),
     LibraryFixture(
         name="Stairville BTL-30",
@@ -227,13 +234,32 @@ def source_sentence(fx: LibraryFixture) -> str:
     return "Built from the manual (this fixture is not in the Open Fixture Library) with the same conversion as the Open Fixture Library types."
 
 
+def short_reason(why: str) -> str:
+    if why.startswith("a per-pixel block"):
+        return "a dimmer, amber, CCT or strobe per pixel, which PitchControl can't repeat"
+    if "leaves out (null)" in why:
+        return "an empty gap channel between the pixels"
+    if why.startswith("pixel colours"):
+        return "amber next to RGB on every pixel"
+    return why
+
+
+def skipped_by_reason(converted: Converted) -> dict[str, list[str]]:
+    """The modes that are not in the type, grouped by why (a table's number when the name starts with one)."""
+    out: dict[str, list[str]] = {}
+    for name, why in converted.skipped:
+        out.setdefault(short_reason(why), []).append(name.split(":")[0] if name.split(":")[0].isdigit() else name)
+    return out
+
+
 def build_type(fx: LibraryFixture, data: dict) -> tuple[dict, Converted, list[str]]:
     """The type file's content, the conversion report and the corrections that were applied."""
-    converted = convert_fixture(data, fx.skip)
+    skip = dict(fx.skip)
+    if fx.keep:
+        skip.update({m["name"]: "not shipped: little used, or PitchControl can't express them" for m in data["modes"] if m["name"].split(":")[0] not in fx.keep and m["name"] not in skip})
+    converted = convert_fixture(data, skip)
     modes = converted.modes
     by_name = {m["name"]: m for m in modes}
-    if fx.default not in by_name:
-        raise SystemExit(f"{fx.name}: default mode '{fx.default}' is not among {list(by_name)}")
     applied = []
     for fix in fx.corrections:
         mode = by_name[fix.mode]
@@ -244,11 +270,18 @@ def build_type(fx: LibraryFixture, data: dict) -> tuple[dict, Converted, list[st
         if fix.shutter is not None:
             slot["shutter"] = fix.shutter
         applied.append(f"{fix.mode} {fix.channel}: {fix.reason}")
+    for old, (new_name, new_id) in fx.renames.items():
+        by_name[old].update(name=new_name, id=new_id)
+        by_name[new_name] = by_name.pop(old)
+    if fx.default not in by_name:
+        raise SystemExit(f"{fx.name}: default mode '{fx.default}' is not among {list(by_name)}")
     names = ", ".join(m["name"] for m in modes)
     description = f"{fx.intro} Modes: {names}; {fx.default} is the default. {source_sentence(fx)}"
     note = "Generated by tools/fixture_library.py (item 50)."
     if applied:
         note += " Corrections from the manual: " + "; ".join(applied) + "."
+    if converted.skipped:
+        note += " Left out: " + "; ".join(f"{why}: {', '.join(names)}" for why, names in skipped_by_reason(converted).items()) + "."
     if fx.notes:
         note += " Not in the manual or not verified: " + "; ".join(fx.notes) + "."
     ftype = {
@@ -277,11 +310,8 @@ def main() -> None:
         ftype, converted, applied = build_type(fx, data)
         write_json(TYPES / f"{fx.name}.json", ftype)
         print(f"{fx.name}: {len(converted.modes)} modes ({', '.join(m['name'] for m in converted.modes)}), default {fx.default}")
-        reasons: dict[str, list[str]] = {}
-        for name, why in converted.skipped:
-            reasons.setdefault(why.split(" Dimmer $")[0] if "per-pixel" not in why else "a per-pixel block with channels PitchControl can't repeat", []).append(name.split(":")[0])
-        for why, names in reasons.items():
-            print(f"    left out ({len(names)}): {why}: tables/modes {', '.join(names)}")
+        for why, names in skipped_by_reason(converted).items():
+            print(f"    left out ({len(names)}): {why}: {', '.join(names)}")
         for note in converted.assumptions + applied:
             print(f"    note: {note}")
     NOTICE.write_text(NOTICE_TEXT.format(repo=OFL_REPO, commit=OFL_COMMIT), encoding="utf-8", newline="\n")

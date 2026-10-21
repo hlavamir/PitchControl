@@ -1,10 +1,10 @@
 {
-  "description": "Cameo Q-Spot 40 RGBW (40 W RGBW pinspot). The same five modes as the Q-Spot 15; 3CH1 and 3CH2 are different layouts, the display shows 03CH1 and 03CH2. Modes: 2CH, 3CH1, 3CH2, 4CH, 9CH; 4CH is the default. Generated from the Open Fixture Library (MIT licence, cameo/q-spot-40-rgbw at commit d9d675e) and checked against the manual.",
+  "description": "Cameo Q-Spot 40 RGBW (40 W RGBW pinspot). The same five modes as the Q-Spot 15, named as the display and the manual print them (Q-Spot 40 manual p. 6, Q-Spot 15 manual p. 15); 03CH1 and 03CH2 are different layouts. Modes: 02CH, 03CH1, 03CH2, 04CH, 09CH; 04CH is the default. Generated from the Open Fixture Library (MIT licence, cameo/q-spot-40-rgbw at commit d9d675e) and checked against the manual.",
   "transport": "dmx",
   "modes": [
     {
       "id": "2ch",
-      "name": "2CH",
+      "name": "02CH",
       "description": "Dimmer (follows the brightness), Color Macros (held at 114). No colour mixing in this mode: only the brightness follows PitchControl.",
       "pixels": 1,
       "channels": [
@@ -19,8 +19,8 @@
       ]
     },
     {
-      "id": "3ch1",
-      "name": "3CH1",
+      "id": "3ch-1",
+      "name": "03CH1",
       "description": "Dimmer (follows the brightness), Strobe, Color Macros (held at 114). No colour mixing in this mode: only the brightness follows PitchControl.",
       "pixels": 1,
       "channels": [
@@ -42,8 +42,8 @@
       ]
     },
     {
-      "id": "3ch2",
-      "name": "3CH2",
+      "id": "3ch-2",
+      "name": "03CH2",
       "description": "RGB.",
       "pixels": 1,
       "channels": [
@@ -54,7 +54,7 @@
     },
     {
       "id": "4ch",
-      "name": "4CH",
+      "name": "04CH",
       "description": "RGBW.",
       "pixels": 1,
       "channels": [
@@ -65,7 +65,7 @@
     },
     {
       "id": "9ch",
-      "name": "9CH",
+      "name": "09CH",
       "description": "Dimmer (held at full), Dimmer fine (off), Strobe functions, RGBW, Color Macros (off), Color Temperature (off).",
       "pixels": 1,
       "channels": [
