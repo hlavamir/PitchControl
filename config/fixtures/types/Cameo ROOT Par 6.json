@@ -1,0 +1,394 @@
+{
+  "description": "Cameo ROOT Par 6 (6 × 12 W RGBWA+UV). The modes with a D are the same layout plus a trailing DMX delay channel, held off (D6CH is the 5CH layout plus delay, not the 6CH colour mode); amber and UV are held off, the colours are mixed from R, G, B and W. Modes: 2CH, 4CH1, 4CH2, 5CH, 6CH, 8CH, 11CH, D3CH, D5CH1, D5CH2, D6CH, D7CH, D9CH, D12CH; 8CH is the default. Generated from the Open Fixture Library (MIT licence, cameo/root-par-6 at commit d9d675e) and checked against the manual.",
+  "transport": "dmx",
+  "modes": [
+    {
+      "id": "2ch",
+      "name": "2CH",
+      "description": "Dimmer (follows the brightness), Color Preset (held at 114). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Color Preset",
+          "value": 114
+        }
+      ]
+    },
+    {
+      "id": "4ch1",
+      "name": "4CH1",
+      "description": "Dimmer (follows the brightness), Strobe Multifunctional, Color Preset (held at 114), Sound Control (off). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Strobe Multifunctional",
+          "shutter": {
+            "open": 0,
+            "strobo": 250
+          }
+        },
+        {
+          "name": "Color Preset",
+          "value": 114
+        },
+        {
+          "name": "Sound Control",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "4ch2",
+      "name": "4CH2",
+      "description": "RGBW.",
+      "pixels": 1,
+      "channels": [
+        {
+          "pixels": "RGBW"
+        }
+      ]
+    },
+    {
+      "id": "5ch",
+      "name": "5CH",
+      "description": "Dimmer (follows the brightness), Strobe, Chase (off), Color Preset 1 (held at 114), Color Preset 2 (held at 114). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "name": "Chase",
+          "value": 0
+        },
+        {
+          "name": "Color Preset 1",
+          "value": 114
+        },
+        {
+          "name": "Color Preset 2",
+          "value": 114
+        }
+      ]
+    },
+    {
+      "id": "6ch",
+      "name": "6CH",
+      "description": "RGBW, Amber (off), UV (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "8ch",
+      "name": "8CH",
+      "description": "Dimmer (held at full), Strobe, RGBW, Amber (off), UV (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "value": 255
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "11ch",
+      "name": "11CH",
+      "description": "Dimmer (held at full), Dimmer fine (off), Strobe Multifunctional, RGBW, Amber (off), UV (off), Color Preset (off), Sound Control (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "value": 255
+        },
+        {
+          "name": "Dimmer fine",
+          "value": 0
+        },
+        {
+          "name": "Strobe Multifunctional",
+          "shutter": {
+            "open": 0,
+            "strobo": 250
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        },
+        {
+          "name": "Color Preset",
+          "value": 0
+        },
+        {
+          "name": "Sound Control",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d3ch",
+      "name": "D3CH",
+      "description": "Dimmer (follows the brightness), Color Preset (held at 114), DMX Delay (off). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Color Preset",
+          "value": 114
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d5ch1",
+      "name": "D5CH1",
+      "description": "Dimmer (follows the brightness), Strobe Multifunctional, Color Preset (held at 114), Sound Control (off), DMX Delay (off). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Strobe Multifunctional",
+          "shutter": {
+            "open": 0,
+            "strobo": 250
+          }
+        },
+        {
+          "name": "Color Preset",
+          "value": 114
+        },
+        {
+          "name": "Sound Control",
+          "value": 0
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d5ch2",
+      "name": "D5CH2",
+      "description": "RGBW, DMX Delay (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d6ch",
+      "name": "D6CH",
+      "description": "Dimmer (follows the brightness), Strobe, Chase (off), Color Preset 1 (held at 114), Color Preset 2 (held at 114), DMX Delay (off). No colour mixing in this mode: only the brightness follows PitchControl.",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "pixels": "I"
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "name": "Chase",
+          "value": 0
+        },
+        {
+          "name": "Color Preset 1",
+          "value": 114
+        },
+        {
+          "name": "Color Preset 2",
+          "value": 114
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d7ch",
+      "name": "D7CH",
+      "description": "RGBW, Amber (off), UV (off), DMX Delay (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d9ch",
+      "name": "D9CH",
+      "description": "Dimmer (held at full), Strobe, RGBW, Amber (off), UV (off), DMX Delay (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "value": 255
+        },
+        {
+          "name": "Strobe",
+          "shutter": {
+            "open": 0,
+            "strobo": 255
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "d12ch",
+      "name": "D12CH",
+      "description": "Dimmer (held at full), Dimmer fine (off), Strobe Multifunctional, RGBW, Amber (off), UV (off), Color Preset (off), Sound Control (off), DMX Delay (off).",
+      "pixels": 1,
+      "channels": [
+        {
+          "name": "Dimmer",
+          "value": 255
+        },
+        {
+          "name": "Dimmer fine",
+          "value": 0
+        },
+        {
+          "name": "Strobe Multifunctional",
+          "shutter": {
+            "open": 0,
+            "strobo": 250
+          }
+        },
+        {
+          "pixels": "RGBW"
+        },
+        {
+          "name": "Amber",
+          "value": 0
+        },
+        {
+          "name": "UV",
+          "value": 0
+        },
+        {
+          "name": "Color Preset",
+          "value": 0
+        },
+        {
+          "name": "Sound Control",
+          "value": 0
+        },
+        {
+          "name": "DMX Delay",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "default_mode": "8ch",
+  "gamma": 1.0,
+  "strobo_color": {
+    "h": 0.0,
+    "s": 0.0,
+    "b": 1.0
+  },
+  "_note": "Generated by tools/fixture_library.py (item 50)."
+}

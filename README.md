@@ -35,6 +35,7 @@ The page for playing the show:
 
 The fixture types: everything shared by all fixtures of one model, one JSON file each in `config/fixtures/types/`.
 - **Fixture types:** the list, with New, Duplicate, Rename and Delete. Renaming updates every rig that uses the type; a type that a rig uses can't be deleted.
+- **Fixture library:** ten ready-made types come with the app (listed under [Fixture library](#fixture-library)); like every shipped type they can be edited (your copy goes to your data folder) and reset to default.
 - **Type editor:** description, output (DMX or the PitchPlease v2 serial protocol), gamma and the strobo colour (HSB). Below that are the **channel modes**, one section per mode (at least one): a name (as the fixture's display or manual calls it, e.g. 6CH), the **pixel count of that mode** (a bar can have 1 pixel in one mode and 8 in another; the PitchPlease v2 serial type keeps one Pixels field above), a short description and the channel layout in DMX order. Each channel is a constant (e.g. master = 255), a macro (e.g. a strip dimmer following "Dimmer 01"), a shutter (open / strobe values) or the pixel block (I, RGB or RGBW; **I** is one brightness channel per pixel, the brightest of its R, G and B, for a single-colour light such as a white or UV spot or a dimmer channel). ↑ ↓ ✕ reorder and remove channels.
 - **Modes:** **Add mode** appends a copy of the last mode (a new mode is mostly the old one with a channel more or less); **make default** marks the mode a new rig fixture starts in; **✕ delete mode** removes one (not the last). A mode that fixtures of the active rig run in asks first and names them; they move to the default mode (the rig then has unsaved changes). Two modes with the same name get a warning.
 - **Channel map:** the resulting DMX channels of every mode with their numbers, the total, and how many fixtures of the type fit one universe.
@@ -172,6 +173,7 @@ macOS asks once for microphone access.
 
 App options (for example from a terminal) are the same as for the backend (`--data`, `--machine`, `--port`, `--no-hardware`), plus `--no-window` (use the browser instead of a window).
 
+
 ### Releasing a version
 
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
@@ -245,7 +247,7 @@ A file in your data folder wins over a default of the same name (ignoring case);
 |---|---|
 | `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, Auto Color palette, masks, audio analysis |
 | `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`), the network switch with its port and PIN (`network`) |
-| `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults |
+| `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults; ten ready-made models ship, see [Fixture library](#fixture-library) |
 | `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`); the rig's mask curve (`mask_curve`, 0 if missing) |
 | `controllers/*.json` | MIDI controller mappings (CC or note → macro), edited on the Inputs page |
 | `osc/*.json` | what the OSC output sends (what, address, format; see [OSC output](#osc-output)), edited by hand; the file is chosen on the Outputs page |
@@ -283,6 +285,27 @@ A rig fixture names its mode with `"mode": "<id>"`. The id is what counts, so re
 `value` is a constant (a rig can override it by name with `channel_values`). `macro` sends a macro's value as 0–255. `shutter` sends `strobo` on a peak frame when the instance has `real_strobo` enabled. `pixels` expands to pixel count × `I` / `RGB` / `RGBW`. `I` is one brightness value per pixel, the brightest of its R, G and B after gamma; it was called `R` up to 1.6, and a type file with `R` loads as `I` and is written as `I` when the type is next saved.
 
 To re-import scenes and `macros.ini` from the original vvvv patch folder: `.venv/bin/python -m pitchcontrol.legacy --vl <folder>` (into the repo's `data/`; `--data` chooses another folder).
+
+### Fixture library
+
+Besides the generic types and the Cameo Q-Spot 15 and Eurolite 4C-7, ten popular fixtures ship ready to use, each with **all** the DMX modes PitchControl can drive (the pixel count, the strobe values and the held constants are set per mode), so borrowed gear can be put into a rig without typing channel layouts:
+
+| Type | Modes |
+|---|---|
+| Stairville LED Flood Panel 150 | 3CH, 4CH, 8CH; default 4CH |
+| Stairville LED Bar 240-8 (also the Varytec Giga Bar Pix 8 RGB / Frost) | 2CH, 3CH, 5CH, 24CH; default 24CH |
+| Stairville xBrick Quad 16x8W RGBW | 4CH, 6CH, 8CH, 16CH, 18CH; default 18CH |
+| Stairville SonicPulse LED Bar 10 (the Bar 05 shares its 4, 5, 6, 11CH modes) | 4CH, 5CH, 6CH, 11CH, 39CH; default 39CH |
+| Eurolite LED PT-100-32 Pixel DMX Tube | 3CH, 5CH, 8CH, 48CH, 96CH; default 96CH |
+| Ape Labs Neon Tube PIX | 4CH, 7CH, 32CH, 64CH, 128CH; default 128CH |
+| Astera FP1 Titan Tube | 24 profile tables (1 to 14, 18, 19, 26, 27, 34, 42, 43, 50, 51, 58), default table 42 (16 pixels RGB) |
+| Cameo ROOT Par 6 | 2CH, 4CH1, 4CH2, 5CH, 6CH, 8CH, 11CH, D3CH, D5CH1, D5CH2, D6CH, D7CH, D9CH, D12CH; default 8CH |
+| Cameo Q-Spot 40 | 2CH, 3CH1, 3CH2, 4CH, 9CH; default 4CH |
+| Stairville BTL-30 | 7CH; default 7CH |
+
+Most were generated from the [Open Fixture Library](https://open-fixture-library.org) (OFL, MIT licence, pinned to one commit; its copyright notice is `config/fixtures/Open Fixture Library notice.txt`) and every one was checked against the manufacturer's manual. The Eurolite PT-100/32, the Ape Labs Neon Tube PIX and the Stairville BTL-30 are not in OFL and were built from their manuals with the same conversion. How a mode is read: R, G, B (W) channels become the pixel block (per pixel for a pixel bar; a warm white is the W); a strobe or shutter channel becomes a shutter with its real open and fastest strobe values (not always 0 and 255: the ROOT Par 6 and Q-Spot 40 multifunction strobes are open again above 250); the master dimmer is held at 255 when the mode mixes colours itself and is an `I` channel when it has no colour channels; amber, UV, programs, speed, sound, delay and mode-select channels are named constants at their "off" or colour-mixing value, and a colour preset that is a mode's only colour source is held at White. A mode PitchControl can't express (a dimmer, amber or strobe per pixel, pixels interleaved with other channels, effect and hue tables) is left out; for the Titan Tube that is 40 of the manual's 64 tables.
+
+To add fixtures or move to a newer OFL commit, edit the list and `OFL_COMMIT` in `tools/fixture_library.py` and run it (`backend/.venv/bin/python tools/fixture_library.py`): it downloads the OFL files, converts them with `tools/ofl_convert.py`, applies the corrections that come from the manuals and writes the type files. Read its report: OFL is community-written, so each new type must be checked against its manual before it ships.
 
 ## Status
 

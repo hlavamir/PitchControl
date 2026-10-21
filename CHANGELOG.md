@@ -6,6 +6,19 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **A built-in fixture library: ten popular fixtures come with the app**, each with every DMX mode PitchControl can drive
+  (pick the type on the Rig page, the mode as set on the fixture): Stairville LED Flood Panel 150, LED Bar 240-8 (also the
+  Varytec Giga Bar Pix 8 RGB / Frost), xBrick Quad 16x8W RGBW, SonicPulse LED Bar 10, Eurolite LED PT-100-32 Pixel DMX Tube,
+  Ape Labs Neon Tube PIX, Astera FP1 Titan Tube (24 of its 64 profile tables), Cameo ROOT Par 6 (all 14 modes, with the
+  delay variants), Cameo Q-Spot 40 and Stairville BTL-30. Pixel counts, strobe values and held constants are set per mode
+  (a strobe's open and fastest values are the fixture's real ones, e.g. 0 and 250 on the ROOT Par and Q-Spot multifunction
+  strobes). Most were generated from the [Open Fixture Library](https://open-fixture-library.org) (MIT licence; the notice
+  is `config/fixtures/Open Fixture Library notice.txt`) and all were checked against the manufacturers' manuals; the PT-100/32,
+  Neon Tube PIX and BTL-30 are not in the library and were built from their manuals. The conversion
+  (`tools/ofl_convert.py`, `tools/fixture_library.py`) is kept for the next fixtures. Like every shipped type they can be
+  edited (a copy goes to your data folder) and reset to default.
+
 ### Changed
 - **The single-channel pixel format `R` is now called `I`** (one brightness channel). It never sent the red channel: it
   sends one value per pixel, the brightest of the pixel's R, G and B after gamma, so it can drive any single-colour

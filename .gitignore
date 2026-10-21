@@ -21,3 +21,4 @@ frontend/dist/
 # Windows and macOS build logs
 /build-windows.log
 /build-macos.log
+tools/.ofl-cache/
