@@ -7,6 +7,19 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
+- **A menu bar in the desktop app: File, Edit, View, Window, Help.** File: Save (what the page's Save button does, nothing
+  on a page without one), Open data folder, Open logs folder, Quit (asks first like the close button). Edit: Cut, Copy,
+  Paste, Select All on the text field being typed in. View: the nine pages and Full screen. Window: Minimize, and Zoom
+  (macOS) or Maximize (Windows). Help: Documentation (pitchcontrol.eu/docs), Keyboard shortcuts (Settings → Keyboard),
+  Report a problem, Join the Discord, About PitchControl (Settings → About). On **macOS** it is the native menu bar, with
+  About, Settings… (⌘,) and Quit (⌘Q) in the PitchControl menu and the usual keys: ⌘S, ⌘1 – ⌘9 for the pages (the plain
+  1 – 9 still work), ⌃⌘F full screen, ⌘M minimize, ⌘X / ⌘C / ⌘V / ⌘A. On **Windows** the app draws it in its header row
+  next to the logo, in its own look (no page loses height), with the keys next to the items and Windows' keyboard
+  convention: Alt or F10 gives the menu the keys, Alt + the underlined letter opens a menu, the arrows move, ⏎ runs, Esc
+  closes; AltGr doesn't open it, and while the menu has the keys they don't reach the page or a field. A browser, on the
+  same computer or on a phone, shows no menu bar. Both are built from one definition (`backend/src/pitchcontrol/menu.py`),
+  and an item does the same on both.
+- **⌘S / Ctrl+S saves the page** (like its Save button), also while typing in a field.
 - **Settings → About → Report a problem** opens a new issue on GitHub in the browser, filled in with the version, the
   system (the computer's operating system and its version) and where the UI was opened from (the desktop app, a browser on
   the same computer, or a device on the network), with the headings What happened, What you expected and Steps and a line

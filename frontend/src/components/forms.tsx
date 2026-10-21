@@ -14,6 +14,7 @@ export function Section({
   className = '',
   bodyClassName = 'p-3',
   tip,
+  id,
 }: {
   title: string
   index?: string
@@ -22,9 +23,10 @@ export function Section({
   className?: string // e.g. "flex-1" to let the panel (and its content) stretch
   bodyClassName?: string
   tip?: string // footer tip for everything in the panel that has none of its own
+  id?: string // for scrolling to it (the menu bar's Help → Keyboard shortcuts)
 }) {
   return (
-    <section data-tip={tip} className={`@container flex min-w-0 flex-col border border-edge bg-panel ${className}`}>
+    <section id={id} data-tip={tip} className={`@container flex min-w-0 flex-col border border-edge bg-panel ${className}`}>
       <div className="flex h-[26px] flex-none items-center justify-between gap-2 border-b border-edge px-2.5 text-[11px]">
         <h2 className="lbl truncate font-medium">
           {index && <span className="font-mono opacity-55">{index} / </span>}

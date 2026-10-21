@@ -22,10 +22,12 @@ const KEYMAP: [string, string][] = [
   ['SPACE', 'Rig page: add / remove the current fixture'],
   ['D  →', 'Fixtures and Rig: from the list into the details'],
   ['ESC', 'Cancel a pending change, stop editing, back to the list'],
-  ['1 – 9', 'Switch page'],
+  ['1 – 9', 'Switch page (⌘ 1 – 9 too in the macOS app)'],
   ['Q  E', 'Previous / next subpage (Control Desk)'],
   ['F', 'Full screen on / off (desktop app)'],
   ['⌘ / CTRL  + −', 'UI scale up / down (= works as +); 0 = 100 %'],
+  ['⌘ / CTRL  S', "Save: what the page's Save button does, also while typing"],
+  ['ALT  F10', 'Windows app: the menu bar (Alt + letter opens a menu; arrows, ⏎, Esc)'],
 ]
 
 /**
@@ -286,7 +288,7 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
 
       <div className="flex min-w-0 flex-col gap-1.5">
       <NetworkSection index="04" desktop={desktop} />
-      <Section index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-2.5 pt-1.5" tip="All keys of the UI. Every page can be used with the keys alone: General, Dimmers and Control Desk like a hardware device, the others control by control">
+      <Section id="settings-keyboard" index="05" title="Keyboard" right="no mouse needed" bodyClassName="px-3.5 pb-2.5 pt-1.5" tip="All keys of the UI. Every page can be used with the keys alone: General, Dimmers and Control Desk like a hardware device, the others control by control">
         {KEYMAP.map(([cap, what]) => (
           <div key={cap} className="flex min-h-[25px] items-center gap-3.5 border-b border-[#1d1f21] py-0.5">
             <span className="min-w-16 border border-ink px-1.5 text-center font-mono text-[12px]">{cap}</span>
@@ -324,7 +326,7 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
           <span className="lbl mt-3 text-[10px] text-dim">The browser view can also be used on a second screen, or on a phone or iPad (Network, above)</span>
         </Section>
       )}
-      <Section index={desktop ? '07' : '06'} title="About" right="version" tip="Which PitchControl this is, where its source and releases are, and where to report a problem">
+      <Section id="settings-about" index={desktop ? '07' : '06'} title="About" right="version" tip="Which PitchControl this is, where its source and releases are, and where to report a problem">
         <div className="flex items-baseline justify-between gap-3">
           <span className="lbl text-[12px]">PitchControl</span>
           <span className="text-glow font-mono text-[16px]" data-hint="info" data-tip="Version; +N = commits after that release, (abc1234) = the commit, modified = unsaved changes in the source">

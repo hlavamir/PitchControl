@@ -27,6 +27,7 @@ import uvicorn
 from .config.models import DEFAULT_PORT
 from .engine.engine import Engine
 from .logsetup import setup_logging
+from .menu import MenuActions, native_menu, patch_cocoa
 from .paths import APP_NAME, open_store, resolve_paths
 from .quitguard import confirm_quit, quit_reasons
 from .server.app import create_app
@@ -108,7 +109,8 @@ def main() -> None:
         log.warning("--host %s is ignored: other devices are allowed in Settings → Network (the switch, a fixed port, an optional PIN)", args.host)
     port = free_port(args.port)
     url = f"http://127.0.0.1:{port}"
-    desktop_hooks: dict = {"url": url, "data_dir": str(paths.user), "logs_dir": str(paths.logs)}
+    menu = MenuActions(str(paths.user), str(paths.logs))  # the menu bar's actions (menu.py); the window comes later
+    desktop_hooks: dict = {"url": url, "data_dir": str(paths.user), "logs_dir": str(paths.logs), "menu": menu}
     app = create_app(engine, static_dir=bundled_frontend(res), desktop=desktop_hooks)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     server_thread = threading.Thread(target=server.run, name="server", daemon=True)
@@ -153,10 +155,23 @@ def main() -> None:
 
     import webview  # imported late: only the window needs it
 
-    # open maximized: fits any screen (the UI is laid out for a 14" MacBook and up)
+    # open maximized: fits any screen (the UI is laid out for a 14" MacBook and up). On Windows the UI draws the menu
+    # bar in its header (menu.py), only in this window: ?window=app (a browser, here or on the network, has no menu)
+    mac = sys.platform == "darwin"
     window = webview.create_window(
-        APP_NAME, url, width=1440, height=900, min_size=(1000, 700), background_color="#0e0f12", maximized=True
+        APP_NAME, url if mac else f"{url}/?window=app", width=1440, height=900, min_size=(1000, 700), background_color="#0e0f12", maximized=True
     )
+    menu.window = window
+    menu.zoomed = True  # opened maximized
+
+    def on_maximized() -> None:
+        menu.zoomed = True
+
+    def on_restored() -> None:
+        menu.zoomed = False
+
+    window.events.maximized += on_maximized
+    window.events.restored += on_restored
     def on_closing() -> bool | None:
         # Cmd+Q on macOS and the window's close button both end up here; returning False keeps the window and the engine
         try:
@@ -186,7 +201,11 @@ def main() -> None:
             fullscreen.set(True)
 
     window.events.shown += on_shown
-    webview.start()  # blocks until the window is closed
+    if mac:
+        patch_cocoa(menu)  # the native menu bar in the usual order, with its keys
+        webview.start(menu=native_menu(menu))  # blocks until the window is closed
+    else:
+        webview.start()  # blocks until the window is closed
     shutdown()
 
 

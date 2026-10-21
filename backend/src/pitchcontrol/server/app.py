@@ -10,8 +10,6 @@ import asyncio
 import json
 import logging
 import time
-import os
-import subprocess
 import sys
 import webbrowser
 from dataclasses import asdict
@@ -31,6 +29,7 @@ from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
+from ..menu import menu_json, platform_of, reveal as reveal_folder
 from ..version import system_label, version_label
 from .network import Network, NetworkGate
 
@@ -150,6 +149,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             "fullscreen": bool(fs and fs.active),
             "version": version_label(),
             "system": system_label(),  # for Settings → Report a problem
+            "platform": sys.platform,  # the computer that runs PitchControl: the Windows app draws its menu bar
         }
 
     @app.post("/api/fullscreen", dependencies=local_only)
@@ -190,11 +190,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     def reveal(folder: str) -> dict:
         if desktop is None or not folder:
             raise HTTPException(404)
-        Path(folder).mkdir(parents=True, exist_ok=True)
-        if sys.platform == "win32":
-            os.startfile(folder)  # type: ignore[attr-defined]
-        else:
-            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", folder])
+        reveal_folder(folder)
         return {"ok": True}
 
     @app.post("/api/open-data-folder", dependencies=local_only)
@@ -204,6 +200,26 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     @app.post("/api/open-logs-folder", dependencies=local_only)
     def open_logs_folder():
         return reveal((desktop or {}).get("logs_dir", ""))
+
+    # ------------------------------------------------------------------ menu bar (menu.py)
+    @app.get("/api/menu", dependencies=local_only)
+    def menu():
+        """The menus the Windows app draws in its header (macOS has the native menu bar)."""
+        return {"platform": platform_of(), "menus": menu_json(platform_of())}
+
+    @app.post("/api/menu/{item_id}", dependencies=local_only)
+    def run_menu_item(item_id: str):
+        """An item of the drawn menu that Python runs (open a folder, minimize, quit through the quit guard, …)."""
+        actions = (desktop or {}).get("menu")
+        if actions is None:
+            raise HTTPException(404, "the menu bar is only in the desktop app")
+        try:
+            actions.run(item_id)
+        except KeyError:
+            raise HTTPException(404, f"no menu item {item_id}") from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"ok": True}
 
     # ------------------------------------------------------------------ notices
     @app.get("/api/notices")

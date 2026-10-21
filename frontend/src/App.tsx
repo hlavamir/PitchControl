@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
+import { showDrawnMenu, type MenuDef } from './appMenu'
+import { AppMenu } from './components/AppMenu'
 import { Button, StatusDot } from './components/forms'
 import { LeaveGuardContext, type Guard } from './leaveGuard'
 import { HINT_KEYS, MOD, hintAt, rigFieldKeys, type HintKind } from './hints'
@@ -12,6 +14,7 @@ import { Output } from './pages/Output'
 import { Rig } from './pages/Rig'
 import { ControlDesk } from './pages/ControlDesk'
 import { Settings } from './pages/Settings'
+import { clientOf, issueUrl } from './reportProblem'
 import { DEFAULT_UI, applyScale, applyTheme, clampScale, type UiSettings } from './theme'
 import { useEngine } from './useEngine'
 import { SelectionContext, isTyping, isTypingTarget, type FooterSelection } from './useGridNav'
@@ -75,6 +78,20 @@ const RIG_KEYS: [string, string][] = [
   [`${MOD} + −`, 'UI scale'],
 ]
 
+/** A field the Edit menu works on: text, not a slider, a select or a checkbox. */
+function textField(el: Element | null): HTMLInputElement | HTMLTextAreaElement | null {
+  if (el instanceof HTMLTextAreaElement) return el
+  return el instanceof HTMLInputElement && ['text', 'search', 'number', 'url', 'email', 'password', 'tel'].includes(el.type) ? el : null
+}
+
+function hasSelection(field: HTMLInputElement | HTMLTextAreaElement): boolean {
+  try {
+    return field.selectionStart === null || field.selectionStart !== field.selectionEnd // null: a number field can't say
+  } catch {
+    return true
+  }
+}
+
 /** The 3×3 pixel mark next to the wordmark. */
 export function Glyph() {
   return (
@@ -100,17 +117,20 @@ export default function App() {
   // footer context: the control under the mouse, or the keyboard selection, whichever was used last
   const [hover, setHover] = useState<{ kind: HintKind; tip?: string } | null>(null)
   const [inputMode, setInputMode] = useState<'mouse' | 'keys'>('mouse')
+  // the menu bar the Windows app draws in the header (item 52; null: none, e.g. macOS, a browser, a phone)
+  const [menus, setMenus] = useState<MenuDef[] | null>(null)
   const uiRef = useRef(ui)
   uiRef.current = ui
 
   useEffect(() => {
     api.get<MacroDef[]>('/api/macros/defs').then((list) => setDefs(Object.fromEntries(list.map((d) => [d.name, d]))))
     api
-      .get<{ desktop: boolean; fullscreen_supported: boolean; fullscreen: boolean; version: string }>('/api/app-info')
+      .get<{ desktop: boolean; local: boolean; platform: string; fullscreen_supported: boolean; fullscreen: boolean; version: string }>('/api/app-info')
       .then((info) => {
         setDesktop(info.desktop)
         setVersion(info.version)
         setFullscreen({ supported: info.fullscreen_supported, on: info.fullscreen })
+        if (showDrawnMenu(location.search, info)) api.get<{ menus: MenuDef[] }>('/api/menu').then((r) => setMenus(r.menus))
       })
       .catch(() => undefined)
     api.get<SettingsData>('/api/settings').then((s) => s.ui && setUi({ ...DEFAULT_UI, ...s.ui }))
@@ -145,7 +165,7 @@ export default function App() {
   useEffect(() => {
     const client = Math.random().toString(36).slice(2) + Date.now().toString(36)
     const report = () => {
-      const pages = [...guards.current].filter((g) => g.dirty()).map((g) => g.label)
+      const pages = [...guards.current].filter((g) => g.leave !== false && g.dirty()).map((g) => g.label)
       api.post('/api/ui/unsaved', { client, pages }).catch(() => undefined)
     }
     report()
@@ -155,7 +175,7 @@ export default function App() {
   // closing the browser tab or window with unsaved edits asks first (the desktop app asks through the report above)
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if ([...guards.current].some((g) => g.dirty())) {
+      if ([...guards.current].some((g) => g.leave !== false && g.dirty())) {
         e.preventDefault()
         e.returnValue = ''
       }
@@ -174,7 +194,7 @@ export default function App() {
   const go = useCallback(
     (p: Page) => {
       if (p === pageRef.current) return
-      const dirty = [...guards.current].filter((g) => g.dirty())
+      const dirty = [...guards.current].filter((g) => g.leave !== false && g.dirty())
       if (dirty.length) setLeave({ to: p, dirty })
       else navigate(p)
     },
@@ -193,6 +213,84 @@ export default function App() {
     const res = await api.post<{ fullscreen: boolean }>('/api/fullscreen').catch(() => null)
     if (res) setFullscreen((f) => ({ ...f, on: res.fullscreen }))
   }, [])
+
+  // ---- the menu bar's actions (item 52): the Windows menu calls runMenu, the macOS menu bar window.pitchMenu (menu.py)
+  // Save: what the page's Save button does, nothing on a page without one; a field being typed in is left first, so
+  // its value is committed like when the Save button is clicked
+  const saving = useRef(false)
+  const save = useCallback(async () => {
+    if (saving.current || ![...guards.current].some((g) => g.dirty())) return
+    saving.current = true
+    try {
+      const field = document.activeElement as HTMLElement | null
+      if (isTypingTarget(field)) {
+        field?.blur()
+        await new Promise((r) => window.setTimeout(r, 0))
+      }
+      for (const g of [...guards.current].filter((g) => g.dirty())) if ((await g.save().catch(() => false)) === false) break
+    } finally {
+      saving.current = false
+    }
+  }, [])
+  // Settings, scrolled to one of its sections (Help → Keyboard shortcuts, About)
+  const scrollTo = useRef<string | null>(null)
+  const showSettings = useCallback(
+    (section?: string) => {
+      scrollTo.current = section ?? null
+      if (pageRef.current === 'Settings') document.getElementById(section ?? '')?.scrollIntoView({ block: 'start' })
+      else go('Settings')
+    },
+    [go],
+  )
+  useEffect(() => {
+    if (page !== 'Settings' || !scrollTo.current) return
+    document.getElementById(scrollTo.current)?.scrollIntoView({ block: 'start' })
+    scrollTo.current = null
+  }, [page])
+  const runMenu = useCallback(
+    async (id: string) => {
+      if (id.startsWith('view.page.')) go(PAGES[Number(id.slice('view.page.'.length)) - 1])
+      else if (id === 'file.save') save()
+      else if (id === 'view.fullscreen') toggleFullscreen()
+      else if (id === 'app.settings') showSettings()
+      else if (id === 'help.keys') showSettings('settings-keyboard')
+      else if (id === 'app.about') showSettings('settings-about')
+      else if (id === 'help.report') {
+        const info = await api.get<{ version: string; system: string; desktop: boolean; local: boolean }>('/api/app-info')
+        const url = issueUrl({ version: info.version, system: info.system, client: clientOf(info), userAgent: navigator.userAgent })
+        api.post('/api/open-url', { url }).catch(() => window.open(url, '_blank'))
+      } else if (id.startsWith('edit.')) {
+        // Windows: the drawn menu's Edit acts on the focused text field (macOS: the native Edit menu)
+        if (!textField(document.activeElement)) return
+        if (id === 'edit.paste') document.execCommand('insertText', false, await navigator.clipboard.readText())
+        else document.execCommand(id === 'edit.cut' ? 'cut' : id === 'edit.copy' ? 'copy' : 'selectAll')
+      } else api.post(`/api/menu/${id}`).catch(() => undefined) // Python's: the folders, the links, the window, Quit
+    },
+    [go, save, toggleFullscreen, showSettings],
+  )
+  useEffect(() => {
+    ;(window as { pitchMenu?: (id: string) => void }).pitchMenu = runMenu
+  }, [runMenu])
+  // what the drawn menu offers, asked while it is open
+  const menuEnabled = (id: string) => {
+    const field = textField(document.activeElement)
+    if (id === 'file.save') return [...guards.current].some((g) => g.dirty())
+    if (id === 'edit.cut' || id === 'edit.copy') return Boolean(field) && hasSelection(field!)
+    if (id === 'edit.paste' || id === 'edit.select_all') return Boolean(field)
+    if (id === 'view.fullscreen') return fullscreen.supported
+    return true
+  }
+  // Ctrl+S (⌘S on macOS): the menu's Save, also while typing in a field
+  useEffect(() => {
+    const mac = navigator.userAgent.includes('Mac')
+    const onKey = (e: KeyboardEvent) => {
+      if (!(mac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 's') return
+      e.preventDefault() // not the browser's "Save page as"
+      save()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [save])
 
   // ⌘ (macOS) / Ctrl (Windows) with + or = (same key without Shift), − and 0: UI scale, like a
   // browser's zoom; saved like the Settings slider. Works while typing too (it needs the modifier).
@@ -315,6 +413,17 @@ export default function App() {
               <Glyph />
               <h1 className="lbl text-glow text-[15px] font-semibold tracking-[0.14em]">PitchControl!</h1>
             </div>
+            {menus && (
+              <div className="ml-1 flex h-full min-w-0 flex-1 items-stretch">
+                <AppMenu
+                  menus={menus}
+                  run={runMenu}
+                  enabled={menuEnabled}
+                  checked={(id) => id === `view.page.${PAGES.indexOf(page) + 1}` || (id === 'view.fullscreen' && fullscreen.on)}
+                  label={(id, l) => (id === 'view.fullscreen' && fullscreen.on ? 'Exit full screen' : l)}
+                />
+              </div>
+            )}
             <div className="flex flex-none items-center gap-4 px-2.5 whitespace-nowrap">
               {/* fixed width: a changing FPS value never shifts the indicators */}
               <span

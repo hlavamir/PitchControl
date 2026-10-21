@@ -11,6 +11,7 @@ import { MOD_NAME } from '../hints'
 import { clickSelection } from '../listSelection'
 import { stepSelection, toggleCurrent } from '../rigKeys'
 import { useFieldNav } from '../useFieldNav'
+import { useSaveAction } from '../leaveGuard'
 
 const NEW_FIXTURE: FixtureInstance = {
   name: 'New fixture',
@@ -235,6 +236,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
     setProblems(res.problems)
     setDirty(false)
   }
+  useSaveAction('rig', dirty, save) // the menu bar's Save: the same as the rig's Save button
 
   const revert = async () => {
     setRig(await api.post<Rig>('/api/rig/reload'))

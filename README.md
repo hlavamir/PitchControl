@@ -165,6 +165,8 @@ Tests: `cd backend && .venv/bin/python -m pytest`; the frontend rules (MIDI mapp
 
 The app shows the UI in its own window. "Open in browser", "Open data folder" and "Open logs folder" are in Settings → App; Settings → About shows the folders. Closing the window stops the engine: it asks first when an output is live or a page has unsaved edits.
 
+**Menu bar.** The app has the usual menus: **File** (Save, Open data folder, Open logs folder, Quit), **Edit** (Cut, Copy, Paste, Select All, on the text field you are typing in), **View** (the nine pages, Full screen), **Window** (Minimize, and Zoom on macOS / Maximize on Windows) and **Help** (Documentation, Keyboard shortcuts, Report a problem, Join the Discord, About PitchControl). **Save** does what the page's Save button does (Inputs, Outputs, Fog, the MIDI mapping, Fixtures, Rig) and nothing on a page without one; ⌘S / Ctrl+S does the same, also while typing in a field. **Quit** asks first like the close button. On **macOS** it is the system's menu bar, with About, Settings… (⌘,) and Quit (⌘Q) under PitchControl, and ⌘1 – ⌘9 for the pages next to the plain 1 – 9. On **Windows** the app draws it in its header row next to the logo, in the app's look, with the keys next to the items: **Alt** (or F10) gives it the keyboard, Alt + the underlined letter opens a menu, the arrows move, ⏎ runs an item and Esc closes; AltGr (typing @ { [) doesn't open it. A browser, on this computer or on a phone, shows no menu bar. The first Edit → Paste asks once for permission to read the clipboard (Ctrl+V needs none).
+
 The app uses the folders described in [Folders](#folders); it never writes into its own bundle or into the repo's `config/`.
 
 The builds are unsigned. On first launch:
@@ -206,6 +208,8 @@ Everything works without a mouse — on the General, Dimmers and Control Desk pa
 | Q / E | previous / next subpage (Control Desk) |
 | F | full screen on / off (desktop app; on a MacBook it also covers the camera-notch strip) |
 | ⌘ / Ctrl + + − 0 | UI scale up / down (`=` works as `+`, no Shift needed), 0 = 100 % (⌘ on macOS, Ctrl on Windows) |
+| ⌘ / Ctrl + S | Save: what the page's Save button does, also while typing in a field |
+| Alt, F10 | Windows app: the menu bar (Alt + letter opens a menu; arrows, ⏎, Esc); on macOS ⌘1 – ⌘9 switch pages too |
 
 Number fields apply on Enter and keep the focus, so you can type the next value right away (Escape reverts).
 

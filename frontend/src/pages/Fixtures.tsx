@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, byName, channelCount, slotKind, type ChannelMode, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
 import { Button, NumberInput, Row, Section } from '../components/forms'
+import { useSaveAction } from '../leaveGuard'
 import type { Origin } from '../components/RigPanel'
 import { fixturesInMode, hasSameName, newModeId } from '../modes'
 import { useFieldNav } from '../useFieldNav'
@@ -141,6 +142,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
     setMessage(res.problems.length ? `Saved · rig: ${res.problems.join('; ')}` : 'Saved')
     loadStatus()
   }
+  useSaveAction('fixture type', unsaved, save) // the menu bar's Save: the same as the Save button
   const reset = () =>
     run(async () => {
       const fresh = await api.post<FixtureType>(`/api/fixture-types/${encodeURIComponent(selected)}/reset`)
