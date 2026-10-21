@@ -6,6 +6,16 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **The pixel count belongs to each channel mode, not to the fixture type.** Many lights change their pixel count with
+  the DMX mode: a tube with 1, 8, 16 or 32 pixels, a bar with 1, 6, 9 or 18. A mode now has its own **Pixels** field on
+  the Fixtures page (next to its name); the engine's pixel sampling, the channel count, the channel map, the Rig page's
+  placement preview and the rig problem check all use the fixture's mode. Switching a fixture's mode on the Rig page
+  keeps its position, rotation and length; the pixels are spread over the same length again. Fixture types you already
+  have load unchanged: the old per-type count becomes the count of every mode, and the file is written in the new shape
+  when you next save the type. The PitchPlease v2 serial type keeps one Pixels field. An older version of PitchControl
+  reads a type file saved by this version as a one-pixel type, so keep a copy of your types before going back.
+
 ## 1.6.0 — 2026-10-20
 
 ### Added

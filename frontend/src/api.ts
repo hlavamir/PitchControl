@@ -280,6 +280,7 @@ export interface ChannelMode {
   id: string
   name: string
   description: string
+  pixels: number // pixels the light has in this mode (a bar can have 1 or 8, depending on the mode)
   channels: ChannelSlot[]
 }
 
@@ -287,7 +288,6 @@ export interface FixtureType {
   name: string
   description: string
   transport: 'dmx' | 'pitchpls_v2'
-  pixels: number // the same in every mode
   modes: ChannelMode[] // at least one
   default_mode: string // a mode's id: new rig fixtures start in it
   gamma: number // device curve per channel; 1 = values sent unchanged
@@ -303,11 +303,11 @@ export const modeOf = (t: FixtureType, id?: string | null): ChannelMode =>
   t.modes.find((m) => m.id === id) ?? t.modes.find((m) => m.id === t.default_mode) ?? t.modes[0]
 
 /** Number of DMX channels of a mode (the pixel block counts pixels × format length). */
-export const modeChannelCount = (t: FixtureType, m: ChannelMode) =>
-  m.channels.reduce((n, s) => n + (s.pixels ? t.pixels * s.pixels.length : 1), 0)
+export const modeChannelCount = (m: ChannelMode) =>
+  m.channels.reduce((n, s) => n + (s.pixels ? m.pixels * s.pixels.length : 1), 0)
 
 /** Number of DMX channels a fixture takes in a mode (none: the type's default mode). */
-export const channelCount = (t: FixtureType, modeId?: string | null) => modeChannelCount(t, modeOf(t, modeId))
+export const channelCount = (t: FixtureType, modeId?: string | null) => modeChannelCount(modeOf(t, modeId))
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {

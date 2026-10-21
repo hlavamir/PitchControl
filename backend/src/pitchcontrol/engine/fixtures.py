@@ -49,7 +49,7 @@ class Fixture:
     # -- effective settings (instance overrides type)
     @property
     def pixels(self) -> int:
-        return self.ftype.pixels
+        return self.mode.pixels
 
     @property
     def mode(self) -> ChannelMode:

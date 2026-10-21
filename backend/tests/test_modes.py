@@ -70,9 +70,14 @@ def test_default_mode_and_ids():
     assert FixtureType.model_validate({}).modes[0].channels[0].pixels == "RGB"  # a new type: one RGB mode
 
 
-def test_the_pixel_count_is_the_types_for_every_mode():
-    ftype = FixtureType.model_validate({"pixels": 4, "modes": [{"channels": [{"pixels": "RGB"}]}, {"channels": [{"value": 0}, {"pixels": "RGBW"}]}]})
-    assert [ftype.channel_count(m.id) for m in ftype.modes] == [12, 17]
+def test_a_type_level_pixel_count_of_an_old_file_is_every_modes_count():
+    old = FixtureType.model_validate({"pixels": 4, "modes": [{"channels": [{"pixels": "RGB"}]}, {"channels": [{"value": 0}, {"pixels": "RGBW"}]}]})
+    assert [m.pixels for m in old.modes] == [4, 4] and [old.channel_count(m.id) for m in old.modes] == [12, 17]
+    assert FixtureType.model_validate({"pixels": 3, "channels": [{"pixels": "RGB"}]}).modes[0].pixels == 3  # before 1.6 as well
+    own = FixtureType.model_validate({"pixels": 4, "modes": [{"pixels": 8, "channels": [{"pixels": "R"}]}, {"channels": [{"pixels": "R"}]}]})
+    assert [m.pixels for m in own.modes] == [8, 4]  # a mode's own count wins
+    saved = old.model_dump(mode="json", exclude_none=True)
+    assert "pixels" not in saved and [m["pixels"] for m in saved["modes"]] == [4, 4]  # written in the new shape
 
 
 def test_the_shipped_types_have_their_modes():
@@ -177,3 +182,71 @@ def test_a_type_with_three_modes_is_saved_and_reloaded(store):
     again.load_all()
     assert again.fixture_types["spot"].modes == ftype.modes and again.fixture_types["spot"].default_mode == "4ch"
     assert [again.fixture_types["spot"].channel_count(m.id) for m in ftype.modes] == [3, 4, 6]
+
+
+TUBE = {
+    "modes": [
+        {"id": "1px", "name": "1 pixel", "pixels": 1, "channels": [{"pixels": "RGB"}]},
+        {"id": "8px", "name": "8 pixels", "pixels": 8, "channels": [{"pixels": "RGB"}]},
+        {"id": "8px-dim", "name": "8 pixels + dimmer", "pixels": 8, "channels": [{"name": "dimmer", "value": 255}, {"pixels": "RGB"}]},
+    ],
+    "default_mode": "8px",
+}
+
+
+def with_tube(store: ConfigStore, *fixtures: FixtureInstance) -> FixtureType:
+    store.fixture_types["tube"] = ftype = FixtureType.model_validate(TUBE | {"name": "tube"})
+    store.rig = Rig(name="pixels", fixtures=list(fixtures))
+    return ftype
+
+
+def tube(name: str, address: int, mode: str | None = None, **kw) -> FixtureInstance:
+    return FixtureInstance(name=name, type="tube", address=address, mode=mode, **kw)
+
+
+def test_modes_with_different_pixel_counts_have_their_own_channel_count(store):
+    ftype = with_tube(store, tube("a", 1, "1px"), tube("b", 4, "8px"), tube("c", 30, "8px-dim"))
+    assert [ftype.pixel_count(m) for m in ("1px", "8px", "8px-dim", None)] == [1, 8, 8, 8]
+    assert [ftype.channel_count(m) for m in ("1px", "8px", "8px-dim", None)] == [3, 24, 25, 24]
+    assert store.validate_rig() == []  # 1-3, 4-27, 30-54
+    store.rig.fixtures[0].mode = "8px"  # 1-24 now runs into 4-27
+    assert any("overlaps" in p for p in store.validate_rig())
+
+
+def test_the_engine_samples_the_pixels_of_each_fixtures_mode(store):
+    with_tube(store, tube("a", 1, "1px", position=(0.2, 0.5), length=0.4), tube("b", 10, "8px", position=(0.8, 0.5), length=0.4))
+    engine = Engine(store, enable_hardware=False)
+    engine.tick(1 / 40)
+    state = engine.state()["fixtures"]
+    assert [len(f["uv"]) for f in state] == [1, 8] and [len(f["rgb"]) for f in state] == [1, 8]  # the Rig preview's points
+    assert [len(f["output"]) for f in state] == [3, 24]
+    assert list(engine._offsets) == [0, 1, 9]  # the mask is sampled for 9 pixels in all
+
+
+def test_switching_a_fixtures_mode_changes_its_pixels_and_keeps_position_and_length(store):
+    with_tube(store, tube("a", 1, "1px", position=(0.3, 0.6), length=0.5, rotation=90))
+    engine = Engine(store, enable_hardware=False)
+    engine.tick(1 / 40)
+    assert len(engine.fixtures[0].uv) == 1
+    store.rig.fixtures[0].mode = "8px"
+    engine.rebuild_fixtures()
+    engine.tick(1 / 40)
+    fx = engine.fixtures[0]
+    uv = fx.uv
+    assert len(uv) == 8 and len(fx.rgb) == 8 and len(fx.last_output) == 24
+    assert fx.inst.position == (0.3, 0.6) and fx.inst.length == 0.5
+    assert abs(uv[:, 0].mean() - 0.3) < 1e-9 and abs(uv[:, 1].mean() - 0.6) < 1e-9  # still centred there, spread along the length
+    assert abs((uv[-1, 1] - uv[0, 1]) - 0.5 * 7 / 8) < 1e-9
+
+
+def test_the_api_takes_a_pixel_count_per_mode(store):
+    engine = Engine(store, enable_hardware=False)
+    client = TestClient(create_app(engine))
+    body = client.post("/api/fixture-types", json={"name": "bar"}).json()
+    body = client.get("/api/fixture-types").json()["bar"]
+    assert "pixels" not in body and body["modes"][0]["pixels"] == 1
+    body["modes"][0]["pixels"] = 4
+    body["modes"].append({"id": "16", "name": "16px", "pixels": 16, "channels": [{"pixels": "RGB"}]})
+    assert client.put("/api/fixture-types/bar", json=body).json()["ok"]
+    saved = json.loads((store.types_dir / "bar.json").read_text())
+    assert "pixels" not in saved and [m["pixels"] for m in saved["modes"]] == [4, 16]

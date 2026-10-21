@@ -29,7 +29,7 @@ def test_unknown_keys_are_logged_not_fatal(tmp_path, caplog):
     path.write_text(json.dumps({"pixels": 2, "gama": 2.2, "_note": "annotations are fine"}))
     with caplog.at_level(logging.WARNING):
         ftype = load_model(path, FixtureType, name="typo")
-    assert ftype is not None and ftype.pixels == 2
+    assert ftype is not None and ftype.pixel_count() == 2
     assert "unknown key 'gama'" in caplog.text
     assert "_note" not in caplog.text
 

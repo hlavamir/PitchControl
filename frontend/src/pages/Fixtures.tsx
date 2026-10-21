@@ -30,14 +30,14 @@ function slotOfKind(slot: ChannelSlot, kind: Kind, firstMacro: string): ChannelS
 }
 
 /** The DMX channels of one mode of a type, as "start–end: what" lines. */
-function channelMap(t: FixtureType, mode: ChannelMode): { from: number; to: number; text: string }[] {
+function channelMap(mode: ChannelMode): { from: number; to: number; text: string }[] {
   const rows: { from: number; to: number; text: string }[] = []
   let ch = 1
   for (const s of mode.channels) {
-    const n = s.pixels ? t.pixels * s.pixels.length : 1
+    const n = s.pixels ? mode.pixels * s.pixels.length : 1
     const label = s.name ? `${s.name} ` : ''
     let text: string
-    if (s.pixels) text = `${label}pixels ${s.pixels} × ${t.pixels}`
+    if (s.pixels) text = `${label}pixels ${s.pixels} × ${mode.pixels}`
     else if (s.value != null) text = `${label}= ${s.value}`
     else if (s.macro) text = `${label}← ${s.macro}`
     else text = `${label}shutter (open ${s.shutter?.open}, strobe ${s.shutter?.strobo})`
@@ -402,9 +402,11 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                 <option value="pitchpls_v2">PitchPlease v2 serial</option>
               </select>
             </Row>
-            <Row label="Pixels" hint="Number of pixels (individually controlled segments) of one fixture, 1–512">
-              <NumberInput value={t.pixels} integer min={1} max={512} onChange={(v) => edit((x) => (x.pixels = v))} />
-            </Row>
+            {t.transport === 'pitchpls_v2' && (
+              <Row label="Pixels" hint="Number of pixels (individually controlled segments) of one fixture, 1–512">
+                <NumberInput value={t.modes[0].pixels} integer min={1} max={512} onChange={(v) => edit((x) => x.modes.forEach((m) => (m.pixels = v)))} />
+              </Row>
+            )}
             <Row
               label="Gamma"
               hint="Device curve: sent = value ^ gamma. 1 = unchanged (v2 / v3 decode it themselves); ~2.2 for fixtures without a curve"
@@ -441,7 +443,16 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                             onBlur={() => applyLive(types[selected])}
                             data-tip="Name of this mode, as the fixture's display or manual calls it (e.g. 6CH). Rigs store the mode's id, so renaming never breaks one"
                           />
-                          <span className="lbl text-[10px] text-dim">{channelCount(t, mode.id)} ch</span>
+                          <NumberInput
+                            value={mode.pixels}
+                            integer
+                            min={1}
+                            max={512}
+                            className="w-16 shrink"
+                            tip="Number of pixels (individually controlled segments) the light has in this mode, 1–512: a bar can have 1 pixel in one mode and 8 in another"
+                            onChange={(v) => edit((x) => (x.modes[mi].pixels = v))}
+                          />
+                          <span className="lbl text-[10px] text-dim">px · {channelCount(t, mode.id)} ch</span>
                           {isDefault ? (
                             <span className="lbl glow-on bg-ink px-1.5 text-[10px] leading-[18px] text-ground" data-hint="info" data-tip="The default mode: a new fixture of this type starts in it, and a fixture without a mode uses it">
                               default
@@ -602,7 +613,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                     <span>{n} channels</span>
                   </p>
                   <div className="flex flex-col gap-px font-mono text-[12px]">
-                    {channelMap(t, mode).map((r, i) => (
+                    {channelMap(mode).map((r, i) => (
                       <div key={i} className="flex gap-3 bg-panel-2 px-2 py-1">
                         <span className="w-16 flex-none text-dim">{r.from === r.to ? r.from : `${r.from}–${r.to}`}</span>
                         <span className="min-w-0 flex-1 truncate" data-tip={r.text}>
@@ -619,7 +630,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         )}
         {t && t.transport === 'pitchpls_v2' && (
           <p className="text-[12px] text-dim">
-            v2 serial: {t.pixels} pixels × 3 bytes, sent on the PitchPlease v2 output (Outputs page).
+            v2 serial: {t.modes[0].pixels} pixels × 3 bytes, sent on the PitchPlease v2 output (Outputs page).
           </p>
         )}
       </Section>

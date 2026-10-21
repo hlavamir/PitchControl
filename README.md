@@ -35,7 +35,7 @@ The page for playing the show:
 
 The fixture types: everything shared by all fixtures of one model, one JSON file each in `config/fixtures/types/`.
 - **Fixture types:** the list, with New, Duplicate, Rename and Delete. Renaming updates every rig that uses the type; a type that a rig uses can't be deleted.
-- **Type editor:** description, output (DMX or the PitchPlease v2 serial protocol), pixel count, gamma and the strobo colour (HSB). Below that are the **channel modes**, one section per mode (at least one): a name (as the fixture's display or manual calls it, e.g. 6CH), a short description and the channel layout in DMX order. Each channel is a constant (e.g. master = 255), a macro (e.g. a strip dimmer following "Dimmer 01"), a shutter (open / strobe values) or the pixel block (R, RGB or RGBW). ↑ ↓ ✕ reorder and remove channels. The pixel count is the same in every mode.
+- **Type editor:** description, output (DMX or the PitchPlease v2 serial protocol), gamma and the strobo colour (HSB). Below that are the **channel modes**, one section per mode (at least one): a name (as the fixture's display or manual calls it, e.g. 6CH), the **pixel count of that mode** (a bar can have 1 pixel in one mode and 8 in another; the PitchPlease v2 serial type keeps one Pixels field above), a short description and the channel layout in DMX order. Each channel is a constant (e.g. master = 255), a macro (e.g. a strip dimmer following "Dimmer 01"), a shutter (open / strobe values) or the pixel block (R, RGB or RGBW). ↑ ↓ ✕ reorder and remove channels.
 - **Modes:** **Add mode** appends a copy of the last mode (a new mode is mostly the old one with a channel more or less); **make default** marks the mode a new rig fixture starts in; **✕ delete mode** removes one (not the last). A mode that fixtures of the active rig run in asks first and names them; they move to the default mode (the rig then has unsaved changes). Two modes with the same name get a warning.
 - **Channel map:** the resulting DMX channels of every mode with their numbers, the total, and how many fixtures of the type fit one universe.
 
@@ -257,16 +257,16 @@ Unknown keys (typos) are reported in `logs/YYMMDD_hhmmss.log` (one file per star
 
 **From 1.3:** on the first start of 1.4 an old `Documents/PitchControl/config/` is moved into this layout once: `state/` and `logs/` go to this computer's folder, `settings.json` is split into the sparse show part and `machine.json`, and files identical to a version the app ever shipped are dropped (the current defaults apply). Your own files stay. A source checkout used the repo's `config/` as its data before; that setup is in git history (`git show v1.3.0:config/rigs/Default.json`) and can be copied into `data/` or `~/Documents/PitchControl/`.
 
-A fixture type holds one or more **channel modes** (the DMX modes a device offers: 3CH, 4CH, 6CH …), each with an `id`, a `name`, a `description` and its **profile**, the ordered `channels` list. `default_mode` is the id of the mode a new rig fixture starts in. The pixel count (`pixels`), gamma and strobo colour belong to the type and are the same in every mode:
+A fixture type holds one or more **channel modes** (the DMX modes a device offers: 3CH, 4CH, 6CH …), each with an `id`, a `name`, a `description`, its pixel count `pixels` and its **profile**, the ordered `channels` list. `default_mode` is the id of the mode a new rig fixture starts in. Gamma and the strobo colour belong to the type and are the same in every mode:
 
 ```json
-"pixels": 1,
 "modes": [
-  { "id": "4ch", "name": "4CH", "description": "Red, green, blue, white", "channels": [{ "pixels": "RGBW" }] },
+  { "id": "4ch", "name": "4CH", "description": "Red, green, blue, white", "pixels": 1, "channels": [{ "pixels": "RGBW" }] },
   {
     "id": "9ch",
     "name": "9CH",
     "description": "Master, strobe, colours",
+    "pixels": 1,
     "channels": [
       { "name": "master", "value": 255 },
       { "name": "dimmer", "macro": "Dimmer 03" },
@@ -278,7 +278,7 @@ A fixture type holds one or more **channel modes** (the DMX modes a device offer
 "default_mode": "4ch"
 ```
 
-A rig fixture names its mode with `"mode": "<id>"`. The id is what counts, so renaming a mode never breaks a rig; a fixture without `mode` runs in the type's default mode, and an unknown id is listed as a rig problem (the default mode is used meanwhile). Type files from before 1.6 have a bare `channels` list instead of `modes`: it loads as one mode named by its channel count (`4CH`) and is written back in the new shape when the type is next saved. An older app reads a type file written by 1.6 as one RGB pixel block, so keep a copy of your fixture types before going back.
+A rig fixture names its mode with `"mode": "<id>"`. The id is what counts, so renaming a mode never breaks a rig; a fixture without `mode` runs in the type's default mode, and an unknown id is listed as a rig problem (the default mode is used meanwhile). Type files from before 1.6 have a bare `channels` list instead of `modes`: it loads as one mode named by its channel count (`4CH`) and is written back in the new shape when the type is next saved. A type file from before 1.6.1 has one `pixels` for the whole type: it becomes the pixel count of every mode (a mode's own `pixels` wins) and is written into the modes when the type is next saved. An older app reads a type file written by 1.6 as one RGB pixel block, and one written by 1.6.1 as a one-pixel type, so keep a copy of your fixture types before going back.
 
 `value` is a constant (a rig can override it by name with `channel_values`). `macro` sends a macro's value as 0–255. `shutter` sends `strobo` on a peak frame when the instance has `real_strobo` enabled. `pixels` expands to pixel count × `R` / `RGB` / `RGBW`.
 

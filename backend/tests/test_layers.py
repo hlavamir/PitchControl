@@ -269,7 +269,7 @@ def test_invalid_settings_rigs_and_fixture_types_are_refused_with_a_readable_422
     res = client.put("/api/rig", json={"fixtures": [{"channel": 0}, "x"]})
     assert res.status_code == 422 and "fixtures[1]" in res.json()["detail"]
     res = client.put("/api/fixture-types/rgb_panel", json={"pixels": 0})
-    assert res.status_code == 422 and res.json()["detail"].startswith("invalid content: pixels: ")
+    assert res.status_code == 422 and res.json()["detail"].startswith("invalid content: modes[0].pixels: ")
     many = client.put("/api/controllers/Mine", json={"mappings": [{"number": n} for n in range(8)]}).json()["detail"]
     assert many.count("a mapping needs a macro") == 5 and many.endswith("(and 3 more)")
 

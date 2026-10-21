@@ -139,12 +139,14 @@ class ChannelMode(Model):
     id: str = ""
     name: str = ""
     description: str = ""
+    # how many pixels the light has in this mode (a bar can have 1 or 8 depending on the mode)
+    pixels: int = Field(default=1, ge=1)
     channels: list[ChannelSlot] = Field(default_factory=lambda: [ChannelSlot(pixels="RGB")])
 
-    def channel_count(self, pixels: int) -> int:
+    def channel_count(self) -> int:
         total = 0
         for ch in self.channels:
-            total += pixels * len(ch.pixels) if ch.pixels else 1
+            total += self.pixels * len(ch.pixels) if ch.pixels else 1
         return total
 
 
@@ -152,11 +154,10 @@ class FixtureType(Model):
     name: str = ""
     description: str = ""
     transport: Literal["dmx", "pitchpls_v2"] = "dmx"
-    # the pixel count is the same in every mode; a mode only changes the channels around the pixels
-    pixels: int = Field(default=1, ge=1)
     # One or more channel modes; a rig fixture picks one (FixtureInstance.mode). Files before 1.6 have a
     # bare ``channels`` list: it loads as one mode, named by its channel count, and is written back as
-    # ``modes`` when the type is next saved.
+    # ``modes`` when the type is next saved. The pixel count belongs to each mode (1.6.1: before, one ``pixels``
+    # per type); a type-level ``pixels`` in an older file becomes the count of every mode that has none.
     modes: list[ChannelMode] = Field(default_factory=lambda: [ChannelMode()])
     default_mode: str = ""  # a mode's id: a new rig fixture starts in it, and a fixture without a mode uses it
     # Decodes the perceptual values the engine works with into what the device expects, per output
@@ -185,6 +186,13 @@ class FixtureType(Model):
                 log.warning("%s: has both channels and modes, channels ignored", where)
             else:
                 data["modes"] = [{"channels": channels}]
+        if isinstance(data, dict) and "pixels" in data:  # before 1.6.1: one pixel count for the whole type
+            data = dict(data)
+            pixels = data.pop("pixels")
+            if isinstance(data.get("modes"), list):
+                data["modes"] = [{"pixels": pixels, **m} if isinstance(m, dict) else m for m in data["modes"]]
+            else:
+                data["modes"] = [{"pixels": pixels}]
         return data
 
     @field_validator("gamma", mode="before")
@@ -204,7 +212,7 @@ class FixtureType(Model):
         seen: set[str] = set()
         for mode in self.modes:
             if not mode.name:
-                mode.name = f"{mode.channel_count(self.pixels)}CH"
+                mode.name = f"{mode.channel_count()}CH"
             wanted = mode.id or _mode_id(mode.name)
             mode.id, n = wanted, 2
             while mode.id in seen:
@@ -228,9 +236,13 @@ class FixtureType(Model):
     def has_mode(self, mode_id: str) -> bool:
         return any(m.id == mode_id for m in self.modes)
 
-    def channel_count(self, mode_id: str | None = None, pixels: int | None = None) -> int:
+    def channel_count(self, mode_id: str | None = None) -> int:
         """Channels one fixture takes in this mode (none: the default mode)."""
-        return self.mode_of(mode_id).channel_count(pixels if pixels is not None else self.pixels)
+        return self.mode_of(mode_id).channel_count()
+
+    def pixel_count(self, mode_id: str | None = None) -> int:
+        """Pixels one fixture has in this mode (none: the default mode)."""
+        return self.mode_of(mode_id).pixels
 
 
 # --------------------------------------------------------------------------- rigs
