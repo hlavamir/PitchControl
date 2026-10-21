@@ -355,7 +355,18 @@ export function Settings({ ui, onChange, desktop, version }: { ui: UiSettings; o
           >
             Report a problem ›
           </a>
-          <span className="lbl text-[10px] leading-snug text-dim">A GitHub issue, filled in with the version and the system; attach the newest log</span>
+          <span className="lbl min-w-0 flex-1 text-[10px] leading-snug text-dim">A GitHub issue, filled in with the version and the system; attach the newest log</span>
+          <a
+            className="lbl flex-none text-[10px] text-dim hover:text-ink"
+            href="https://discord.gg/4nbBaQDKz4"
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => openLink(e, 'https://discord.gg/4nbBaQDKz4')}
+            data-hint="button"
+            data-tip="Open the PitchControl Discord in the browser: questions, help and chat with other users"
+          >
+            Join the Discord ›
+          </a>
         </div>
         <span className="lbl mt-3 flex gap-4 text-[10px] text-dim">
           <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl')} data-hint="button" data-tip="Open the project page on GitHub in the browser">

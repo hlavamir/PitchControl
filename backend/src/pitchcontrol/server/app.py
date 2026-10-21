@@ -168,7 +168,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         return {"ok": True}
 
     # the project's own pages and this app's network addresses: the only addresses the UI may ask the desktop app to open
-    allowed_links = ("https://github.com/hlavamir", "https://ko-fi.com/zeys_hlvmr")
+    allowed_links = ("https://github.com/hlavamir", "https://ko-fi.com/zeys_hlvmr", "https://discord.gg/4nbBaQDKz4")
 
     def is_allowed_link(url: str) -> bool:
         # the address itself or something below it ("…/zeys_hlvmr.evil.example" is neither)

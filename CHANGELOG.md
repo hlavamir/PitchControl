@@ -14,7 +14,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   before submitting it. On a phone or tablet on the network the button is a plain link that opens on that device, and so
   are the About and Ko-fi links now (before, they first asked the computer and were refused, which a popup blocker could
   then stop). The repository has issue forms for a bug report with the same fields and for a feature idea, which
-  points to Discussions → Ideas for voting.
+  points to Discussions → Ideas for voting. **Join the Discord**, next to the button, opens the PitchControl Discord
+  (https://discord.gg/4nbBaQDKz4) for questions and chat.
 - **A built-in fixture library: ten popular fixtures come with the app**, each with every DMX mode PitchControl can drive
   (pick the type on the Rig page, the mode as set on the fixture): Stairville LED Flood Panel 150, LED Bar 240-8 (also the
   Varytec Giga Bar Pix 8 RGB / Frost), xBrick Quad 16x8W RGBW, SonicPulse LED Bar 10, Eurolite LED PT-100-32 Pixel DMX Tube,

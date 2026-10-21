@@ -314,7 +314,9 @@ def test_app_info_names_the_system_for_a_bug_report(store, monkeypatch):
     client = TestClient(create_app(Engine(store, enable_hardware=False), desktop={"url": "http://127.0.0.1:1", "data_dir": "x"}))
     url = "https://github.com/hlavamir/PitchControl/issues/new?title=&body=**PitchControl%3A**+1.6.0%0A%0A%23%23%23+What+happened"
     assert client.post("/api/open-url", json={"url": url}).status_code == 200
-    assert opened == [url]
+    assert client.post("/api/open-url", json={"url": "https://discord.gg/4nbBaQDKz4"}).status_code == 200  # Join the Discord, next to it
+    assert client.post("/api/open-url", json={"url": "https://discord.gg/other"}).status_code == 400
+    assert opened == [url, "https://discord.gg/4nbBaQDKz4"]
 
 
 def test_frame_rate_is_a_setting_the_engine_follows(store):

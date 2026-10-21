@@ -4,6 +4,8 @@ Audio-reactive light control for DMX and Art-Net: kicks trigger the strobo, movi
 
 Website, documentation and downloads: **[pitchcontrol.eu](https://pitchcontrol.eu)**.
 
+Community: **[Discord](https://discord.gg/4nbBaQDKz4)** for questions and chat, [GitHub issues](https://github.com/hlavamir/PitchControl/issues) for bugs (Settings → About → Report a problem fills one in), [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas) for feature ideas.
+
 - **Backend** (`backend/`, Python): the engine, which runs at 40 FPS in its own thread and owns audio, MIDI and all outputs. It keeps running if the browser is closed.
 - **Frontend** (`frontend/`, Vite + React + TypeScript + Tailwind): the pages General, Dimmers, Fixtures, Rig, Inputs, Outputs, Fog, Settings and Control Desk. It talks to the backend over HTTP and a WebSocket.
 - **Config** (`config/`): the read-only defaults that ship with the app (fixture types, the MIDI mapping, the Default rig, settings). What you make or change is kept in your data folder, see [Folders](#folders).
@@ -112,7 +114,7 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 - **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
 - **Keyboard:** the complete keyboard reference.
 - **App** (desktop app only): open the UI in a browser, open the data folder, open the logs folder, start in full screen.
-- **About:** the version (with the number of commits since the last release and whether the source was modified), links to the project and its releases, and **Report a problem**: it opens a new issue on GitHub in the browser with the version, the system (the computer's operating system and its version) and where the UI was opened from already filled in, under the headings What happened, What you expected and Steps. You see and edit everything before you send it; PitchControl itself sends nothing. Please attach the newest log file: Settings → App → Open logs folder, the newest file is the current run. On a phone or tablet on the network it is a plain link that opens on that device. Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas), where they can be voted on.
+- **About:** the version (with the number of commits since the last release and whether the source was modified), links to the project and its releases, and **Report a problem**: it opens a new issue on GitHub in the browser with the version, the system (the computer's operating system and its version) and where the UI was opened from already filled in, under the headings What happened, What you expected and Steps. You see and edit everything before you send it; PitchControl itself sends nothing. Please attach the newest log file: Settings → App → Open logs folder, the newest file is the current run. On a phone or tablet on the network it is a plain link that opens on that device. Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas), where they can be voted on. **Join the Discord** next to it opens the [PitchControl Discord](https://discord.gg/4nbBaQDKz4) for questions and chat.
 
 ### 9 · Control Desk
 
