@@ -545,7 +545,10 @@ def test_a_stall_that_recovered_while_the_list_was_read_costs_no_reinit(monkeypa
 
 def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkeypatch, store):
     engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start: the stand-in runs
-    clock = [time.monotonic()]
+    # A whole number, so that adding 2.0 and 10.0 is exact: from the real clock's value (seconds since boot, with
+    # fractions) the sums round differently near a power of two (4194200.987 + 10.0 against five times + 2.0 differ by
+    # 5e-10), and "every 10 s" came out as 9.9999999995 on a runner with such a clock.
+    clock = [float(round(time.monotonic()))]
     monkeypatch.setattr(time, "monotonic", lambda: clock[0])
     engine.audio.last_callback = clock[0]  # the stand-in is alive on the fake clock
     lists: list[float] = []
