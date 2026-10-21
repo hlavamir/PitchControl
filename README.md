@@ -4,7 +4,7 @@ Audio-reactive light control for DMX and Art-Net: kicks trigger the strobo, movi
 
 Website, documentation and downloads: **[pitchcontrol.eu](https://pitchcontrol.eu)**.
 
-Community: **[Discord](https://discord.gg/4nbBaQDKz4)** for questions and chat, [GitHub issues](https://github.com/hlavamir/PitchControl/issues) for bugs (Settings → About → Report a problem fills one in), [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas) for feature ideas.
+Community: **[Discord](https://discord.gg/4nbBaQDKz4)** for questions and chat, [GitHub issues](https://github.com/hlavamir/PitchControl/issues) for bugs (Help → About → Report a problem fills one in), [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas) for feature ideas.
 
 - **Backend** (`backend/`, Python): the engine, which runs at 40 FPS in its own thread and owns audio, MIDI and all outputs. It keeps running if the browser is closed.
 - **Frontend** (`frontend/`, Vite + React + TypeScript + Tailwind): the pages General, Dimmers, Fixtures, Rig, Inputs, Outputs, Fog, Settings and Control Desk. It talks to the backend over HTTP and a WebSocket.
@@ -12,7 +12,7 @@ Community: **[Discord](https://discord.gg/4nbBaQDKz4)** for questions and chat, 
 
 ## Pages
 
-Keys 1–9 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with their defaults: a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, so the music changes nothing until you raise them).
+Keys 1–9 and 0 switch between the pages. Everything can be operated from the keyboard (see [Using the UI](#using-the-ui)). The footer at the bottom of every page shows the keys for the control under the mouse and a short explanation of it; the screenshots show it without a hovered control. On a first start the macros begin with their defaults: a calm test pattern for setting up the DMX output (Strobo and Audio Reactivity at 0, so the music changes nothing until you raise them).
 
 ### 1 · General
 
@@ -112,9 +112,10 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 
 - **Appearance:** ink colour (grey, amber, phosphor), glow, UI brightness for a dark booth, UI scale (with "Fit window" for small screens) and the key-hint footer. All of it is saved and restored next session.
 - **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
-- **Keyboard:** the complete keyboard reference.
+- **Engine:** the frame rate.
 - **App** (desktop app only): open the UI in a browser, open the data folder, open the logs folder, start in full screen.
-- **About:** the version (with the number of commits since the last release and whether the source was modified), links to the project and its releases, and **Report a problem**: it opens a new issue on GitHub in the browser with the version, the system (the computer's operating system and its version) and where the UI was opened from already filled in, under the headings What happened, What you expected and Steps. You see and edit everything before you send it; PitchControl itself sends nothing. Please attach the newest log file: Settings → App → Open logs folder, the newest file is the current run. On a phone or tablet on the network it is a plain link that opens on that device. Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas), where they can be voted on. **Join the Discord** next to it opens the [PitchControl Discord](https://discord.gg/4nbBaQDKz4) for questions and chat.
+
+The keyboard reference, About and Support are on the Help page (0).
 
 ### 9 · Control Desk
 
@@ -122,9 +123,17 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 
 Every DMX output channel as a slider: pick a universe (0–3) and a subpage of 64 channels (Q / E step through them). The faint bar is what the channel sends now, and the footer names the fixture using it. Dragging a channel, or switching it on, overrides it with the slider value; the switch releases it. Overrides survive restarts. While any are active, the header shows "N overrides", and "Reset all" releases them all after a confirmation.
 
+### 0 · Help
+
+![Help page](screenshots/help.png)
+
+- **Keyboard:** the complete keyboard reference (the menu bar's Help → Keyboard shortcuts opens it).
+- **About:** the version (with the number of commits since the last release and whether the source was modified), links to the project and its releases, and **Report a problem**: it opens a new issue on GitHub in the browser with the version, the system (the computer's operating system and its version) and where the UI was opened from already filled in, under the headings What happened, What you expected and Steps. You see and edit everything before you send it; PitchControl itself sends nothing. Please attach the newest log file: Settings → App → Open logs folder, the newest file is the current run. On a phone or tablet on the network it is a plain link that opens on that device. Feature ideas go to [Discussions → Ideas](https://github.com/hlavamir/PitchControl/discussions/categories/ideas), where they can be voted on. **Join the Discord** next to it opens the [PitchControl Discord](https://discord.gg/4nbBaQDKz4) for questions and chat.
+- **Support:** PitchControl is free; the Ko-fi link takes donations.
+
 ## Download
 
-Ready-to-run builds for macOS (Apple Silicon) and Windows are on the [Releases page](https://github.com/hlavamir/PitchControl/releases/latest). Download the zip for your system and unpack it; no Python or Node needed. A downloaded app keeps what you make or change in `Documents/PitchControl/` and this computer's settings in the app-data folder; see [Folders](#folders). What changed between versions is in [CHANGELOG.md](CHANGELOG.md); the running version is shown in Settings → About.
+Ready-to-run builds for macOS (Apple Silicon) and Windows are on the [Releases page](https://github.com/hlavamir/PitchControl/releases/latest). Download the zip for your system and unpack it; no Python or Node needed. A downloaded app keeps what you make or change in `Documents/PitchControl/` and this computer's settings in the app-data folder; see [Folders](#folders). What changed between versions is in [CHANGELOG.md](CHANGELOG.md); the running version is shown in Help → About.
 
 ## Run
 
@@ -163,9 +172,9 @@ Tests: `cd backend && .venv/bin/python -m pytest`; the frontend rules (MIDI mapp
 - **Both scripts check what is installed before they build:** the UI packages (`npm ci`, recorded in `frontend/node_modules/.installed-with` with the Node version and a hash of `package-lock.json`) and the Python environment (`backend/.venv/.installed-with`: the Python version and a hash of `pyproject.toml`). When one is missing or out of date they say what and why and ask once, `Install now? [Y/n]` (Enter = yes); "n" stops and prints the commands to run by hand. On CI, or without a terminal, they install without asking; `--check` only says what would be installed.
 - **Both, on GitHub:** Actions → "PitchControl app" → Run workflow (`.github/workflows/app.yml`), then download the zips from the run.
 
-The app shows the UI in its own window. "Open in browser", "Open data folder" and "Open logs folder" are in Settings → App; Settings → About shows the folders. Closing the window stops the engine: it asks first when an output is live or a page has unsaved edits.
+The app shows the UI in its own window. "Open in browser", "Open data folder" and "Open logs folder" are in Settings → App; Help → About shows the folders. Closing the window stops the engine: it asks first when an output is live or a page has unsaved edits.
 
-**Menu bar.** The app has the usual menus: **File** (Save, Open data folder, Open logs folder, Quit), **Edit** (Cut, Copy, Paste, Select All, on the text field you are typing in), **View** (the nine pages, Full screen), **Window** (Minimize, and Zoom on macOS / Maximize on Windows) and **Help** (Documentation, Keyboard shortcuts, Report a problem, Join the Discord, About PitchControl). **Save** does what the page's Save button does (Inputs, Outputs, Fog, the MIDI mapping, Fixtures, Rig) and nothing on a page without one; ⌘S / Ctrl+S does the same, also while typing in a field. **Quit** asks first like the close button. On **macOS** it is the system's menu bar, with About, Settings… (⌘,) and Quit (⌘Q) under PitchControl, and ⌘1 – ⌘9 for the pages next to the plain 1 – 9. On **Windows** the app draws it in its header row next to the logo, in the app's look, with the keys next to the items: **Alt** (or F10) gives it the keyboard, Alt + the underlined letter opens a menu, the arrows move, ⏎ runs an item and Esc closes; AltGr (typing @ { [) doesn't open it. A browser, on this computer or on a phone, shows no menu bar. The first Edit → Paste asks once for permission to read the clipboard (Ctrl+V needs none).
+**Menu bar.** The app has the usual menus: **File** (Save, Open data folder, Open logs folder, Quit), **Edit** (Cut, Copy, Paste, Select All, on the text field you are typing in), **View** (the ten pages, Full screen), **Window** (Minimize, and Zoom on macOS / Maximize on Windows) and **Help** (Documentation, Keyboard shortcuts, Report a problem, Join the Discord, About PitchControl). **Save** does what the page's Save button does (Inputs, Outputs, Fog, the MIDI mapping, Fixtures, Rig) and nothing on a page without one; ⌘S / Ctrl+S does the same, also while typing in a field. **Quit** asks first like the close button. On **macOS** it is the system's menu bar, with About, Settings… (⌘,) and Quit (⌘Q) under PitchControl, and ⌘1 – ⌘9 for the pages next to the plain 1 – 9 (Help is 0: ⌘0 stays the UI scale's 100 %). On **Windows** the app draws it in its header row next to the logo, in the app's look, with the keys next to the items: **Alt** (or F10) gives it the keyboard, Alt + the underlined letter opens a menu, the arrows move, ⏎ runs an item and Esc closes; AltGr (typing @ { [) doesn't open it. A browser, on this computer or on a phone, shows no menu bar. The first Edit → Paste asks once for permission to read the clipboard (Ctrl+V needs none).
 
 The app uses the folders described in [Folders](#folders); it never writes into its own bundle or into the repo's `config/`.
 
@@ -183,7 +192,7 @@ App options (for example from a terminal) are the same as for the backend (`--da
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
 1. Set `__version__`, and move the changelog's "Unreleased" notes under a `## X.Y.Z — date` heading.
 2. If a default in `config/` changed since the last release, commit it, then record it: `backend/.venv/bin/python tools/shipped_config_history.py` (it adds every committed version of the shipped files to `config/shipped_history.py`, so a later migration recognises untouched copies) and commit that too.
-3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Settings → About shows the plain version: build the frontend, then run `tools/screenshots.py` (see its header for the setup). Check the nine PNGs in `screenshots/`, then commit.
+3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Help → About shows the plain version: build the frontend, then run `tools/screenshots.py` (see its header for the setup). Check the ten PNGs in `screenshots/`, then commit.
 4. Commit, then tag and push: `git tag -a vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin vX.Y.Z`.
 5. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
 
@@ -204,7 +213,7 @@ Everything works without a mouse — on the General, Dimmers and Control Desk pa
 | ↑ / ↓ | change the selected value (Shift = fine) |
 | ⏎ | press the selected button, load the selected scene (Shift + ⏎ = save) |
 | Esc | cancel a pending hue / saturation change |
-| 1 – 9 | switch page |
+| 1 – 9, 0 | switch page (0 = Help) |
 | Q / E | previous / next subpage (Control Desk) |
 | F | full screen on / off (desktop app; on a MacBook it also covers the camera-notch strip) |
 | ⌘ / Ctrl + + − 0 | UI scale up / down (`=` works as `+`, no Shift needed), 0 = 100 % (⌘ on macOS, Ctrl on Windows) |

@@ -13,14 +13,20 @@ import { Inputs } from './pages/Inputs'
 import { Output } from './pages/Output'
 import { Rig } from './pages/Rig'
 import { ControlDesk } from './pages/ControlDesk'
+import { Help } from './pages/Help'
 import { Settings } from './pages/Settings'
 import { clientOf, issueUrl } from './reportProblem'
 import { DEFAULT_UI, applyScale, applyTheme, clampScale, type UiSettings } from './theme'
 import { useEngine } from './useEngine'
 import { SelectionContext, isTyping, isTypingTarget, type FooterSelection } from './useGridNav'
 
-const PAGES = ['General', 'Dimmers', 'Fixtures', 'Rig', 'Inputs', 'Outputs', 'Fog', 'Settings', 'Control Desk'] as const
+// the keys 1 to 9, then 0 (Help)
+const PAGES = ['General', 'Dimmers', 'Fixtures', 'Rig', 'Inputs', 'Outputs', 'Fog', 'Settings', 'Control Desk', 'Help'] as const
 type Page = (typeof PAGES)[number]
+
+/** The page of a number key (0 = Help, the tenth), and the key of a page. */
+const pageOfKey = (n: number): Page => PAGES[(n + 9) % 10]
+const keyOfPage = (p: Page) => (PAGES.indexOf(p) + 1) % 10
 
 /** Footer tip of each page tab. */
 const PAGE_TIPS: Record<Page, string> = {
@@ -31,8 +37,9 @@ const PAGE_TIPS: Record<Page, string> = {
   Inputs: 'Audio input and MIDI controller: devices, gain and live meters',
   Outputs: 'DMX output: Enttec USB interfaces, Art-Net, and the PitchPlease v2 serial strips',
   Fog: 'Fog machines: DMX channel, timer and manual trigger',
-  Settings: 'Look of the UI (ink, glow, brightness, scale), the key reference, version',
+  Settings: 'Look of the UI (ink, glow, brightness, scale), the engine frame rate, other devices on the network, the app window',
   'Control Desk': 'Every DMX channel as a fader: override channels by hand, e.g. to test a light',
+  Help: 'Every key of the UI, the version, Report a problem, the Discord and the project links, support',
 }
 
 function initialPage(): Page {
@@ -48,24 +55,24 @@ const KEYS: [string, string][] = [
   ['SHIFT', 'fine'],
   ['⏎', 'press'],
   ['ESC', 'cancel'],
-  ['1–9', 'page'],
+  ['0–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
 
 /** The general keys on the Rig and Fixtures pages: the list moves like a file list, the details field by field (rigKeys.ts). */
-/** The general keys on the pages that are forms (Inputs, Outputs, Fog, Settings): W S A D move over the controls, ⏎ edits. */
+/** The general keys on the pages that are forms (Inputs, Outputs, Fog, Settings, Help): W S A D move over the controls, ⏎ edits. */
 const FORM_KEYS: [string, string][] = [
   ['W S A D', 'control'],
   ['⏎', 'edit'],
   ['ESC', 'stop'],
-  ['1–9', 'page'],
+  ['0–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
 
 const LIST_PAGES: string[] = ['Fixtures', 'Rig']
-const FORM_PAGES: string[] = ['Inputs', 'Outputs', 'Fog', 'Settings']
+const FORM_PAGES: string[] = ['Inputs', 'Outputs', 'Fog', 'Settings', 'Help']
 
 const RIG_KEYS: [string, string][] = [
   ['W S ↑ ↓', 'fixture'],
@@ -73,7 +80,7 @@ const RIG_KEYS: [string, string][] = [
   ['SPACE', 'add / remove'],
   ['D →', 'details'],
   ['ESC A', 'list'],
-  ['1–9', 'page'],
+  ['0–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
@@ -232,29 +239,29 @@ export default function App() {
       saving.current = false
     }
   }, [])
-  // Settings, scrolled to one of its sections (Help → Keyboard shortcuts, About)
+  // a page, scrolled to one of its sections (Help → Keyboard shortcuts, About)
   const scrollTo = useRef<string | null>(null)
-  const showSettings = useCallback(
-    (section?: string) => {
+  const showPage = useCallback(
+    (p: Page, section?: string) => {
       scrollTo.current = section ?? null
-      if (pageRef.current === 'Settings') document.getElementById(section ?? '')?.scrollIntoView({ block: 'start' })
-      else go('Settings')
+      if (pageRef.current === p) document.getElementById(section ?? '')?.scrollIntoView({ block: 'nearest' })
+      else go(p)
     },
     [go],
   )
   useEffect(() => {
-    if (page !== 'Settings' || !scrollTo.current) return
-    document.getElementById(scrollTo.current)?.scrollIntoView({ block: 'start' })
+    if (!scrollTo.current) return
+    document.getElementById(scrollTo.current)?.scrollIntoView({ block: 'nearest' })
     scrollTo.current = null
   }, [page])
   const runMenu = useCallback(
     async (id: string) => {
-      if (id.startsWith('view.page.')) go(PAGES[Number(id.slice('view.page.'.length)) - 1])
+      if (id.startsWith('view.page.')) go(pageOfKey(Number(id.slice('view.page.'.length))))
       else if (id === 'file.save') save()
       else if (id === 'view.fullscreen') toggleFullscreen()
-      else if (id === 'app.settings') showSettings()
-      else if (id === 'help.keys') showSettings('settings-keyboard')
-      else if (id === 'app.about') showSettings('settings-about')
+      else if (id === 'app.settings') showPage('Settings')
+      else if (id === 'help.keys') showPage('Help', 'help-keyboard')
+      else if (id === 'app.about') showPage('Help', 'help-about')
       else if (id === 'help.report') {
         const info = await api.get<{ version: string; system: string; desktop: boolean; local: boolean }>('/api/app-info')
         const url = issueUrl({ version: info.version, system: info.system, client: clientOf(info), userAgent: navigator.userAgent })
@@ -266,7 +273,7 @@ export default function App() {
         else document.execCommand(id === 'edit.cut' ? 'cut' : id === 'edit.copy' ? 'copy' : 'selectAll')
       } else api.post(`/api/menu/${id}`).catch(() => undefined) // Python's: the folders, the links, the window, Quit
     },
-    [go, save, toggleFullscreen, showSettings],
+    [go, save, toggleFullscreen, showPage],
   )
   useEffect(() => {
     ;(window as { pitchMenu?: (id: string) => void }).pitchMenu = runMenu
@@ -350,14 +357,13 @@ export default function App() {
     }
   }, [])
 
-  // 1–9 switch pages, F full screen (not while typing in a field)
+  // 1–9 and 0 switch pages, F full screen (not while typing in a field)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
-      const n = Number(e.key)
-      if (Number.isInteger(n) && n >= 1 && n <= PAGES.length) {
+      if (/^[0-9]$/.test(e.key)) {
         e.preventDefault()
-        go(PAGES[n - 1])
+        go(pageOfKey(Number(e.key)))
       }
       if (e.key.toLowerCase() === 'f' && fullscreen.supported) {
         e.preventDefault()
@@ -419,7 +425,7 @@ export default function App() {
                   menus={menus}
                   run={runMenu}
                   enabled={menuEnabled}
-                  checked={(id) => id === `view.page.${PAGES.indexOf(page) + 1}` || (id === 'view.fullscreen' && fullscreen.on)}
+                  checked={(id) => id === `view.page.${keyOfPage(page)}` || (id === 'view.fullscreen' && fullscreen.on)}
                   label={(id, l) => (id === 'view.fullscreen' && fullscreen.on ? 'Exit full screen' : l)}
                 />
               </div>
@@ -464,7 +470,7 @@ export default function App() {
                   page === p ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
                 }`}
               >
-                <span className="font-mono text-[11px] opacity-60">{i + 1}</span>
+                <span className="font-mono text-[11px] opacity-60">{(i + 1) % 10}</span>
                 {p}
               </button>
             ))}
@@ -503,8 +509,9 @@ export default function App() {
           {page === 'Outputs' && <Output engine={engine} />}
           {page === 'Inputs' && <Inputs engine={engine} />}
           {page === 'Fog' && <Fog engine={engine} />}
-          {page === 'Settings' && <Settings ui={ui} onChange={setUi} desktop={desktop} version={version} />}
+          {page === 'Settings' && <Settings ui={ui} onChange={setUi} desktop={desktop} />}
           {page === 'Control Desk' && <ControlDesk engine={engine} />}
+          {page === 'Help' && <Help desktop={desktop} version={version} />}
         </main>
 
         {ui.key_hints && (

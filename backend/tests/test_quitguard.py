@@ -70,3 +70,26 @@ def test_no_fresh_report_means_unknown_and_asks():
     assert reports.pages(now=101.0) == []
     assert reports.pages(now=100.0 + REPORT_MAX_AGE_S + 0.1) is None  # the page stopped reporting (stuck)
     assert len(quit_reasons(reports.pages(now=110.0), OFF)) == 1
+
+
+def test_live_rig_and_fixture_type_edits_are_asked_about_whichever_page_is_open(store):
+    # the Rig and Fixtures pages apply edits live; only Save writes the file. The quit guard asks the server, not the
+    # page: a user who edited the rig and went to another page (or never reported) still gets the question
+    from pitchcontrol.quitguard import with_live_edits
+
+    app = create_app(Engine(store, enable_hardware=False))
+    client = TestClient(app)
+    assert app.state.unsaved_live() == []
+    rig = client.get("/api/rig").json()
+    client.put("/api/rig?persist=false", json=rig)
+    assert app.state.unsaved_live() == ["rig"]
+    name = sorted(client.get("/api/fixture-types").json())[0]
+    client.put(f"/api/fixture-types/{name}?persist=false", json=client.get("/api/fixture-types").json()[name])
+    assert app.state.unsaved_live() == ["rig", f"fixture type {name}"]
+    reasons = quit_reasons(with_live_edits(["fog machines"], app.state.unsaved_live()), OFF)
+    assert len(reasons) == 1 and "fog machines" in reasons[0] and "rig" in reasons[0] and name in reasons[0]
+    client.put("/api/rig", json=rig)  # Save
+    client.put(f"/api/fixture-types/{name}", json=client.get("/api/fixture-types").json()[name])
+    assert app.state.unsaved_live() == []
+    assert quit_reasons(with_live_edits([], app.state.unsaved_live()), OFF) == []
+    assert with_live_edits(None, ["rig"]) is None  # the pages never reported: asked anyway

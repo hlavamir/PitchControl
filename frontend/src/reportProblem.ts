@@ -1,4 +1,4 @@
-// Settings → About → Report a problem: a new GitHub issue with the version and the system filled in. The app sends
+// Help → About → Report a problem: a new GitHub issue with the version and the system filled in. The app sends
 // nothing itself; the user sees and edits the issue on GitHub before submitting it.
 
 export const ISSUES_NEW = 'https://github.com/hlavamir/PitchControl/issues/new'
@@ -28,7 +28,7 @@ const CLIENT_LABEL: Record<Client, string> = {
 // the newest log is on the computer that runs PitchControl; from source the logs are in the Computer folder's logs/
 const LOG_HINT: Record<Client, string> = {
   desktop: 'Settings → App → Open logs folder',
-  browser: 'the logs folder inside the Computer folder shown in Settings → About',
+  browser: 'the logs folder inside the Computer folder shown in Help → About',
   network: 'on the computer that runs PitchControl: Settings → App → Open logs folder',
 }
 

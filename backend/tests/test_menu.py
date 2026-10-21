@@ -53,11 +53,13 @@ def test_keys_shown_and_bound():
     win = {i["id"]: i["key"] for m in menu_json("win") for i in m["items"] if i}
     assert win["file.save"] == "Ctrl+S"
     assert win["view.page.1"] == "1" and win["view.page.9"] == "9"  # the app's own page keys
+    assert win["view.page.0"] == "0"  # Help
     assert win["view.fullscreen"] == "F"
     assert win["edit.copy"] == "Ctrl+C"
     mac = {i.id: i.mac_key for _, items in menus_for("mac") for i in items if i is not SEPARATOR}
     assert mac["file.save"] == "cmd+s"
     assert mac["view.page.3"] == "cmd+3"  # ⌘3 next to the plain 3
+    assert mac["view.page.0"] == ""  # ⌘0 is the UI scale's 100 %
     assert mac["app.settings"] == "cmd+,"
     assert mac["view.fullscreen"] == "ctrl+cmd+f"
     assert mac["window.minimize"] == "cmd+m"

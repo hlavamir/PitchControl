@@ -58,6 +58,12 @@ def live_outputs(outputs: dict | None) -> bool:
     return any(isinstance(e, dict) and e.get("connected") for e in entries)
 
 
+def with_live_edits(pages: list[str] | None, live: list[str]) -> list[str] | None:
+    """The pages' reports plus the edits the server itself knows are not written yet: the rig and fixture types, whose
+    edits are live in the engine and written only by Save, so they count whichever page is open (or none)."""
+    return None if pages is None else sorted({*pages, *live})
+
+
 def quit_reasons(unsaved: list[str] | None, outputs: dict | None) -> list[str]:
     """Why quitting needs a question, one sentence each; empty: quit without asking.
 

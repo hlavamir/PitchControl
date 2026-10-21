@@ -1,4 +1,4 @@
-"""Retake the nine screenshots of the README and the website, the same way every time.
+"""Retake the ten screenshots of the README and the website, the same way every time.
 
     backend/.venv/bin/python tools/screenshots.py                 # into screenshots/
     backend/.venv/bin/python tools/screenshots.py --data ~/Documents/PitchControl --out /tmp/shots
@@ -16,7 +16,7 @@ The state shown:
 - a synthetic 128 BPM techno loop feeding the audio analysis;
 - 1512 × 915 (the design size) at device scale 2, so the PNGs are 3024 × 1830; no hovered control.
 
-Settings → About shows the version of this checkout: run it from a clean checkout of the release
+Help → About shows the version of this checkout: run it from a clean checkout of the release
 commit, so it reads the plain version (the script warns otherwise).
 
 Needs the built frontend (``frontend/dist``) and Playwright (``pip install -e "backend[screenshots]"``).
@@ -67,6 +67,7 @@ PAGES = [
     ("7", "fog"),
     ("8", "settings"),
     ("9", "control-desk"),
+    ("0", "help"),
 ]
 
 
@@ -247,7 +248,7 @@ def main() -> None:
         sys.exit("frontend/dist is missing: run `npm run build` in frontend/ first")
     label = version_label()
     if label.endswith(")"):  # "1.4.0+3 (abc1234)", "1.4.0-dev (…)", "…, modified)"
-        print(f"warning: this checkout reports '{label}', not a plain release version; Settings > About will show it")
+        print(f"warning: this checkout reports '{label}', not a plain release version; Help > About will show it")
 
     logging.basicConfig(level=logging.WARNING)
     with tempfile.TemporaryDirectory(prefix="pitchcontrol-shots-") as tmp:

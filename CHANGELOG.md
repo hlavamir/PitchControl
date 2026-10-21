@@ -9,18 +9,20 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Added
 - **A menu bar in the desktop app: File, Edit, View, Window, Help.** File: Save (what the page's Save button does, nothing
   on a page without one), Open data folder, Open logs folder, Quit (asks first like the close button). Edit: Cut, Copy,
-  Paste, Select All on the text field being typed in. View: the nine pages and Full screen. Window: Minimize, and Zoom
-  (macOS) or Maximize (Windows). Help: Documentation (pitchcontrol.eu/docs), Keyboard shortcuts (Settings → Keyboard),
-  Report a problem, Join the Discord, About PitchControl (Settings → About). On **macOS** it is the native menu bar, with
+  Paste, Select All on the text field being typed in. View: the ten pages and Full screen. Window: Minimize, and Zoom
+  (macOS) or Maximize (Windows). Help: Documentation (pitchcontrol.eu/docs), Keyboard shortcuts (the Help page),
+  Report a problem, Join the Discord, About PitchControl (the Help page's About). On **macOS** it is the native menu bar, with
   About, Settings… (⌘,) and Quit (⌘Q) in the PitchControl menu and the usual keys: ⌘S, ⌘1 – ⌘9 for the pages (the plain
-  1 – 9 still work), ⌃⌘F full screen, ⌘M minimize, ⌘X / ⌘C / ⌘V / ⌘A. On **Windows** the app draws it in its header row
+  1 – 9 still work; Help is the plain 0, ⌘0 stays the UI scale's 100 %), ⌃⌘F full screen, ⌘M minimize, ⌘X / ⌘C / ⌘V / ⌘A. On **Windows** the app draws it in its header row
   next to the logo, in its own look (no page loses height), with the keys next to the items and Windows' keyboard
   convention: Alt or F10 gives the menu the keys, Alt + the underlined letter opens a menu, the arrows move, ⏎ runs, Esc
   closes; AltGr doesn't open it, and while the menu has the keys they don't reach the page or a field. A browser, on the
   same computer or on a phone, shows no menu bar. Both are built from one definition (`backend/src/pitchcontrol/menu.py`),
   and an item does the same on both.
 - **⌘S / Ctrl+S saves the page** (like its Save button), also while typing in a field.
-- **Settings → About → Report a problem** opens a new issue on GitHub in the browser, filled in with the version, the
+- **A Help page (key 0)** with the keyboard reference, About (version, folders, Report a problem, Join the Discord, the
+  project's links) and Support (Ko-fi), which were in Settings; Settings keeps Appearance, Engine, Network and App.
+- **Help → About → Report a problem** opens a new issue on GitHub in the browser, filled in with the version, the
   system (the computer's operating system and its version) and where the UI was opened from (the desktop app, a browser on
   the same computer, or a device on the network), with the headings What happened, What you expected and Steps and a line
   asking for the newest log file (Settings → App → Open logs folder). Nothing is sent by the app: you see and edit the issue
@@ -58,6 +60,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
   have load unchanged: the old per-type count becomes the count of every mode, and the file is written in the new shape
   when you next save the type. The PitchPlease v2 serial type keeps one Pixels field. An older version of PitchControl
   reads a type file saved by this version as a one-pixel type, so keep a copy of your types before going back.
+
+### Fixed
+- **Quitting asks about unsaved rig and fixture type edits too**, whichever page is open: their edits are live in the
+  engine and only Save writes the file, so quitting dropped them without a question (the Rig and Fixtures pages never
+  told the quit guard; the server now does).
 
 ## 1.6.0 — 2026-10-20
 

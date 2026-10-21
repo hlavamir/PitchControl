@@ -33,8 +33,8 @@ log = logging.getLogger(__name__)
 DOCS_URL = "https://pitchcontrol.eu/docs"
 DISCORD_URL = "https://discord.gg/4nbBaQDKz4"
 
-# the page tabs, in the order of the keys 1 to 9 (App.tsx: PAGES)
-PAGES = ["General", "Dimmers", "Fixtures", "Rig", "Inputs", "Outputs", "Fog", "Settings", "Control Desk"]
+# the page tabs, in the order of the keys 1 to 9, then 0 (App.tsx: PAGES)
+PAGES = ["General", "Dimmers", "Fixtures", "Rig", "Inputs", "Outputs", "Fog", "Settings", "Control Desk", "Help"]
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,8 @@ MENUS: list[tuple[str, list[Item | None]]] = [
     (
         "View",
         [
-            *(Item(f"view.page.{n}", page, "ui", win_key=str(n), mac_key=f"cmd+{n}") for n, page in enumerate(PAGES, 1)),
+            # Help is 0: ⌘0 stays the UI scale's 100 %, so on macOS it has no key equivalent (the plain 0 works)
+            *(Item(f"view.page.{n % 10}", page, "ui", win_key=str(n % 10), mac_key=f"cmd+{n}" if n < 10 else "") for n, page in enumerate(PAGES, 1)),
             SEPARATOR,
             Item("view.fullscreen", "Full screen", "ui", win_key="F", mac_key="ctrl+cmd+f"),
         ],
@@ -268,7 +269,7 @@ def selector(sel) -> str:
 def arrange_cocoa_menu(main_menu, about: Callable[[], None] | None = None) -> None:
     """Called with each menu bar pywebview builds (``patch_cocoa``), on the main thread: drop pywebview's default View
     menu (its native full screen is not the app's), put its Edit menu after File, give the items their key
-    equivalents, and let About show the app's own About (Settings → About, with the full version)."""
+    equivalents, and let About show the app's own About (Help → About, with the full version)."""
     def submenus():
         for index in range(main_menu.numberOfItems()):
             entry = main_menu.itemAtIndex_(index)

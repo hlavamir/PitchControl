@@ -438,6 +438,12 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     rig_state = {"unsaved": False}  # live rig changes not yet written to the file
 
+    def unsaved_live() -> list[str]:
+        """Live edits not written to their files yet: the desktop app asks about them before quitting (quitguard.py)."""
+        return (["rig"] if rig_state["unsaved"] else []) + [f"fixture type {name}" for name in sorted(type_state["unsaved"])]
+
+    app.state.unsaved_live = unsaved_live
+
     @app.get("/api/rigs")
     def rigs():
         return {"active": store.rig.name, "available": store.rig_names(), "origins": store.rig_origins(), "unsaved": rig_state["unsaved"]}
