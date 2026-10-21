@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.7.0 — 2026-10-21
+
 ### Added
 - **A menu bar in the desktop app: File, Edit, View, Window, Help.** File: Save (what the page's Save button does, nothing
   on a page without one), Open data folder, Open logs folder, Quit (asks first like the close button). Edit: Cut, Copy,
