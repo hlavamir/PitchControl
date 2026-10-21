@@ -6,6 +6,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Help page, About: tidier layout.** The version, the two folders, then two labelled rows of identical buttons (Feedback:
+  Report a problem, Join the Discord; Project: Project on GitHub, Releases) instead of a button, a caption, a text link and
+  two more links in a row; one short caption says what a problem report contains. The Ko-fi button on the same page is
+  the same component. The keys, the footer tips and the links work as before.
+
 ## 1.7.0 — 2026-10-21
 
 ### Added

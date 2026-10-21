@@ -23,6 +23,23 @@ const KEYMAP: [string, string][] = [
 ]
 
 
+/** A link that looks like a button, the same everywhere on this page: the desktop app opens it in the default browser. */
+function LinkButton({ href, open, label, tip }: { href: string; open: (e: MouseEvent, url: string) => void; label: string; tip: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => open(e, href)}
+      data-hint="button"
+      data-tip={tip}
+      className="lbl glow-hover inline-flex h-8 flex-none items-center border border-edge bg-panel px-3 text-[11px] font-medium text-ink"
+    >
+      {label} ›
+    </a>
+  )
+}
+
 /**
  * Help (page 0): every key of the UI, About (version, folders, Report a problem, Discord, the project's links) and
  * Support. The menu bar's Help → Keyboard shortcuts and About PitchControl open it.
@@ -80,39 +97,36 @@ export function Help({ desktop, version }: { desktop?: boolean; version?: string
             </span>
           </div>
         )}
-        <div className="mt-3 flex items-center gap-3 border-t border-seam pt-3">
-          <a
-            href={reportUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => openLink(e, reportUrl)}
-            data-hint="button"
-            data-tip="Open a new issue on GitHub in the browser, with the version and the system filled in: you see and edit everything before you send it. Attach the newest log file (Open logs folder)"
-            className="lbl glow-hover inline-flex h-8 flex-none items-center border border-edge bg-panel px-3 text-[11px] font-medium text-ink"
-          >
-            Report a problem ›
-          </a>
-          <span className="lbl min-w-0 flex-1 text-[10px] leading-snug text-dim">A GitHub issue, filled in with the version and the system; attach the newest log</span>
-          <a
-            className="lbl flex-none text-[10px] text-dim hover:text-ink"
-            href="https://discord.gg/4nbBaQDKz4"
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => openLink(e, 'https://discord.gg/4nbBaQDKz4')}
-            data-hint="button"
-            data-tip="Open the PitchControl Discord in the browser: questions, help and chat with other users"
-          >
-            Join the Discord ›
-          </a>
+        <div className="mt-3 flex flex-col gap-2 border-t border-seam pt-3 text-[11px]">
+          <span className="flex items-center gap-2">
+            <span className="lbl w-20 flex-none text-[10px] text-dim">Feedback</span>
+            <span className="flex flex-wrap gap-1.5">
+              <LinkButton
+                href={reportUrl}
+                open={openLink}
+                label="Report a problem"
+                tip="Open a new issue on GitHub in the browser, with the version and the system filled in: you see and edit everything before you send it. Attach the newest log file (Open logs folder)"
+              />
+              <LinkButton href="https://discord.gg/4nbBaQDKz4" open={openLink} label="Join the Discord" tip="Open the PitchControl Discord in the browser: questions, help and chat with other users" />
+            </span>
+          </span>
+          <span className="flex gap-2">
+            <span className="w-20 flex-none" />
+            <span className="lbl text-[10px] leading-snug text-dim">A problem report is a GitHub issue with the version and the system filled in. Attach the newest log.</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="lbl w-20 flex-none text-[10px] text-dim">Project</span>
+            <span className="flex flex-wrap gap-1.5">
+              <LinkButton href="https://github.com/hlavamir/PitchControl" open={openLink} label="Project on GitHub" tip="Open the project page on GitHub in the browser" />
+              <LinkButton
+                href="https://github.com/hlavamir/PitchControl/releases"
+                open={openLink}
+                label="Releases"
+                tip="Open the list of releases (downloads for macOS and Windows) on GitHub"
+              />
+            </span>
+          </span>
         </div>
-        <span className="lbl mt-3 flex gap-4 text-[10px] text-dim">
-          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl')} data-hint="button" data-tip="Open the project page on GitHub in the browser">
-            Project on GitHub ›
-          </a>
-          <a className="hover:text-ink" href="https://github.com/hlavamir/PitchControl/releases" target="_blank" rel="noreferrer" onClick={(e) => openLink(e, 'https://github.com/hlavamir/PitchControl/releases')} data-hint="button" data-tip="Open the list of releases (downloads for macOS and Windows) on GitHub">
-            Releases ›
-          </a>
-        </span>
       </Section>
       <Section
         index="03"
@@ -125,17 +139,7 @@ export function Help({ desktop, version }: { desktop?: boolean; version?: string
           donation.
         </p>
         <div className="mt-3">
-          <a
-            href="https://ko-fi.com/zeys_hlvmr"
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => openLink(e, 'https://ko-fi.com/zeys_hlvmr')}
-            data-hint="button"
-            data-tip="Open the Ko-fi page of the project in the browser: one-off or monthly donations"
-            className="lbl glow-hover inline-flex h-8 items-center border border-edge bg-panel px-3 text-[11px] font-medium text-ink"
-          >
-            Donate on Ko-fi ›
-          </a>
+          <LinkButton href="https://ko-fi.com/zeys_hlvmr" open={openLink} label="Donate on Ko-fi" tip="Open the Ko-fi page of the project in the browser: one-off or monthly donations" />
         </div>
       </Section>
       </div>
