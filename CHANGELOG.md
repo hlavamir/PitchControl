@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.7.1 — 2026-10-21
+
 ### Changed
 - **Help page, About: tidier layout.** The version, the two folders, then two labelled rows of identical buttons (Feedback:
   Report a problem, Join the Discord; Project: Project on GitHub, Releases) instead of a button, a caption, a text link and
