@@ -282,7 +282,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
         index="01"
         title={`Universe ${universe} · channels ${first}–${first + PER_PAGE - 1}`}
         right="drag a channel to override it · the switch releases it · Q / E subpage"
-        className="min-h-0 flex-1"
+        className="min-h-[28rem] flex-1"
         bodyClassName="p-0"
         tip="Every DMX channel of the universe, live. Override a channel by hand, e.g. to test a light; overrides win over routes and fixtures and are saved. Channels in the blue colour are decided by a route (live input)"
       >
@@ -300,7 +300,15 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
         </div>
       </Section>
 
-      <RoutesSection index="02" routes={routes} overlaps={engine.state?.route_overlaps ?? []} universe={universe} />
+      <RoutesSection
+        index="02"
+        routes={routes}
+        overlaps={engine.state?.route_overlaps ?? []}
+        universe={universe}
+        midi={engine.state?.io?.midi_routes}
+        notices={engine.state?.route_midi_notices ?? []}
+        live={live}
+      />
     </div>
   )
 }

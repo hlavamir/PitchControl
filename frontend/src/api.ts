@@ -1,7 +1,7 @@
 // Types and helpers for the PitchControl backend API.
 
 import type { LiveInputStatus } from './liveInput'
-import type { RouteOverlap, RouteState } from './routes'
+import type { MidiNotice, MidiRoutesStatus, RouteOverlap, RouteState } from './routes'
 
 export type MacroKind = 'fader' | 'toggle' | 'button' | 'momentary' | 'radio'
 
@@ -148,11 +148,13 @@ export interface EngineState {
   overrides?: Record<string, Record<string, number>> // Control Desk: universe → channel (1–512) → value
   routes?: RouteState[] // Control Desk: live input copied onto output channels (item 58)
   route_overlaps?: RouteOverlap[] // output channels that two routes cover
+  route_midi_notices?: MidiNotice[] // controls of MIDI routes that the app's MIDI mapping uses too
   io: {
     outputs: { enttec: (IoStatus | null)[]; artnet: IoStatus | null; pitchpls_v2: IoStatus | null; osc: OscStatus | null }
     audio: IoStatus | null
     midi: IoStatus | null
     live_input?: LiveInputStatus // Art-Net and DMX input (item 57)
+    midi_routes?: MidiRoutesStatus // the devices of MIDI routes and a Learn that waits (item 59)
   }
 }
 
