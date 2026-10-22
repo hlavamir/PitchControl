@@ -31,7 +31,10 @@ THE SHAPE OF AN IMPORTED TYPE FILE (everything not listed here is PitchControl's
   ``converter``   the version of this mapping (``CONVERTER_VERSION``; item 55's JavaScript has the same number)
   ``key_order``   OFL's top-level keys in their original order (for an exact rebuild)
   ``note``        free text, e.g. for a fixture written by hand from a manual
-  and where this copy was fetched from, which two imports of the same fixture may differ in (the comparison of items
+  A file downloaded from open-fixture-library.org ("Download as" → "Open Fixture Library JSON") has three keys more than
+  OFL's repository (``fixtureKey``, ``manufacturerKey``, ``oflURL``) and the schema version in ``$schema``: they are
+  kept like the others, and give ``fixture`` and ``schema_version`` to an import from a file.
+  And where this copy was fetched from, which two imports of the same fixture may differ in (the comparison of items
   54 and 55 leaves them out): ``commit`` (OFL's git commit, online imports), ``file`` (the file name, imports
   from a file), ``schema_version`` (the version of OFL's schema at that commit, when known).
 
@@ -121,7 +124,8 @@ def type_name(manufacturer: str | None, fixture_name: str) -> str:
     first unless the fixture name has it already, "/" becomes "-" ("LED Bar 240/8" -> "Stairville LED Bar 240-8")."""
     text = fixture_name.strip()
     if manufacturer and not text.lower().startswith(manufacturer.lower()):
-        text = f"{manufacturer.strip()} {text}"
+        maker = manufacturer.strip()
+        text = f"{maker[:1].upper() + maker[1:] if maker.islower() else maker} {text}"  # OFL has "cameo"
     text = unicodedata.normalize("NFKD", text.replace("/", "-")).encode("ascii", "ignore").decode()
     text = re.sub(r"[^A-Za-z0-9 _.\-]", "", text)
     text = re.sub(r"\s+", " ", text).strip().lstrip(" _.-")
@@ -145,6 +149,24 @@ def _check_fixture(data: Any) -> dict:
     if not all(isinstance(m, dict) and isinstance(m.get("name"), str) and isinstance(m.get("channels"), list) for m in data["modes"]):
         raise ImportProblem("this is not an Open Fixture Library fixture (a mode has no name or no channels)")
     return data
+
+
+def _key_of(data: dict) -> str | None:
+    """``maker/fixture`` of a file downloaded from the website (it carries ``manufacturerKey`` and ``fixtureKey``)."""
+    maker, fixture = data.get("manufacturerKey"), data.get("fixtureKey")
+    return f"{maker}/{fixture}" if isinstance(maker, str) and isinstance(fixture, str) else None
+
+
+def _schema_version_of(data: dict) -> str | None:
+    """The schema version in the website download's ``$schema``: ``…/schema-12.6.0/schemas/fixture.json``."""
+    match = re.search(r"/schema-(\d+\.\d+\.\d+)/", str(data.get("$schema", "")))
+    return match[1] if match else None
+
+
+def _maker_hint(data: dict) -> str | None:
+    """The manufacturer key of a downloaded file as words (``american-dj`` -> ``American Dj``), for the suggested name only."""
+    maker = data.get("manufacturerKey")
+    return maker.replace("-", " ").title() if isinstance(maker, str) and maker else None
 
 
 def _channel_count(mode: dict) -> int:
@@ -174,7 +196,8 @@ def import_fixture(
     ``ImportProblem`` for data that isn't an OFL fixture and ``Redirect`` for a redirect file."""
     data = copy.deepcopy(_check_fixture(data))
     converted = convert_fixture(data, skip)
-    key = fixture or None
+    key = fixture or _key_of(data)
+    schema_version = schema_version or _schema_version_of(data)
     report = Report(
         fixture={"name": data["name"], "manufacturer": manufacturer, "key": key, "url": fixture_url(key) if key else None},
         skipped=[{"mode": name, "reason": short_reason(why), "detail": why} for name, why in converted.skipped],
@@ -183,7 +206,7 @@ def import_fixture(
     )
     if schema_version and schema_version.split(".")[0] != str(OFL_SCHEMA_MAJOR):
         report.assumptions.append(f"this fixture is in OFL schema {schema_version}; the conversion was written for {OFL_SCHEMA_MAJOR}.x, so look at the result closely")
-    name = type_name(manufacturer, data["name"])
+    name = type_name(manufacturer or _maker_hint(data), data["name"])
     if not converted.modes:
         report.notes.append("none of this fixture's modes can be expressed in PitchControl, so nothing is imported")
         return Imported(name, None, report, converted)

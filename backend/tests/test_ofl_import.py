@@ -3,6 +3,7 @@ it exactly), the extra keys survive loading, editing and saving, the report, the
 The shape being tested is documented in ``pitchcontrol/ofl/importer.py``."""
 
 import json
+import webbrowser
 from pathlib import Path
 
 import pytest
@@ -123,6 +124,24 @@ def test_the_report_gives_the_manual_links_and_warns_about_a_newer_schema():
     assert result.ftype["links"]["productPage"] == ["https://example.org/p"]
 
 
+def test_a_file_downloaded_from_the_website_gives_its_key_and_schema_version():
+    """OFL's "Download as" JSON adds fixtureKey, manufacturerKey and oflURL, and the schema version in $schema."""
+    data = {
+        "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/schema-12.6.0/schemas/fixture.json",
+        **OFL,
+        "fixtureKey": "test-bar",
+        "manufacturerKey": "american-dj",
+        "oflURL": "https://open-fixture-library.org/american-dj/test-bar",
+    }
+    result = import_fixture(data)
+    source = result.ftype["source"]
+    assert source["fixture"] == "american-dj/test-bar" and source["schema_version"] == "12.6.0"
+    assert result.name == "American Dj Test Bar"  # the manufacturer's key as words: only a suggestion
+    assert "manufacturer" not in source  # its name is not known from the file
+    assert result.ftype["oflURL"] == data["oflURL"] and result.ftype["fixtureKey"] == "test-bar"  # kept like the other keys
+    assert rebuild_ofl(result.ftype) == data and list(rebuild_ofl(result.ftype)) == list(data)
+
+
 def test_a_fixture_without_any_convertible_mode_imports_nothing():
     result = import_fixture({**OFL, "modes": [OFL["modes"][3]]})  # only the dimmer per pixel
     assert result.ftype is None and result.report.modes == [] and len(result.report.skipped) == 1
@@ -139,6 +158,8 @@ def test_things_that_are_not_ofl_fixtures_are_refused_with_a_reason():
 def test_type_names_are_file_names():
     assert type_name("Stairville", "LED Bar 240/8") == "Stairville LED Bar 240-8"
     assert type_name("Cameo", "Cameo Q-Spot 40") == "Cameo Q-Spot 40"  # the manufacturer is already there
+    assert type_name("cameo", "ROOT Par 6") == "Cameo ROOT Par 6"  # OFL's manufacturers.json has "cameo"
+    assert type_name("ADB", "Warp M") == "ADB Warp M"
     assert type_name(None, "Élan Spot") == "Elan Spot"
     assert type_name(None, "///") == "Imported fixture"
     long = type_name("M", "x" * 100)
@@ -360,3 +381,20 @@ def test_a_device_on_the_network_cannot_import(store):
     ):
         reply = phone.request(method, path, json=body)
         assert reply.status_code == 403, path
+
+
+# --------------------------------------------------------------------------- the links of a type
+
+
+def test_a_link_of_a_fixture_type_can_be_opened_but_no_other_address(store, monkeypatch):
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    http = TestClient(create_app(Engine(store, enable_hardware=False), desktop={"url": "http://127.0.0.1:1", "data_dir": "x"}))
+    link = "https://images.static-thomann.de/pics/atg/atgdata/document/manual/294835_c_294835_v3_r3_en_online.pdf"
+    assert http.post("/api/open-url", json={"url": link}).status_code == 400  # not in any type yet
+    reply = convert_file(http, OFL_FILES[[p.stem for p in OFL_FILES].index("stairville__led-bar-240-8")]).json()
+    http.post("/api/fixture-types/import", json={"name": reply["name"], "type": reply["type"]})
+    assert http.post("/api/open-url", json={"url": link}).status_code == 200
+    assert http.post("/api/open-url", json={"url": "https://evil.example/x.pdf"}).status_code == 400
+    assert http.post("/api/open-url", json={"url": "file:///C:/Windows/system32/calc.exe"}).status_code == 400
+    assert opened == [link]

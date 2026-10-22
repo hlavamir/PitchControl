@@ -188,15 +188,26 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     # the project's own pages and this app's network addresses: the only addresses the UI may ask the desktop app to open
     allowed_links = ("https://github.com/hlavamir", "https://ko-fi.com/zeys_hlvmr", "https://discord.gg/4nbBaQDKz4")
 
+    def type_links() -> set[str]:
+        """The web addresses in the ``links`` of the fixture types (manual, product page, video of an import)."""
+        found: set[str] = set()
+        for ftype in store.fixture_types.values():
+            groups = ftype.links.values() if isinstance(ftype.links, dict) else []
+            for urls in (g for g in groups if isinstance(g, list)):
+                found.update(u for u in urls if isinstance(u, str) and u.startswith(("https://", "http://")))
+        return found
+
     def is_allowed_link(url: str) -> bool:
         # the address itself or something below it ("…/zeys_hlvmr.evil.example" is neither)
         if any(url == a["url"] for a in network.status()["addresses"]):  # this computer's own network addresses (Settings → Network)
+            return True
+        if url in type_links():  # a link the user's fixture types carry (the Fixtures page shows them)
             return True
         return any(url == base or url.startswith((base + "/", base + "?", base + "#")) for base in allowed_links)
 
     @app.post("/api/open-url", dependencies=local_only)
     def open_url(data: dict):
-        """Open one of the project's pages in the default browser (desktop app; see allowed_links)."""
+        """Open one of the project's pages, or a link of a fixture type, in the default browser (desktop app; see allowed_links)."""
         if desktop is None:
             raise HTTPException(404)
         url = str(data.get("url", ""))

@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, byName, channelCount, slotKind, type ChannelMode, type ChannelSlot, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { api, byName, channelCount, slotKind, type ChannelMode, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
+import { OflImportDialog } from '../components/OflImport'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import { useSaveAction } from '../leaveGuard'
 import type { Origin } from '../components/RigPanel'
-import { fixturesInMode, hasSameName, newModeId } from '../modes'
+import { copyOfLastMode, edited, slotOfKind, type Kind } from '../fixtureEdit'
+import { fixturesInMode, hasSameName } from '../modes'
+import { linkGroups } from '../links'
+import { onOflImportRequest, takeOflImportRequest } from '../oflImport'
 import { useFieldNav } from '../useFieldNav'
 import { OPEN_TYPE_KEY } from './Rig'
-
-type Kind = ReturnType<typeof slotKind>
 
 const KIND_LABEL: Record<Kind, string> = { value: 'constant', macro: 'macro', shutter: 'shutter', pixels: 'pixels' }
 const FORMATS: PixelFormat[] = ['I', 'RGB', 'RGBW']
@@ -20,15 +22,6 @@ interface Status {
 }
 
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' | 'rename' } | { kind: 'delete' } | { kind: 'reset' }
-
-/** A slot of another kind, keeping its name. */
-function slotOfKind(slot: ChannelSlot, kind: Kind, firstMacro: string): ChannelSlot {
-  const name = slot.name ?? null
-  if (kind === 'value') return { name, value: 0 }
-  if (kind === 'macro') return { name, macro: firstMacro }
-  if (kind === 'shutter') return { name, shutter: { open: 0, strobo: 255 } }
-  return { name, pixels: 'RGB' }
-}
 
 /** The DMX channels of one mode of a type, as "start–end: what" lines. */
 function channelMap(mode: ChannelMode): { from: number; to: number; text: string }[] {
@@ -61,6 +54,8 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [modeAsk, setModeAsk] = useState<{ index: number; fixtures: string[] } | null>(null) // deleting a mode the rig uses
+  const [importing, setImporting] = useState(false) // File → Import Fixture → Open Fixture Library…
+  const [app, setApp] = useState<{ desktop: boolean; local: boolean }>({ desktop: false, local: true })
 
   const loadStatus = useCallback(() => api.get<Status>('/api/fixture-types/status').then(setStatus), [])
   const reload = useCallback(
@@ -86,6 +81,20 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   useEffect(() => {
     reload()
   }, [reload])
+  useEffect(() => {
+    api.get<{ desktop: boolean; local: boolean }>('/api/app-info').then(setApp).catch(() => undefined)
+  }, [])
+  // the menu bar's File → Import Fixture → Open Fixture Library… (on this page already, or asked before it was shown)
+  useEffect(() => {
+    if (takeOflImportRequest()) setImporting(true)
+    return onOflImportRequest(() => takeOflImportRequest() && setImporting(true))
+  }, [])
+  // a link of a type (manual, product page): the desktop app opens it in the default browser through the backend
+  const openLink = (e: MouseEvent, url: string) => {
+    if (!app.desktop || !app.local) return // a browser follows the link itself
+    e.preventDefault()
+    api.post('/api/open-url', { url }).catch(() => window.open(url, '_blank'))
+  }
 
   const t = types[selected]
 
@@ -130,8 +139,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   }
   const edit = (fn: (t: FixtureType) => void, liveNow = true) => {
     if (!t) return
-    const next = structuredClone(t)
-    fn(next)
+    const next = edited(t, fn)
     setTypes((all) => ({ ...all, [next.name]: next }))
     if (liveNow) applyLive(next)
   }
@@ -194,15 +202,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
       ;[channels[i], channels[j]] = [channels[j], channels[i]]
     })
 
-  /** A new mode starts as a copy of the last one: a mode is mostly the one before it with a channel more or less. */
-  const addMode = () =>
-    edit((x) => {
-      const last = x.modes[x.modes.length - 1]
-      const copy = structuredClone(last)
-      copy.name = `${last.name} copy`
-      copy.id = newModeId(x.modes, copy.name)
-      x.modes.push(copy)
-    })
+  const addMode = () => edit((x) => x.modes.push(copyOfLastMode(x.modes)))
 
   const removeMode = (mi: number) =>
     edit((x) => {
@@ -249,6 +249,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const count = t ? channelCount(t) : 0
 
   return (
+    <>
     <div ref={pageRef} className="grid gap-1.5 wide:h-full wide:grid-cols-[17rem_minmax(0,1fr)_22rem] wide:grid-rows-[minmax(0,1fr)]">
       <Section
         index="01"
@@ -296,6 +297,13 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
             </Button>
             <Button onClick={() => askName('rename')} disabled={!t} tip="Rename the type file; every rig that uses it is updated">
               Rename
+            </Button>
+            <Button
+              onClick={() => setImporting(true)}
+              disabled={!app.local}
+              tip={app.local ? 'Import a fixture from the Open Fixture Library: a .json file, or online by manufacturer and fixture (File → Import Fixture)' : 'Importing works on the computer that runs PitchControl: it writes that computer’s data folder'}
+            >
+              Import…
             </Button>
             {origin === 'modified' ? (
               <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={!t} tip="Back to the version that comes with the app: your changes to this type are deleted (asks first)">
@@ -421,6 +429,27 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
             <Row label="Used in" hint="Rigs that place this type; a type in use cannot be deleted">
               <span className="text-[12px] text-dim">{usedIn.length ? usedIn.join(', ') : 'no rig'}</span>
             </Row>
+            {linkGroups(t).length > 0 && (
+              <Row label="Links" hint="Where the fixture's manual and product page are, as the Open Fixture Library has them: check the type against the manual" plain>
+                <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px]">
+                  {linkGroups(t).map((g) =>
+                    g.urls.map((u, i) => (
+                      <a key={u} href={u} target="_blank" rel="noreferrer" className="underline" data-tip={u} onClick={(e) => openLink(e, u)}>
+                        {g.urls.length > 1 ? `${g.label} ${i + 1}` : g.label} ›
+                      </a>
+                    )),
+                  )}
+                </span>
+              </Row>
+            )}
+            {t.source?.format === 'ofl' && (
+              <Row label="Source" hint="This type was imported from the Open Fixture Library; the library's original data is kept in the type file, whatever you edit here" plain>
+                <span className="text-[12px] text-dim">
+                  Open Fixture Library
+                  {[t.source.fixture, t.source.file, t.source.commit?.slice(0, 7)].filter(Boolean).map((x) => ` · ${x}`)}
+                </span>
+              </Row>
+            )}
 
             <div className="mt-3 border-t border-seam pt-3">
               <p className="lbl mb-2 text-[10px] text-dim">
@@ -639,5 +668,19 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         )}
       </Section>
     </div>
+    {importing && (
+      <OflImportDialog
+        types={types}
+        origins={status.origins}
+        usage={status.usage}
+        openLink={openLink}
+        onClose={() => setImporting(false)}
+        onDone={(name, text) => {
+          setImporting(false)
+          run(async () => (setMessage(text), name))
+        }}
+      />
+    )}
+    </>
   )
 }

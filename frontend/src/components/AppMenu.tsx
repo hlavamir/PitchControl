@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { AltTap, CLOSED, accessKey, activate, menuKey, openByLetter, type MenuDef, type MenuState } from '../appMenu'
+import { AltTap, CLOSED, accessKey, activate, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
 
 /**
  * The Windows app's menu bar, in the header row next to the logo (item 52; macOS has the native menu bar). The items
  * never take the focus: a text field keeps its caret and selection, so Cut, Copy and Paste act on it. Keyboard: Alt
- * (or F10) gives the bar the keys, Alt+letter opens a menu, ← → ↓ ↑ move, ⏎ runs, Esc closes (appMenu.ts).
+ * (or F10) gives the bar the keys, Alt+letter opens a menu, ← → ↓ ↑ move, ⏎ runs, Esc closes (appMenu.ts); an item with ▸
+ * opens a submenu to its right (→ or ⏎).
  */
 export function AppMenu({
   menus,
@@ -82,7 +83,29 @@ export function AppMenu({
     }
   }, [])
 
-  const openAt = (index: number): MenuState => ({ active: true, menu: index, open: true, item: null, keys: false })
+  /** One item of a drop-down or a flyout. */
+  const row = (item: MenuItemDef, lit: boolean, enter: () => void, leave: () => void) => (
+    <div
+      key={item.id}
+      role="menuitem"
+      aria-disabled={!enabled(item.id)}
+      onMouseDown={(e) => e.preventDefault()}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
+      onClick={() => {
+        if (!enabled(item.id)) return
+        setState(CLOSED)
+        run(item.id)
+      }}
+      className={`flex h-7 cursor-default items-center gap-2.5 pr-3 pl-2 text-[12px] ${!enabled(item.id) ? 'text-dim opacity-50' : lit ? 'glow-on bg-ink text-ground' : 'text-ink'}`}
+    >
+      <span className="flex w-2 flex-none justify-center">{checked(item.id) && <span className={`size-[6px] ${lit && enabled(item.id) ? 'bg-ground' : 'dot-on'}`} />}</span>
+      <span className="lbl flex-1 whitespace-nowrap">{label(item.id, item.label)}</span>
+      {item.key && <span className="ml-6 font-mono text-[11px] opacity-60">{item.key}</span>}
+    </div>
+  )
+
+  const openAt = (index: number): MenuState => ({ ...CLOSED, active: true, menu: index, open: true })
 
   return (
     <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip="Menu bar: Alt or F10 gives it the keys, Alt + the underlined letter opens a menu">
@@ -119,27 +142,43 @@ export function AppMenu({
                 {m.items.map((item, j) =>
                   item === null ? (
                     <div key={`sep${j}`} role="separator" className="mx-2 my-1 border-t border-seam" />
-                  ) : (
+                  ) : isSub(item) ? (
                     <div
-                      key={item.id}
-                      role="menuitem"
-                      aria-disabled={!enabled(item.id)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onMouseEnter={() => setState((s) => ({ ...s, item: j }))}
-                      onMouseLeave={() => setState((s) => (s.item === j ? { ...s, item: null } : s))}
-                      onClick={() => {
-                        if (!enabled(item.id)) return
-                        setState(CLOSED)
-                        run(item.id)
-                      }}
-                      className={`flex h-7 cursor-default items-center gap-2.5 pr-3 pl-2 text-[12px] ${
-                        !enabled(item.id) ? 'text-dim opacity-50' : state.item === j ? 'glow-on bg-ink text-ground' : 'text-ink'
-                      }`}
+                      key={item.submenu}
+                      className="relative"
+                      onMouseEnter={() => setState((s) => ({ ...s, item: j, subOpen: true, sub: null }))}
                     >
-                      <span className="flex w-2 flex-none justify-center">{checked(item.id) && <span className={`size-[6px] ${state.item === j && enabled(item.id) ? 'bg-ground' : 'dot-on'}`} />}</span>
-                      <span className="lbl flex-1 whitespace-nowrap">{label(item.id, item.label)}</span>
-                      {item.key && <span className="ml-6 font-mono text-[11px] opacity-60">{item.key}</span>}
+                      <div
+                        role="menuitem"
+                        aria-haspopup="menu"
+                        aria-expanded={state.item === j && state.subOpen}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setState((s) => ({ ...s, item: j, subOpen: !(s.item === j && s.subOpen), sub: null }))}
+                        className={`flex h-7 cursor-default items-center gap-2.5 pr-3 pl-2 text-[12px] ${state.item === j ? 'glow-on bg-ink text-ground' : 'text-ink'}`}
+                      >
+                        <span className="w-2 flex-none" />
+                        <span className="lbl flex-1 whitespace-nowrap">{item.submenu}</span>
+                        <span className="ml-6 text-[10px]">▸</span>
+                      </div>
+                      {state.item === j && state.subOpen && (
+                        <div role="menu" aria-label={item.submenu} className="absolute top-0 left-full z-50 min-w-[14rem] border border-ink bg-panel py-1 shadow-[0_0_30px_rgb(0_0_0/0.6)]">
+                          {item.items.map((sub, k) =>
+                            sub === null ? (
+                              <div key={`sep${k}`} role="separator" className="mx-2 my-1 border-t border-seam" />
+                            ) : (
+                              row(sub, state.sub === k, () => setState((s) => ({ ...s, sub: k })), () => setState((s) => (s.sub === k ? { ...s, sub: null } : s)))
+                            ),
+                          )}
+                        </div>
+                      )}
                     </div>
+                  ) : (
+                    row(
+                      item,
+                      state.item === j,
+                      () => setState((s) => ({ ...s, item: j, subOpen: false, sub: null })),
+                      () => setState((s) => (s.item === j ? { ...s, item: null } : s)),
+                    )
                   ),
                 )}
               </div>

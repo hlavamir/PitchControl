@@ -282,6 +282,16 @@ export interface ChannelMode {
   description: string
   pixels: number // pixels the light has in this mode (a bar can have 1 or 8, depending on the mode)
   channels: ChannelSlot[]
+  ofl_mode?: string // the name of the Open Fixture Library mode this one was imported from (item 53)
+}
+
+/** Where an imported type came from (the shape is documented in backend ofl/importer.py); the Fixtures page shows some of it. */
+export interface TypeSource {
+  format?: string // 'ofl'
+  fixture?: string // 'manufacturer-key/fixture-key'
+  file?: string
+  commit?: string
+  [key: string]: unknown
 }
 
 export interface FixtureType {
@@ -292,6 +302,9 @@ export interface FixtureType {
   default_mode: string // a mode's id: new rig fixtures start in it
   gamma: number // device curve per channel; 1 = values sent unchanged
   strobo_color: HSB
+  // kept data of an import (item 53): carried through every edit and save, not used by the engine
+  source?: TypeSource
+  links?: Record<string, string[]> // manual, productPage, video
   [key: string]: unknown
 }
 

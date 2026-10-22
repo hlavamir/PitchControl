@@ -15,6 +15,7 @@ import { Rig } from './pages/Rig'
 import { ControlDesk } from './pages/ControlDesk'
 import { Help } from './pages/Help'
 import { Settings } from './pages/Settings'
+import { requestOflImport } from './oflImport'
 import { clientOf, issueUrl } from './reportProblem'
 import { DEFAULT_UI, applyScale, applyTheme, clampScale, type UiSettings } from './theme'
 import { useEngine } from './useEngine'
@@ -258,6 +259,11 @@ export default function App() {
     async (id: string) => {
       if (id.startsWith('view.page.')) go(pageOfKey(Number(id.slice('view.page.'.length))))
       else if (id === 'file.save') save()
+      else if (id === 'file.import.ofl') {
+        // the Fixtures page has the dialog (it opens it when it is shown; this computer only, like the endpoints)
+        requestOflImport()
+        showPage('Fixtures')
+      }
       else if (id === 'view.fullscreen') toggleFullscreen()
       else if (id === 'app.settings') showPage('Settings')
       else if (id === 'help.keys') showPage('Help', 'help-keyboard')

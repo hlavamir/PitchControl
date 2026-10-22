@@ -9,7 +9,7 @@ const MENUS: MenuDef[] = [
   { title: 'Window', items: [item('window.minimize')] },
   { title: 'Help', items: [item('help.docs'), item('help.keys')] },
 ]
-const all = () => true
+const all = (_id?: string) => true
 const press = (state: MenuState, ...keys: string[]) => keys.reduce<{ state: MenuState; run?: string }>((r, k) => menuKey(r.state, k, MENUS, all), { state })
 
 describe('showDrawnMenu: only in the Windows app window', () => {
@@ -25,7 +25,7 @@ describe('showDrawnMenu: only in the Windows app window', () => {
 
 describe('menuKey: Windows menu conventions', () => {
   it('Alt / F10 highlights the first title, nothing open yet', () => {
-    expect(activate()).toEqual({ active: true, menu: 0, open: false, item: null, keys: true })
+    expect(activate()).toEqual({ active: true, menu: 0, open: false, item: null, subOpen: false, sub: null, keys: true })
   })
   it('← → move between the titles, wrapping', () => {
     expect(press(activate(), 'ArrowRight', 'ArrowRight').state.menu).toBe(2)
@@ -68,6 +68,50 @@ describe('menuKey: Windows menu conventions', () => {
     expect(nextItem(MENUS[0], null, 1, () => false)).toBeNull()
     const none = openByLetter(MENUS, 'w', () => false)!
     expect(menuKey(none, 'Enter', MENUS, () => false).run).toBeUndefined()
+  })
+})
+
+describe('menuKey: a submenu (File → Import Fixture ▸)', () => {
+  const FILE: MenuDef[] = [
+    { title: 'File', items: [item('file.save'), null, { submenu: 'Import Fixture', items: [item('file.import.ofl'), item('file.import.qlc')] }, null, item('file.quit')] },
+    { title: 'Edit', items: [item('edit.copy')] },
+  ]
+  const keys = (state: MenuState, enabled: (id: string) => boolean, ...ks: string[]) => ks.reduce<{ state: MenuState; run?: string }>((r, k) => menuKey(r.state, k, FILE, enabled), { state })
+  const onSub = (enabled: (id: string) => boolean = all) => keys(activate(), enabled, 'ArrowDown', 'ArrowDown') // the submenu row, past Save and the separator
+
+  it('↓ lands on the submenu row like on any item', () => expect(onSub().state).toMatchObject({ open: true, item: 2, subOpen: false }))
+  it('→ opens the flyout on its first item, ⏎ too', () => {
+    expect(keys(onSub().state, all, 'ArrowRight').state).toMatchObject({ item: 2, subOpen: true, sub: 0 })
+    expect(keys(onSub().state, all, 'Enter').state).toMatchObject({ subOpen: true, sub: 0 })
+    expect(keys(onSub().state, all, 'Enter').run).toBeUndefined() // opening is not running
+  })
+  it('↓ ↑ move in the flyout, ⏎ runs the item and closes everything', () => {
+    const open = keys(onSub().state, all, 'ArrowRight', 'ArrowDown')
+    expect(open.state.sub).toBe(1)
+    expect(keys(open.state, all, 'ArrowDown').state.sub).toBe(0) // wraps
+    const run = keys(open.state, all, 'Enter')
+    expect(run.run).toBe('file.import.qlc')
+    expect(run.state).toEqual(CLOSED)
+  })
+  it('← and Esc close the flyout only; Esc again the drop-down', () => {
+    const open = keys(onSub().state, all, 'ArrowRight').state
+    for (const k of ['ArrowLeft', 'Escape']) expect(keys(open, all, k).state).toMatchObject({ active: true, open: true, item: 2, subOpen: false, sub: null })
+    expect(keys(open, all, 'Escape', 'Escape').state).toMatchObject({ open: false, active: true })
+  })
+  it('in the flyout the other keys do nothing: no jump to another menu, no letters', () => {
+    const open = keys(onSub().state, all, 'ArrowRight').state
+    expect(keys(open, all, 'e').state).toEqual(open)
+    expect(keys(open, all, 'ArrowRight').state).toEqual(open)
+  })
+  it('a disabled item of the flyout is skipped and never runs', () => {
+    const noOfl = (id: string) => id !== 'file.import.ofl'
+    expect(keys(onSub(noOfl).state, noOfl, 'ArrowRight').state.sub).toBe(1)
+    expect(keys(onSub(noOfl).state, () => false, 'ArrowRight', 'Enter').run).toBeUndefined()
+  })
+  it('moving to another item closes the flyout; → on a plain item still goes to the next menu', () => {
+    const open = keys(onSub().state, all, 'ArrowRight').state
+    expect(menuKey({ ...open, subOpen: false, sub: null }, 'ArrowDown', FILE, all).state).toMatchObject({ item: 4, subOpen: false })
+    expect(keys(activate(), all, 'ArrowDown', 'ArrowRight').state).toMatchObject({ menu: 1, open: true })
   })
 })
 
