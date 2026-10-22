@@ -147,7 +147,7 @@ def test_what_is_kept_and_the_way_back(path, tmp_path):
     assert ftype["source"]["format"] == "ofl" and ftype["source"]["via"] == "qlcplus" and ftype["source"]["file"] == path.name
     assert ftype["source"]["converter"] == CONVERTER_VERSION and "license" not in ftype["source"] and "fixture" not in ftype["source"]
     assert "QLC+" in ftype["source"]["note"] and ftype["source"]["manufacturer"] == "Test Lights"
-    assert ftype["qlcplus"]["xml"] == path.read_text(encoding="utf-8")  # the original file, whole
+    assert ftype["qlcplus"]["xml"] == path.read_bytes().decode("utf-8")  # the original file, whole
     assert ftype["qlcplus"]["creator"] == {"Name": "Q Light Controller Plus", "Version": "4.12.2", "Author": ftype["qlcplus"]["creator"]["Author"]}
     assert ftype["qlcplus"]["type"] and rebuild_ofl(ftype) == ofl and list(rebuild_ofl(ftype)) == list(ofl)  # OFL's fixture, in the order it was built
     store = ConfigStore(tmp_path)  # saved, loaded again: nothing is lost
