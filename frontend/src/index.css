@@ -22,6 +22,8 @@
   --color-edge: #34363a;
   --color-seam: #26282b;
   --color-dim: #8a8c87;
+  --color-log-error: #e5655c; /* the log view (Settings → Log): errors red, warnings amber */
+  --color-log-warn: #e8a13c;
   --color-ink: rgb(var(--ink-rgb));
 }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EngineState } from './api'
+import type { LogBatch } from './logView'
 
 export const PREVIEW_SIZE = 256
 
@@ -12,6 +13,12 @@ export interface EngineConnection {
   setDeferred: (name: string, value: number) => void // hue/saturation from the keyboard: applied once keys rest
   cancelPending: (name: string) => void
   setOverride: (universe: number, channel: number, value: number | null) => void // Control Desk; null releases
+  /**
+   * The log view (Settings → Log, item 56) asks for the records of this run that are newer than ``after()`` and gets them,
+   * batched, until it unsubscribes (the returned function). Asked again after a reconnect. One viewer at a time; this
+   * computer only: the server sends a device on the network nothing.
+   */
+  subscribeLog: (after: () => number, onBatch: (batch: LogBatch) => void) => () => void
 }
 
 /**
@@ -23,6 +30,7 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
   const [preview, setPreview] = useState<Uint8Array | null>(null)
   const [connected, setConnected] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
+  const logRef = useRef<{ after: () => number; onBatch: (batch: LogBatch) => void } | null>(null)
 
   useEffect(() => {
     let closed = false
@@ -33,10 +41,16 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
       const ws = new WebSocket(`${proto}://${location.host}/ws${withPreview ? '' : '?preview=0'}`)
       ws.binaryType = 'arraybuffer'
       socketRef.current = ws
-      ws.onopen = () => setConnected(true)
+      ws.onopen = () => {
+        setConnected(true)
+        const log = logRef.current
+        if (log) ws.send(JSON.stringify({ type: 'log_subscribe', after: log.after() })) // the view stays open over a reconnect
+      }
       ws.onmessage = (ev) => {
-        if (typeof ev.data === 'string') setState(JSON.parse(ev.data))
-        else setPreview(new Uint8Array(ev.data))
+        if (typeof ev.data !== 'string') return setPreview(new Uint8Array(ev.data))
+        const msg = JSON.parse(ev.data)
+        if (msg.type === 'log') logRef.current?.onBatch(msg) // the engine state has no "type"
+        else setState(msg)
       }
       ws.onclose = () => {
         setConnected(false)
@@ -66,5 +80,19 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
     [send],
   )
 
-  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride }
+  const subscribeLog = useCallback(
+    (after: () => number, onBatch: (batch: LogBatch) => void) => {
+      const sub = { after, onBatch }
+      logRef.current = sub
+      send({ type: 'log_subscribe', after: after() }) // not open yet: onopen asks
+      return () => {
+        if (logRef.current !== sub) return
+        logRef.current = null
+        send({ type: 'log_unsubscribe' })
+      }
+    },
+    [send],
+  )
+
+  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride, subscribeLog }
 }

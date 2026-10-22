@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
-import { showDrawnMenu, type MenuDef } from './appMenu'
+import { showLogPanel } from './logView'
+import { menuTarget, showDrawnMenu, type MenuDef } from './appMenu'
 import { AppMenu } from './components/AppMenu'
 import { Button, StatusDot } from './components/forms'
 import { LeaveGuardContext, type Guard } from './leaveGuard'
@@ -116,6 +117,7 @@ export default function App() {
   const [page, setPage] = useState<Page>(initialPage)
   const [defs, setDefs] = useState<Record<string, MacroDef>>({})
   const [desktop, setDesktop] = useState(false)
+  const [local, setLocal] = useState(false) // this computer's own window or browser: not a device on the network (Settings → Log is only here)
   const [version, setVersion] = useState('')
   const [fullscreen, setFullscreen] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false })
   const [ui, setUi] = useState<UiSettings>(DEFAULT_UI)
@@ -136,6 +138,7 @@ export default function App() {
       .get<{ desktop: boolean; local: boolean; platform: string; fullscreen_supported: boolean; fullscreen: boolean; version: string }>('/api/app-info')
       .then((info) => {
         setDesktop(info.desktop)
+        setLocal(showLogPanel(info))
         setVersion(info.version)
         setFullscreen({ supported: info.fullscreen_supported, on: info.fullscreen })
         if (showDrawnMenu(location.search, info)) api.get<{ menus: MenuDef[] }>('/api/menu').then((r) => setMenus(r.menus))
@@ -265,9 +268,7 @@ export default function App() {
         showPage('Fixtures')
       }
       else if (id === 'view.fullscreen') toggleFullscreen()
-      else if (id === 'app.settings') showPage('Settings')
-      else if (id === 'help.keys') showPage('Help', 'help-keyboard')
-      else if (id === 'app.about') showPage('Help', 'help-about')
+      else if (menuTarget(id)) showPage(menuTarget(id)!.page as Page, menuTarget(id)!.section) // Settings, Help → Keyboard shortcuts, About, Show log
       else if (id === 'help.report') {
         const info = await api.get<{ version: string; system: string; desktop: boolean; local: boolean }>('/api/app-info')
         const url = issueUrl({ version: info.version, system: info.system, client: clientOf(info), userAgent: navigator.userAgent })
@@ -515,7 +516,7 @@ export default function App() {
           {page === 'Outputs' && <Output engine={engine} />}
           {page === 'Inputs' && <Inputs engine={engine} />}
           {page === 'Fog' && <Fog engine={engine} />}
-          {page === 'Settings' && <Settings ui={ui} onChange={setUi} desktop={desktop} />}
+          {page === 'Settings' && <Settings ui={ui} onChange={setUi} desktop={desktop} local={local} engine={engine} />}
           {page === 'Control Desk' && <ControlDesk engine={engine} />}
           {page === 'Help' && <Help desktop={desktop} version={version} />}
         </main>

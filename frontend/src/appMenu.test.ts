@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AltTap, CLOSED, activate, menuKey, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
+import { AltTap, CLOSED, LOG_SECTION, activate, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
 
 const item = (id: string, label = id) => ({ id, label, kind: 'ui' as const, key: '' })
 const MENUS: MenuDef[] = [
@@ -149,5 +149,20 @@ describe('AltTap: Alt alone toggles the bar', () => {
     t.down(k('Alt'))
     t.cancel()
     expect(t.up(k('Alt'))).toBe(false)
+  })
+})
+
+describe('the items that show a page', () => {
+  it('Help → Show log opens Settings at the log panel', () => {
+    expect(menuTarget('help.log')).toEqual({ page: 'Settings', section: LOG_SECTION })
+    expect(LOG_SECTION).toBe('settings-log') // the id of the panel (LogSection.tsx)
+  })
+  it('keeps the others: Settings…, Keyboard shortcuts, About', () => {
+    expect(menuTarget('app.settings')).toEqual({ page: 'Settings' })
+    expect(menuTarget('help.keys')).toEqual({ page: 'Help', section: 'help-keyboard' })
+    expect(menuTarget('app.about')).toEqual({ page: 'Help', section: 'help-about' })
+  })
+  it('leaves the items that do something else to their own actions', () => {
+    for (const id of ['file.save', 'view.page.3', 'help.report', 'help.docs', 'file.logs_folder']) expect(menuTarget(id)).toBeNull()
   })
 })

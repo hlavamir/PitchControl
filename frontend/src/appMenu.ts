@@ -157,3 +157,22 @@ export class AltTap {
     this.armed = false
   }
 }
+
+/** The id of the Settings panel that shows the log (Help → Show log scrolls to it). */
+export const LOG_SECTION = 'settings-log'
+
+/** The items that only show a page, and the section of it to scroll to (the rest of the menu's items do something). */
+export function menuTarget(id: string): { page: string; section?: string } | null {
+  switch (id) {
+    case 'app.settings':
+      return { page: 'Settings' }
+    case 'help.keys':
+      return { page: 'Help', section: 'help-keyboard' }
+    case 'app.about':
+      return { page: 'Help', section: 'help-about' }
+    case 'help.log':
+      return { page: 'Settings', section: LOG_SECTION }
+    default:
+      return null
+  }
+}

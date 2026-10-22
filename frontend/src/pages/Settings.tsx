@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { api, type Settings as SettingsData } from '../api'
 import { Button, Row, Section } from '../components/forms'
+import { LogSection } from '../components/LogSection'
 import { NetworkSection } from '../components/NetworkSection'
 import { DESIGN_SIZE, INKS, clampScale, fitScale, type InkName, type UiSettings } from '../theme'
+import type { EngineConnection } from '../useEngine'
 import { useFieldNav } from '../useFieldNav'
 
 const INK_NAMES: [InkName, string][] = [
@@ -69,11 +71,11 @@ function HSlider({ value, min, max, onChange, step, fine, label, tip }: { value:
 }
 
 /**
- * Settings: appearance (ink colour, glow, brightness, key hints), the engine, the network and the app (the keyboard
- * reference, About and Support are on the Help page).
+ * Settings: appearance (ink colour, glow, brightness, key hints), the engine, the network, the app and the log of this
+ * run (the keyboard reference, About and Support are on the Help page).
  * Changes apply immediately and are saved to settings.json, so they are restored next session.
  */
-export function Settings({ ui, onChange, desktop }: { ui: UiSettings; onChange: (ui: UiSettings) => void; desktop?: boolean }) {
+export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSettings; onChange: (ui: UiSettings) => void; desktop?: boolean; local: boolean; engine: EngineConnection }) {
   const saveTimer = useRef<number | undefined>(undefined)
 
   const change = (patch: Partial<UiSettings>) => {
@@ -263,6 +265,8 @@ export function Settings({ ui, onChange, desktop }: { ui: UiSettings; onChange: 
       )}
 
       </div>
+
+      {local && <LogSection index="05" engine={engine} />}
     </div>
   )
 }
