@@ -1,3 +1,5 @@
 *.bat text eol=crlf
 *.command text eol=lf
 *.sh text eol=lf
+# the OFL plugin is copied into OFL's repository, whose lint wants LF
+tools/open-fixture-library/** text eol=lf

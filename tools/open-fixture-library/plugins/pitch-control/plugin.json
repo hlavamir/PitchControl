@@ -1,0 +1,56 @@
+{
+  "$schema": "../../schemas/plugin.json",
+
+  "name": "PitchControl",
+  "description": [
+    "<p><em>PitchControl</em> is a free, open-source program that plays DMX",
+    "lights to the music: it listens to an audio input, fires the strobe on the",
+    "peaks and spreads colours and a moving mask across the fixtures of a rig.",
+    "It runs on macOS and Windows and sends DMX over USB and Art-Net.</p>",
+
+    "<p>This plugin writes one PitchControl fixture type file for each fixture,",
+    "with all of the fixture's DMX modes that PitchControl can use. The colour",
+    "channels become pixels, a strobe channel becomes PitchControl's shutter,",
+    "and every other channel is held at its default value. A mode with a",
+    "dimmer, amber or strobe per pixel, or with other layouts that PitchControl",
+    "can't repeat, is left out; a fixture without any usable mode can't be",
+    "exported. The file also keeps the fixture's original OFL data, so",
+    "PitchControl can show its links and the origin of the fixture.</p>",
+
+    "<p>The same conversion is built into PitchControl: <em>File → Import Fixture →",
+    "Open Fixture Library</em> makes the same type from an OFL fixture and shows",
+    "a report of what was taken and what was left out. As the fixtures are",
+    "written by volunteers, compare a type with the fixture's manual before",
+    "using it in a show.</p>"
+  ],
+  "links": {
+    "Website": "https://pitchcontrol.eu/",
+    "Download": "https://pitchcontrol.eu/download",
+    "Fixtures documentation": "https://pitchcontrol.eu/docs/fixtures-and-rigs",
+    "Source code": "https://github.com/hlavamir/PitchControl"
+  },
+  "fixtureUsage": [
+    "<p>Copy the <code>.json</code> files into the <code>fixtures/types</code>",
+    "subdirectory of your PitchControl data folder, then restart PitchControl.",
+    "The types are listed on the <em>Fixtures</em> page, where a fixture type can",
+    "be edited and its modes are chosen for each fixture of a rig.</p>"
+  ],
+  "fileLocations": {
+    "subDirectoriesAllowed": false,
+    "Windows": {
+      "user": "C:\\Users\\[user name]\\Documents\\PitchControl\\fixtures\\types"
+    },
+    "Mac OS": {
+      "user": "~/Documents/PitchControl/fixtures/types"
+    },
+    "Linux": {
+      "user": "~/Documents/PitchControl/fixtures/types"
+    }
+  },
+  "additionalInfo": [
+    "<p>PitchControl keeps its data in <code>Documents/PitchControl</code> unless a",
+    "different folder is chosen (a file <code>data_folder.txt</code> in that folder, or the",
+    "<code>--data</code> option). A file there wins over a fixture type of the same name that",
+    "comes with the program.</p>"
+  ]
+}
