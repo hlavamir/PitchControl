@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, type Settings } from '../api'
+import { api, type DeviceRef, type SerialDevice, type Settings } from '../api'
 import { useLeaveGuard } from '../leaveGuard'
 
 /**
@@ -359,6 +359,52 @@ export function StatusDot({ ok, label, error, tip }: { ok: boolean | null | unde
       />
       {label}
     </span>
+  )
+}
+
+export function deviceKey(d: DeviceRef | SerialDevice): string {
+  return d.serial_number ? `sn:${d.serial_number}` : `port:${d.port ?? ''}`
+}
+
+export function DevicePicker({
+  value,
+  devices,
+  onChange,
+  tip = 'USB device of this output; chosen by serial number, so it survives a different USB port',
+}: {
+  value: DeviceRef
+  devices: SerialDevice[]
+  onChange: (d: DeviceRef) => void
+  tip?: string
+}) {
+  const current = deviceKey(value)
+  const known = devices.some((d) => deviceKey(d) === current)
+  return (
+    <select
+      className="w-full"
+      data-tip={tip}
+      value={current}
+      onChange={(e) => {
+        const d = devices.find((x) => deviceKey(x) === e.target.value)
+        onChange(
+          d
+            ? { serial_number: d.serial_number, vid: d.vid, pid: d.pid, description: d.description, port: d.port }
+            : {},
+        )
+      }}
+    >
+      <option value="port:">— select a USB device —</option>
+      {!known && current !== 'port:' && (
+        <option value={current}>
+          {value.description ?? 'configured device'} {value.serial_number ?? value.port} (not connected)
+        </option>
+      )}
+      {devices.map((d) => (
+        <option key={deviceKey(d) + d.port} value={deviceKey(d)}>
+          {d.label}
+        </option>
+      ))}
+    </select>
   )
 }
 

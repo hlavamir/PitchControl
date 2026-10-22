@@ -1,46 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type DeviceRef, type OscStatus, type SerialDevice } from '../api'
+import { api, type OscStatus, type SerialDevice } from '../api'
 import { OutputMonitor } from '../components/OutputMonitor'
-import { ARTNET_UNIVERSES, Button, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect, useSettings } from '../components/forms'
+import { ARTNET_UNIVERSES, Button, DevicePicker, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect, deviceKey, useSettings } from '../components/forms'
 import type { EngineConnection } from '../useEngine'
 import { usePolling } from '../usePolling'
 import { useFieldNav } from '../useFieldNav'
-
-function deviceKey(d: DeviceRef | SerialDevice): string {
-  return d.serial_number ? `sn:${d.serial_number}` : `port:${d.port ?? ''}`
-}
-
-function DevicePicker({ value, devices, onChange }: { value: DeviceRef; devices: SerialDevice[]; onChange: (d: DeviceRef) => void }) {
-  const current = deviceKey(value)
-  const known = devices.some((d) => deviceKey(d) === current)
-  return (
-    <select
-      className="w-full"
-      data-tip="USB device of this output; chosen by serial number, so it survives a different USB port"
-      value={current}
-      onChange={(e) => {
-        const d = devices.find((x) => deviceKey(x) === e.target.value)
-        onChange(
-          d
-            ? { serial_number: d.serial_number, vid: d.vid, pid: d.pid, description: d.description, port: d.port }
-            : {},
-        )
-      }}
-    >
-      <option value="port:">— select a USB device —</option>
-      {!known && current !== 'port:' && (
-        <option value={current}>
-          {value.description ?? 'configured device'} {value.serial_number ?? value.port} (not connected)
-        </option>
-      )}
-      {devices.map((d) => (
-        <option key={deviceKey(d) + d.port} value={deviceKey(d)}>
-          {d.label}
-        </option>
-      ))}
-    </select>
-  )
-}
 
 const MAX_ENTTEC = 4 // as in the backend (config/models.py)
 

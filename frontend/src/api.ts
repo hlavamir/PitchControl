@@ -1,5 +1,7 @@
 // Types and helpers for the PitchControl backend API.
 
+import type { LiveInputStatus } from './liveInput'
+
 export type MacroKind = 'fader' | 'toggle' | 'button' | 'momentary' | 'radio'
 
 export interface MacroDef {
@@ -147,6 +149,7 @@ export interface EngineState {
     outputs: { enttec: (IoStatus | null)[]; artnet: IoStatus | null; pitchpls_v2: IoStatus | null; osc: OscStatus | null }
     audio: IoStatus | null
     midi: IoStatus | null
+    live_input?: LiveInputStatus // Art-Net and DMX input (item 57)
   }
 }
 

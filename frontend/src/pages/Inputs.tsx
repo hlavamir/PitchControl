@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AudioDevice } from '../api'
 import { BandMeter } from '../components/BandMeter'
+import { LiveInputSection } from '../components/LiveInputSection'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { NumberInput, Row, SaveBar, Section, StatusDot, useSettings } from '../components/forms'
 import { reconnectLine } from '../reconnect'
@@ -228,6 +229,8 @@ export function Inputs({ engine }: { engine: EngineConnection }) {
           refresh() // the labels section 02 shows (the controller's name) may not know a file created in section 03 yet
         }}
       />
+
+      <LiveInputSection index="04" engine={engine} />
     </div>
   )
 }
