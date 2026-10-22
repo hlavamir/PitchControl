@@ -24,6 +24,7 @@
   --color-dim: #8a8c87;
   --color-log-error: #e5655c; /* the log view (Settings → Log): errors red, warnings amber */
   --color-log-warn: #e8a13c;
+  --color-route: #4fb0d6; /* the Control Desk: channels that a route (live input) decides, apart from manual overrides in the ink */
   --color-ink: rgb(var(--ink-rgb));
 }
 

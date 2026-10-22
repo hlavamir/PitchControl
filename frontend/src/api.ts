@@ -1,6 +1,7 @@
 // Types and helpers for the PitchControl backend API.
 
 import type { LiveInputStatus } from './liveInput'
+import type { RouteOverlap, RouteState } from './routes'
 
 export type MacroKind = 'fader' | 'toggle' | 'button' | 'momentary' | 'radio'
 
@@ -145,6 +146,8 @@ export interface EngineState {
   fixtures: FixtureState[]
   fog: Record<string, boolean>
   overrides?: Record<string, Record<string, number>> // Control Desk: universe → channel (1–512) → value
+  routes?: RouteState[] // Control Desk: live input copied onto output channels (item 58)
+  route_overlaps?: RouteOverlap[] // output channels that two routes cover
   io: {
     outputs: { enttec: (IoStatus | null)[]; artnet: IoStatus | null; pitchpls_v2: IoStatus | null; osc: OscStatus | null }
     audio: IoStatus | null
@@ -348,6 +351,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 export const api = {
   get: <T>(url: string) => request<T>('GET', url),
   put: <T>(url: string, body: unknown) => request<T>('PUT', url, body),
+  patch: <T>(url: string, body: unknown) => request<T>('PATCH', url, body),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body ?? {}),
   delete: <T>(url: string) => request<T>('DELETE', url),
 }

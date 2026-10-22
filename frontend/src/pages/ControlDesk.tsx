@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { api } from '../api'
 import { Button, Section, Toggle, UNIVERSES } from '../components/forms'
+import { RoutesSection } from '../components/RoutesSection'
+import { routeLabel, routedChannels, routedCount, type RouteState } from '../routes'
 import type { EngineConnection } from '../useEngine'
 import { isTyping, useGridNav, type NavItem } from '../useGridNav'
 
@@ -16,6 +18,7 @@ interface Strip {
   live: number // output value as sent (0–255)
   override: number | undefined
   fixture?: string // "Pinspot 1 · 3": which fixture uses the channel, and its channel number
+  route?: RouteState // the route that decides the channel (item 58), when no override is on it
 }
 
 /** One DMX channel: drag up/down to set it (switches the override on), the switch releases it. */
@@ -80,10 +83,13 @@ function ChannelStrip({
     <div
       className={`flex min-h-0 min-w-0 flex-col bg-panel ${selected ? 'glow-sel' : ''}`}
       data-hint="channel"
-      data-tip={`Channel ${strip.channel}: ${strip.fixture ?? 'not used by a fixture'}`}
+      data-tip={`Channel ${strip.channel}: ${strip.route ? `routed from ${routeLabel(strip.route)}; ` : ''}${strip.fixture ?? 'not used by a fixture'}`}
     >
       <div className={`flex h-[26px] flex-none items-center justify-between gap-1 px-1.5 ${selected ? 'bg-ink text-ground' : 'border-b border-seam'}`}>
-        <span className="font-mono text-[12px]">{String(strip.channel).padStart(3, '0')}</span>
+        <span className="flex items-center gap-1">
+          {strip.route && <span className={`size-[5px] ${selected ? 'bg-ground' : 'bg-route'}`} data-tip={`Routed: ${routeLabel(strip.route)}`} />}
+          <span className="font-mono text-[12px]">{String(strip.channel).padStart(3, '0')}</span>
+        </span>
         <Toggle
           checked={on}
           tip={`Override channel ${strip.channel}: on sends the slider value instead of the fixtures'; off follows the fixtures again`}
@@ -102,19 +108,20 @@ function ChannelStrip({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        {/* overridden: bright ink; following the output: faint */}
+        {/* overridden: bright ink; routed (live input): the route colour; following the fixtures: faint */}
         <div
           className={`absolute inset-x-1.5 bottom-1.5 ${on || dragValue !== null ? 'glow-on' : ''}`}
           style={{
             height: `calc((100% - 12px) * ${fill.toFixed(4)})`,
-            background: on || dragValue !== null ? 'var(--color-ink)' : 'rgb(var(--ink-rgb) / 0.28)',
+            background: on || dragValue !== null ? 'var(--color-ink)' : strip.route ? 'var(--color-route)' : 'rgb(var(--ink-rgb) / 0.28)',
+            opacity: !(on || dragValue !== null) && strip.route ? 0.8 : undefined,
           }}
         />
         <div className="absolute inset-x-1.5 top-1.5 bottom-1.5 border border-seam" />
       </div>
       <div className="flex h-[22px] flex-none items-center justify-between gap-1 border-t border-seam px-1.5">
         <span className="lbl min-w-0 truncate text-[9px] text-dim">{strip.fixture ?? '—'}</span>
-        <span className={`font-mono text-[13px] ${on ? 'text-glow' : 'text-dim'}`}>{value}</span>
+        <span className={`font-mono text-[13px] ${on ? 'text-glow' : strip.route ? 'text-route' : 'text-dim'}`}>{value}</span>
       </div>
     </div>
   )
@@ -123,7 +130,8 @@ function ChannelStrip({
 /**
  * Control Desk: every DMX output channel as a slider, 64 per subpage. A channel with its override
  * switched on sends the slider value instead of what the fixtures compute. Overrides are saved and
- * restored on start; the header shows how many are active.
+ * restored on start; the header shows how many are active. Below the grid, Routes copy live input (Art-Net, DMX over USB)
+ * onto output channels (item 58): the app's output, then routes, then manual overrides; the later layer wins.
  */
 export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const [universe, setUniverseState] = useState(memory.universe)
@@ -165,6 +173,9 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const all = engine.state?.overrides ?? {}
   const overrides = all[String(universe)] ?? {}
   const total = Object.values(all).reduce((n, chans) => n + Object.keys(chans).length, 0)
+  const routes = engine.state?.routes ?? []
+  const routed = useMemo(() => routedChannels(routes, universe), [routes, universe])
+  const routedTotal = routedCount(routes)
 
   // which fixture uses each channel of this universe
   const fixtureAt = useMemo(() => {
@@ -179,7 +190,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const first = subpage * PER_PAGE + 1
   const strips: Strip[] = Array.from({ length: PER_PAGE }, (_, i) => {
     const channel = first + i
-    return { channel, live: live[channel - 1] ?? 0, override: overrides[String(channel)], fixture: fixtureAt[channel] }
+    return { channel, live: live[channel - 1] ?? 0, override: overrides[String(channel)], fixture: fixtureAt[channel], route: routed.get(channel) }
   })
 
   const setValue = (channel: number, v: number) => engine.setOverride(universe, channel, v)
@@ -189,9 +200,9 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const navItem = (st: Strip): NavItem => ({
     id: `ch-${st.channel}`,
     label: `Ch ${st.channel}${st.fixture ? ` (${st.fixture})` : ''}`,
-    value: `${st.override ?? st.live}${st.override !== undefined ? ' OVR' : ''}`,
+    value: `${st.override ?? st.live}${st.override !== undefined ? ' OVR' : st.route ? ' ROUTE' : ''}`,
     hint: 'channel',
-    tip: `Channel ${st.channel}: ${st.fixture ?? 'not used by a fixture'}`,
+    tip: `Channel ${st.channel}: ${st.route ? `routed from ${routeLabel(st.route)}; ` : ''}${st.fixture ?? 'not used by a fixture'}`,
     adjust: (dir, fine) => setValue(st.channel, Math.min(255, Math.max(0, (st.override ?? st.live) + dir * (fine ? 1 : 5)))),
     press: (down) => down && (st.override !== undefined ? release(st.channel) : setValue(st.channel, st.live)),
   })
@@ -199,6 +210,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const { selectedId, select } = useGridNav('Control Desk', rows)
 
   const overridesOnSubpage = (p: number) => Object.keys(overrides).filter((c) => Math.floor((Number(c) - 1) / PER_PAGE) === p).length
+  const routedOnSubpage = (p: number) => [...routed.keys()].filter((c) => Math.floor((c - 1) / PER_PAGE) === p).length
 
   return (
     <div className="flex h-full flex-col gap-1.5">
@@ -216,6 +228,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
         <div className="ml-2 flex border border-edge">
           {Array.from({ length: SUBPAGES }, (_, p) => {
             const n = overridesOnSubpage(p)
+            const rn = routedOnSubpage(p)
             return (
               <button
                 key={p}
@@ -223,10 +236,11 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
                 className={`lbl relative flex h-8 items-center gap-1.5 border-r border-edge px-3 font-mono text-[11px] last:border-r-0 ${
                   p === subpage ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
                 }`}
-                data-tip={`Channels ${p * PER_PAGE + 1}–${(p + 1) * PER_PAGE} of 512; Q / E step through the subpages${n ? `. ${n} override(s) here` : ''}`}
+                data-tip={`Channels ${p * PER_PAGE + 1}–${(p + 1) * PER_PAGE} of 512; Q / E step through the subpages${n ? `. ${n} override(s) here` : ''}${rn ? `. ${rn} routed channel(s) here` : ''}`}
               >
                 {p * PER_PAGE + 1}–{(p + 1) * PER_PAGE}
                 {n > 0 && <span className={`size-[5px] ${p === subpage ? 'bg-ground' : 'dot-on'}`} />}
+                {rn > 0 && <span className={`size-[5px] ${p === subpage ? 'bg-ground' : 'bg-route'}`} />}
               </button>
             )
           })}
@@ -254,7 +268,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
           ) : (
             <>
               <span className="lbl text-[11px] text-dim">
-                {total} override{total === 1 ? '' : 's'} · saved across restarts
+                {total} override{total === 1 ? '' : 's'} · {routedTotal} routed · saved across restarts
               </span>
               <Button onClick={() => setConfirmReset(true)} disabled={total === 0} tip="Release all overrides, in every universe (asks first)">
                 Reset all
@@ -270,7 +284,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
         right="drag a channel to override it · the switch releases it · Q / E subpage"
         className="min-h-0 flex-1"
         bodyClassName="p-0"
-        tip="Every DMX channel of the universe, live. Override a channel by hand, e.g. to test a light; overrides win over the fixtures and are saved"
+        tip="Every DMX channel of the universe, live. Override a channel by hand, e.g. to test a light; overrides win over routes and fixtures and are saved. Channels in the blue colour are decided by a route (live input)"
       >
         <div className="grid min-h-[36rem] flex-1 grid-cols-8 gap-px bg-edge wide:min-h-0 wide:grid-cols-16 wide:grid-rows-4">
           {strips.map((st) => (
@@ -285,6 +299,8 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
           ))}
         </div>
       </Section>
+
+      <RoutesSection index="02" routes={routes} overlaps={engine.state?.route_overlaps ?? []} universe={universe} />
     </div>
   )
 }
