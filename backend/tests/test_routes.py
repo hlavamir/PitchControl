@@ -197,7 +197,7 @@ def test_autosave_writes_within_a_second_of_a_change(store, engine):
 
 def test_endpoint_lists_and_replaces_the_routes(engine):
     client = TestClient(create_app(engine))
-    assert client.get("/api/routes").json() == {"routes": [], "overlaps": []}
+    assert client.get("/api/routes").json() == {"routes": [], "overlaps": [], "midi_notices": []}
     body = {"routes": [{"name": "a", "artnet_universe": 3, "first_input": 1, "count": 16, "universe": 1, "first_output": 33}]}
     got = client.put("/api/routes", json=body).json()
     assert got["routes"][0]["id"] and got["routes"][0]["seen"] is False and got["routes"][0]["age"] is None

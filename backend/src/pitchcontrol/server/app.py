@@ -100,6 +100,11 @@ class DimmerName(BaseModel):
     name: str
 
 
+class RouteLearn(BaseModel):
+    index: int  # the output channel of the route, from 0
+    on: bool = True
+
+
 class SceneName(BaseModel):
     name: str | None = None
 
@@ -330,9 +335,13 @@ def create_app(
 
     @app.get("/api/routes")
     def get_routes():
-        """The routes of the Control Desk (item 58) with the state of their sources, and the output channels that two
-        routes cover."""
-        return {"routes": engine.routes.status(engine.live.sources()), "overlaps": engine.routes.overlaps()}
+        """The routes of the Control Desk (item 58) with the state of their sources, the output channels that two
+        routes cover, and (item 59) the controls of MIDI routes that the app's MIDI mapping uses too."""
+        return {
+            "routes": engine.routes.status(engine.live.sources(), engine.midi_routes.status()),
+            "overlaps": engine.routes.overlaps(),
+            "midi_notices": engine.routes.midi_overlaps(engine.midi),
+        }
 
     @app.put("/api/routes")
     def put_routes(data: dict):
@@ -361,6 +370,29 @@ def create_app(
         except KeyError:
             raise HTTPException(404, f"no route '{route_id}'") from None
         return get_routes()
+
+    @app.patch("/api/routes/{route_id}/channels/{index}")
+    def patch_route_channel(route_id: str, index: int, data: dict):
+        """Change the input of one output channel (``index`` from 0) of a MIDI route: ``type``, ``number``, ``value``,
+        ``note_mode``."""
+        try:
+            engine.routes.patch_channel(route_id, index, data)
+        except KeyError:
+            raise HTTPException(404, f"no MIDI route '{route_id}' with channel {index + 1}") from None
+        return get_routes()
+
+    @app.post("/api/routes/{route_id}/learn")
+    def learn_route_channel(route_id: str, body: RouteLearn):
+        """Learn for one output channel of a MIDI route: the next CC or note-on of the route's device on its MIDI
+        channel becomes that channel's input (``on`` false cancels). Ends by itself after ``seconds``."""
+        route = next((r for r in engine.routes.all() if r.id == route_id and r.kind == "midi"), None)
+        if route is None or not 0 <= body.index < len(route.channels):
+            raise HTTPException(404, f"no MIDI route '{route_id}' with channel {body.index + 1}")
+        if body.on and not route.midi_device:
+            raise HTTPException(409, "choose the MIDI device of the route first")
+        learn_id = engine.midi_routes.set_learning(route_id, route.midi_device, route.midi_channel, body.index, body.on)
+        engine.sync_midi_routes()  # the device is open by now, whatever the watchdog's timing
+        return {"ok": True, "learn_id": learn_id, "seconds": LEARN_SECONDS}
 
     @app.delete("/api/routes/{route_id}")
     def delete_route(route_id: str):

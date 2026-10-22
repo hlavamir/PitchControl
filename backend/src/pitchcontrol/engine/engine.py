@@ -20,6 +20,7 @@ from ..io import audio_in
 from ..io.audio_in import AudioInput
 from ..io.live_input import LiveInput
 from ..io.midi_in import MidiInput, list_midi_inputs_checked
+from ..io.midi_routes import MidiRouteHub
 from ..io.outputs import OutputManager
 from ..quitguard import UnsavedReports
 from .audio_analysis import AudioFeatures, SpectrumAnalyzer, trigger_weights
@@ -85,6 +86,8 @@ class Engine:
         self.routes = Routes()  # Control Desk: live input copied onto output channels (item 58), saved across restarts
         self.routes.load(self.store.state_dir / "routes.json")
         self._routes_saved = self.routes.version
+        self.midi_routes = MidiRouteHub()  # the MIDI side of the routes (item 59)
+        self.midi_routes.on_learned = self._route_learned
 
         self.phase = PhaseTracker()
         self.colors = GroupColors()
@@ -276,7 +279,7 @@ class Engine:
                 old.stop()
             if not self.enable_hardware:
                 return
-            new = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned)
+            new = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned, tap=self.midi_routes.tap)
             new.start()
             with self.lock:
                 self.midi = new
@@ -427,7 +430,7 @@ class Engine:
                 end = min(start + len(data), 512)
                 uni[start:end] = bytes(data[: end - start])
             self.fog.update(dt, self.store.rig.fog_machines, m, universes)
-            self.routes.apply(universes, self.live)  # after the fixtures and fog: live input wins over the app's own output
+            self.routes.apply(universes, self.live, self.midi_routes)  # after the fixtures and fog: live input wins over the app's own output
             self.overrides.apply(universes)  # last: manual overrides win
             self.universes, self.v2_strips = universes, v2_strips
 
@@ -515,6 +518,30 @@ class Engine:
         except OSError as exc:
             log.warning("override autosave failed: %s", exc)
 
+    def _route_learned(self, route_id: str, index: int, spec: dict) -> None:
+        """Learn on a channel of a MIDI route caught a control (called by the MIDI thread)."""
+        try:
+            self.routes.patch_channel(route_id, index, spec)
+        except (KeyError, ValueError):
+            log.warning("MIDI Learn: route %s channel %d is gone", route_id, index + 1)
+
+    def sync_midi_routes(self) -> None:
+        """Open the MIDI devices the enabled MIDI routes name, and the one of a route that learns even if it is off (not the
+        controller's: its input hands its messages on)."""
+        learning = self.midi_routes.learning_route()
+        devices = [r.midi_device for r in self.routes.all() if r.kind == "midi" and (r.enabled or r.id == learning)]
+        self.midi_routes.sync(devices, self.midi)
+
+    def _midi_routes_watch(self) -> None:
+        seen, last = -1, 0.0
+        while not self._stop.wait(0.5):
+            try:
+                if self.routes.version != seen or time.monotonic() - last >= MIDI_WATCH_S:
+                    seen, last = self.routes.version, time.monotonic()
+                    self.sync_midi_routes()
+            except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
+                log.exception("MIDI routes watchdog")
+
     def _autosave_routes(self, force: bool = False) -> None:
         """Like the overrides: saved within a second of a change."""
         if self.routes.version == self._routes_saved:
@@ -536,6 +563,7 @@ class Engine:
         if self.enable_hardware:
             threading.Thread(target=self._audio_watch, name="audio-watchdog", daemon=True).start()
             threading.Thread(target=self._midi_watch, name="midi-watchdog", daemon=True).start()
+            threading.Thread(target=self._midi_routes_watch, name="midi-routes", daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -548,6 +576,7 @@ class Engine:
             self.audio.stop()
         if self.midi is not None:
             self.midi.stop()
+        self.midi_routes.stop()
         self.live.stop()
         self.outputs.stop()
 
@@ -593,6 +622,7 @@ class Engine:
     def state(self) -> dict:
         with self.lock:
             midi = self.midi  # read once
+            midi_routes = self.midi_routes.status()
             fixtures = []
             for fx in self.fixtures:
                 fixtures.append(
@@ -631,13 +661,15 @@ class Engine:
                 "fixtures": fixtures,
                 "fog": self.fog.active,
                 "overrides": self.overrides.snapshot(),
-                "routes": self.routes.status(self.live.sources()),
+                "routes": self.routes.status(self.live.sources(), midi_routes),
                 "route_overlaps": self.routes.overlaps(),
+                "route_midi_notices": self.routes.midi_overlaps(midi),
                 "io": {
                     "outputs": self.outputs.status(),
                     "audio": self.audio_status(),
                     "midi": self.midi_status(midi),
                     "live_input": self.live.status(),
+                    "midi_routes": midi_routes,
                 },
             }
 

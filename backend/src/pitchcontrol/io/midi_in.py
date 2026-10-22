@@ -94,9 +94,47 @@ def _winmm_indices() -> bool:
     return sys.platform == "win32"
 
 
+def match_port(wanted: str, names: list[str]) -> str | None:
+    """The one rule by which a port is found, at the start and by the watchdog (all case-insensitive):
+
+    1. a listed name that is the wanted name;
+    2. on Windows, a listed name that differs only in the index WinMM appends to every name: another device coming
+       or going renumbers a port (``LCXL3 1 MIDI In 0`` → ``… 1``), and a port picked in the MIDI port row is
+       saved with its index;
+    3. the first listed name that contains the wanted name (a controller file's ``port_match`` is a part of the
+       name), except that a wanted name ending in a digit isn't taken for the start of a longer number
+       (``… In 1`` is not ``… In 10``).
+    """
+    wanted = wanted.lower()
+    if not wanted:
+        return None
+    listed = [(n, n.lower()) for n in names]
+    for name, low in listed:
+        if low == wanted:
+            return name
+    if _winmm_indices() and _WINMM_INDEX.search(wanted):
+        base = _WINMM_INDEX.sub("", wanted)
+        for name, low in listed:
+            if _WINMM_INDEX.sub("", low) == base:
+                return name
+    for name, low in listed:
+        at = low.find(wanted)
+        if at >= 0 and not (wanted[-1].isdigit() and low[at + len(wanted) : at + len(wanted) + 1].isdigit()):
+            return name
+    return None
+
+
+def port_key(name: str) -> str:
+    """A port name as one key: lower case, and on Windows without the index WinMM appends (it changes when another
+    device comes or goes)."""
+    low = name.lower().strip()
+    return _WINMM_INDEX.sub("", low) if _winmm_indices() else low
+
+
 class MidiInput:
-    def __init__(self, controller: Controller | None, port_override: str | None, macros, ignored=None):
+    def __init__(self, controller: Controller | None, port_override: str | None, macros, ignored=None, tap=None):
         self.controller = controller
+        self.tap = tap  # (port name, message): the routes of the Control Desk see every message of this port too (item 59)
         self.ignored = ignored or (lambda macro: False)  # macro → True: drop the message (unassigned dimmer)
         self.port_override = port_override
         self.macros = macros
@@ -142,33 +180,8 @@ class MidiInput:
         return (self.port_override or (self.controller.port_match if self.controller else None) or "")
 
     def find_port(self, names: list[str]) -> str | None:
-        """The one rule by which the port is found, at the start and by the watchdog (all case-insensitive):
-
-        1. a listed name that is the wanted name;
-        2. on Windows, a listed name that differs only in the index WinMM appends to every name: another device coming
-           or going renumbers a port (``LCXL3 1 MIDI In 0`` → ``… 1``), and a port picked in the MIDI port row is
-           saved with its index;
-        3. the first listed name that contains the wanted name (a controller file's ``port_match`` is a part of the
-           name), except that a wanted name ending in a digit isn't taken for the start of a longer number
-           (``… In 1`` is not ``… In 10``).
-        """
-        wanted = self.wanted_name().lower()
-        if not wanted:
-            return None
-        listed = [(n, n.lower()) for n in names]
-        for name, low in listed:
-            if low == wanted:
-                return name
-        if _winmm_indices() and _WINMM_INDEX.search(wanted):
-            base = _WINMM_INDEX.sub("", wanted)
-            for name, low in listed:
-                if _WINMM_INDEX.sub("", low) == base:
-                    return name
-        for name, low in listed:
-            at = low.find(wanted)
-            if at >= 0 and not (wanted[-1].isdigit() and low[at + len(wanted) : at + len(wanted) + 1].isdigit()):
-                return name
-        return None
+        """The one rule by which the port is found, at the start and by the watchdog: ``match_port``."""
+        return match_port(self.wanted_name(), names)
 
     def start(self) -> None:
         """Open the port. Called again by the watchdog while the input has an error: what goes wrong is logged when it
@@ -254,6 +267,12 @@ class MidiInput:
     def handle(self, msg) -> None:
         if msg.type in ("clock", "active_sensing"):
             return
+        tap = self.tap
+        if tap is not None and self.port_name:
+            try:
+                tap(self.port_name, msg)
+            except Exception:  # noqa: BLE001 - the routes must never stop the controller
+                log.exception("MIDI routes")
         self.received += 1
         kind, number, value = None, 0, 0
         if msg.type == "control_change":
