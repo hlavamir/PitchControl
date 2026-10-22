@@ -11,9 +11,9 @@ from conftest import SHIPPED_CONFIG
 from pitchcontrol.config.loader import ConfigStore
 from pitchcontrol.config.models import ChannelMode, FixtureInstance, Rig
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 
-from ofl_convert import convert_fixture  # noqa: E402
+
+from pitchcontrol.ofl.convert import convert_fixture
 
 # --------------------------------------------------------------------------- the conversion
 

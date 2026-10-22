@@ -1,11 +1,12 @@
 """Open Fixture Library (OFL) fixture JSON -> a PitchControl fixture type.
 
 OFL's own docs say its JSON format may change without warning and should be converted, not read live, so this
-module is the one place that knows both formats. It is pure (no network, no files): ``convert_fixture`` takes the
-parsed OFL JSON and returns the type as a dict; ``tools/fixture_library.py`` fetches the files at a pinned OFL
-commit and writes the types.
+module and ``importer.py`` are the one place that knows both formats. This module is pure (no network, no files):
+``convert_fixture`` takes the parsed OFL JSON and returns the modes as dicts; ``importer.py`` wraps them into a whole
+type that keeps the OFL data, ``online.py`` fetches from OFL's GitHub, and ``tools/fixture_library.py`` generates the
+shipped types.
 
-The mapping (item 50 of the PitchControl dev task list):
+The mapping (item 50 of the PitchControl dev task list; part of the app since item 53, File → Import Fixture):
 
 * every OFL mode becomes a channel mode with its own pixel count (the number of pixels or groups its matrix block
   repeats; 1 for a mode without one);
@@ -348,6 +349,17 @@ def convert_mode(fx: Fixture, mode: dict, assumptions: list[str]) -> dict:
     return {"pixels": pixels, "channels": slots}
 
 
+def short_reason(why: str) -> str:
+    """A skipped mode's reason in words for the import report (the converter's own wording stays in ``Converted.skipped``)."""
+    if why.startswith("a per-pixel block"):
+        return "a dimmer, amber, CCT or strobe per pixel, which PitchControl can't repeat"
+    if "leaves out (null)" in why:
+        return "an empty gap channel between the pixels"
+    if why.startswith("pixel colours"):
+        return "amber next to RGB on every pixel"
+    return why
+
+
 def mode_name(mode: dict) -> str:
     short = mode_short_name(mode)
     match = re.fullmatch(r"(d?)(\d+)ch[ -]?(\d*)", short, re.IGNORECASE)
@@ -388,8 +400,9 @@ def describe(mode: dict) -> str:
 
 
 def convert_fixture(data: dict, skip: dict[str, str] | None = None) -> Converted:
-    """Every OFL mode of ``data`` as a PitchControl channel mode; modes it can't express go to ``skipped``, with
-    the reason. ``skip`` names OFL modes to leave out on purpose (OFL mode name -> why)."""
+    """Every OFL mode of ``data`` as a PitchControl channel mode (``ofl_mode`` names the OFL mode it came from); modes
+    it can't express go to ``skipped``, with the reason. ``skip`` names OFL modes to leave out on purpose (OFL mode
+    name -> why)."""
     fx = Fixture(data)
     result = Converted()
     for mode in data["modes"]:
@@ -402,7 +415,7 @@ def convert_fixture(data: dict, skip: dict[str, str] | None = None) -> Converted
             result.skipped.append((mode["name"], str(problem)))
             continue
         name = mode_name(mode)
-        converted = {"id": mode_id(name), "name": name, "description": "", **converted}
+        converted = {"id": mode_id(name), "name": name, "description": "", "ofl_mode": mode["name"], **converted}
         converted["description"] = describe(converted)
         result.modes.append(converted)
     return result

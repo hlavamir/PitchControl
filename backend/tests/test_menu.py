@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from pitchcontrol import menu as menu_module
 from pitchcontrol.config.models import NetworkSettings
 from pitchcontrol.engine.engine import Engine
-from pitchcontrol.menu import DISCORD_URL, DOCS_URL, PAGES, SEPARATOR, MenuActions, arrange_cocoa_menu, items_by_id, key_equivalent, menu_json, menus_for
+from pitchcontrol.menu import DISCORD_URL, DOCS_URL, PAGES, SEPARATOR, MenuActions, Submenu, arrange_cocoa_menu, items_by_id, key_equivalent, menu_json, menus_for, native_menu, walk
 from pitchcontrol.server.app import create_app
 
 PHONE = ("192.168.1.50", 50000)
@@ -26,8 +26,8 @@ def labels(platform, title):
 def test_one_definition_for_both_platforms():
     assert titles("mac") == ["PitchControl", "File", "Edit", "View", "Window", "Help"]
     assert titles("win") == ["File", "Edit", "View", "Window", "Help"]  # no application menu on Windows
-    assert labels("win", "File") == ["Save", None, "Open data folder", "Open logs folder", None, "Quit"]
-    assert labels("mac", "File") == ["Save", None, "Open data folder", "Open logs folder"]  # Quit ⌘Q is in the application menu
+    assert labels("win", "File") == ["Save", None, "Import Fixture", None, "Open data folder", "Open logs folder", None, "Quit"]
+    assert labels("mac", "File") == ["Save", None, "Import Fixture", None, "Open data folder", "Open logs folder"]  # Quit ⌘Q is in the application menu
     assert labels("mac", "PitchControl") == ["About PitchControl", "Settings…"]
     assert labels("win", "Edit") == labels("mac", "Edit") == ["Cut", "Copy", "Paste", None, "Select All"]
     assert labels("win", "View") == [*PAGES, None, "Full screen"]
@@ -37,7 +37,7 @@ def test_one_definition_for_both_platforms():
     assert labels("mac", "Help") == ["Documentation", "Keyboard shortcuts", None, "Report a problem", "Join the Discord"]
     # same item, same action on both platforms: an id has one meaning
     for platform in ("mac", "win"):
-        ids = [i.id for _, items in menus_for(platform) for i in items if i is not SEPARATOR]
+        ids = [i.id for _, items in menus_for(platform) for i in walk(items)]
         assert len(ids) == len(set(ids))
         assert all(i in items_by_id() for i in ids)
 
@@ -50,13 +50,13 @@ def test_no_stray_separators():
 
 
 def test_keys_shown_and_bound():
-    win = {i["id"]: i["key"] for m in menu_json("win") for i in m["items"] if i}
+    win = {i["id"]: i["key"] for m in menu_json("win") for i in m["items"] if i and "id" in i}
     assert win["file.save"] == "Ctrl+S"
     assert win["view.page.1"] == "1" and win["view.page.9"] == "9"  # the app's own page keys
     assert win["view.page.0"] == "0"  # Help
     assert win["view.fullscreen"] == "F"
     assert win["edit.copy"] == "Ctrl+C"
-    mac = {i.id: i.mac_key for _, items in menus_for("mac") for i in items if i is not SEPARATOR}
+    mac = {i.id: i.mac_key for _, items in menus_for("mac") for i in walk(items)}
     assert mac["file.save"] == "cmd+s"
     assert mac["view.page.3"] == "cmd+3"  # ⌘3 next to the plain 3
     assert mac["view.page.0"] == ""  # ⌘0 is the UI scale's 100 %
@@ -73,6 +73,32 @@ def test_kinds():
     assert by_id["file.save"].kind == "ui"  # the page's own Save
     assert by_id["view.page.4"].kind == "ui"
     assert by_id["file.quit"].kind == "app"  # through the quit guard
+
+
+def test_file_import_fixture_is_a_submenu_with_the_open_fixture_library():
+    """File → Import Fixture ▸ Open Fixture Library… (item 53); the QLC+ import (item 54) joins it."""
+    for platform in ("mac", "win"):
+        (file_items,) = [items for t, items in menus_for(platform) if t == "File"]
+        (sub,) = [i for i in file_items if isinstance(i, Submenu)]
+        assert sub.label == "Import Fixture" and [i.label for i in sub.items] == ["Open Fixture Library…"]
+    assert items_by_id()["file.import.ofl"].kind == "ui"  # the Fixtures page's dialog
+    file_menu = next(m for m in menu_json("win") if m["title"] == "File")
+    assert {"submenu": "Import Fixture", "items": [{"id": "file.import.ofl", "label": "Open Fixture Library…", "kind": "ui", "key": ""}]} in file_menu["items"]
+
+
+def test_the_native_macos_menu_nests_the_submenu():
+    from webview.menu import Menu, MenuAction
+
+    file_menu = next(m for m in native_menu(MenuActions("/d", "/l")) if m.title == "File")
+    nested = next(i for i in file_menu.items if isinstance(i, Menu))
+    assert nested.title == "Import Fixture" and [i.title for i in nested.items] == ["Open Fixture Library…"]
+    assert all(isinstance(i, MenuAction) for i in nested.items)
+
+
+def test_importing_from_the_native_menu_asks_the_page():
+    window = FakeWindow()
+    MenuActions("/d", "/l", window=window).run("file.import.ofl")
+    assert window.calls == [("js", "window.pitchMenu && window.pitchMenu('file.import.ofl')")]
 
 
 class FakeWindow:

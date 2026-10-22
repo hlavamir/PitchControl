@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .. import __version__
-from ..config.loader import CONTROLLERS, RIGS, VERSION_KEY, report_unknown_keys, save_model
+from ..config.loader import CONTROLLERS, RIGS, RIG_NAME, TYPES, VERSION_KEY, report_unknown_keys, save_model
 from ..config.models import Controller, FixtureType, FogMachine, NetworkSettings, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
@@ -30,6 +30,8 @@ from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..menu import menu_json, platform_of, reveal as reveal_folder
+from ..ofl import online
+from ..ofl.importer import ImportProblem, Redirect, import_fixture
 from ..version import system_label, version_label
 from .network import Network, NetworkGate
 
@@ -50,6 +52,22 @@ class Activate(BaseModel):
 class NewType(BaseModel):
     name: str
     copy_of: str | None = None  # duplicate this type
+
+
+class OflSource(BaseModel):
+    """What File → Import Fixture → Open Fixture Library converts: a fixture of OFL's GitHub (``fixture``: its key or the
+    address of its page, read at ``commit``) or the text of a fixture file the user picked (``text``, from ``file``)."""
+
+    fixture: str | None = None
+    commit: str | None = None
+    text: str | None = None
+    file: str | None = None
+
+
+class OflImport(BaseModel):
+    name: str
+    type: dict  # the type the conversion returned
+    replace: bool = False  # the name is taken: overwrite that type (the dialog asked)
 
 
 class LearnShift(BaseModel):
@@ -435,6 +453,85 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             store.delete_fixture_type(name)
         type_state["unsaved"].discard(name)
         return {"ok": True}
+
+    # ---- import from the Open Fixture Library (item 53; this computer only: it writes the user's data folder, and the
+    # picked file is on this computer)
+    def existing_type(name: str) -> dict | None:
+        """The type that ``name`` would clash with (the same name in any letter case: they are file names)."""
+        taken = next((n for n in [*store.fixture_types, *store.names(TYPES)] if n.lower() == name.lower()), None)
+        if taken is None:
+            return None
+        return {"name": taken, "origin": store.type_origins().get(taken, "user"), "used_in": store.type_usage().get(taken, [])}
+
+    def ofl_error(exc: Exception) -> HTTPException:
+        return HTTPException(502 if isinstance(exc, online.OnlineError) else 400, str(exc))
+
+    @app.get("/api/ofl/manufacturers", dependencies=local_only)
+    def ofl_manufacturers():
+        """The manufacturers of the Open Fixture Library, and the commit everything else is read at."""
+        try:
+            commit = online.latest_commit()
+            return {"commit": commit, "manufacturers": online.manufacturers(commit)}
+        except online.OnlineError as exc:
+            raise ofl_error(exc) from exc
+
+    @app.get("/api/ofl/manufacturers/{key}", dependencies=local_only)
+    def ofl_fixtures(key: str, commit: str = "master"):
+        try:
+            return {"fixtures": online.fixtures_of(key, commit)}
+        except online.OnlineError as exc:
+            raise ofl_error(exc) from exc
+
+    @app.post("/api/ofl/convert", dependencies=local_only)
+    def ofl_convert(body: OflSource):
+        """Convert one OFL fixture and report; nothing is saved (``POST /api/fixture-types/import`` saves)."""
+        try:
+            extra: dict = {}
+            note = None
+            if body.fixture:
+                key, ref = online.parse_key(body.fixture), body.commit or online.latest_commit()
+                data = online.fixture(key, ref)
+                if "redirectTo" in data:  # OFL renamed it, or it is another brand's twin: take the one it points to
+                    moved = key
+                    key = online.parse_key(str(data["redirectTo"]))
+                    data = online.fixture(key, ref)
+                    note = f"the Open Fixture Library has moved {moved} to {key}: that is what is imported"
+                makers = {m["key"]: m["name"] for m in online.manufacturers(ref)}
+                extra = {"fixture": key, "manufacturer": makers.get(key.split("/")[0]), "commit": None if ref == "master" else ref, "schema_version": online.schema_version(ref)}
+            elif body.text is not None:
+                try:
+                    data = json.loads(body.text)
+                except ValueError as exc:
+                    raise ImportProblem("this file is not JSON: pick a fixture file of the Open Fixture Library (.json)") from exc
+                extra = {"file": body.file}
+            else:
+                raise ImportProblem("say which fixture to import")
+            result = import_fixture(data, **extra)
+        except (online.OnlineError, ImportProblem) as exc:
+            raise ofl_error(exc) from exc
+        if note:
+            result.report.notes.insert(0, note)
+        return {"name": result.name, "type": result.ftype, "report": result.report.as_json(), "existing": existing_type(result.name)}
+
+    @app.post("/api/fixture-types/import", dependencies=local_only)
+    def import_fixture_type(body: OflImport):
+        """Save a converted type as a new type file; a name that is taken asks first (``replace``)."""
+        name = body.name.strip()
+        if not RIG_NAME.fullmatch(name):
+            raise HTTPException(409, store.type_name_problem(name))
+        clash = existing_type(name)
+        if clash and not body.replace:
+            raise HTTPException(409, f"the fixture type '{clash['name']}' already exists")
+        if clash:
+            name = clash["name"]  # the existing spelling: on a case-insensitive disk it is the same file
+        ftype = FixtureType.model_validate(body.type | {"name": name})
+        store.save_fixture_type(ftype)
+        with engine.lock:
+            store.fixture_types[name] = ftype
+        type_state["unsaved"].discard(name)
+        engine.rebuild_fixtures()
+        log.info("imported fixture type '%s'%s", name, " (replaced the existing one)" if clash else "")
+        return {"ok": True, "name": name, "replaced": bool(clash), "problems": store.validate_rig()}
 
     rig_state = {"unsaved": False}  # live rig changes not yet written to the file
 

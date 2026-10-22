@@ -26,7 +26,7 @@ import threading
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 log = logging.getLogger(__name__)
 
@@ -47,10 +47,19 @@ class Item:
     only: str = ""  # "mac" or "win": the item exists on that platform only
 
 
+@dataclass(frozen=True)
+class Submenu:
+    """An item that opens a menu of its own (File → Import Fixture ▸); one level deep."""
+
+    label: str
+    items: tuple[Item | None, ...]
+    only: str = ""
+
+
 SEPARATOR = None
 
-# (title, items); a title only on one platform is ("mac", title) / ("win", title)
-MENUS: list[tuple[str, list[Item | None]]] = [
+# (title, items)
+MENUS: list[tuple[str, list[Item | Submenu | None]]] = [
     (
         "PitchControl",  # macOS: the application menu (pywebview adds Services, Hide and Quit ⌘Q)
         [
@@ -62,6 +71,8 @@ MENUS: list[tuple[str, list[Item | None]]] = [
         "File",
         [
             Item("file.save", "Save", "ui", win_key="Ctrl+S", mac_key="cmd+s"),
+            SEPARATOR,
+            Submenu("Import Fixture", (Item("file.import.ofl", "Open Fixture Library…", "ui"),)),
             SEPARATOR,
             Item("file.data_folder", "Open data folder", "app"),
             Item("file.logs_folder", "Open logs folder", "app"),
@@ -115,38 +126,57 @@ def platform_of(sys_platform: str = sys.platform) -> str:
     return "mac" if sys_platform == "darwin" else "win"
 
 
-def menus_for(platform: str) -> list[tuple[str, list[Item | None]]]:
+def _kept(items, platform: str) -> list:
+    """``items`` for one platform: the other platform's left out, no separator at either end or twice in a row, a
+    submenu left empty dropped."""
+    kept: list = []
+    for item in items:
+        if item is SEPARATOR:
+            if kept and kept[-1] is not SEPARATOR:
+                kept.append(SEPARATOR)
+        elif item.only and item.only != platform:
+            continue
+        elif isinstance(item, Submenu):
+            sub = _kept(item.items, platform)
+            if sub:
+                kept.append(Submenu(item.label, tuple(sub)))
+        else:
+            kept.append(item)
+    while kept and kept[-1] is SEPARATOR:
+        kept.pop()
+    return kept
+
+
+def menus_for(platform: str) -> list[tuple[str, list[Item | Submenu | None]]]:
     """The menus of one platform ("mac" or "win"): the items of the other platform left out, no separator at either
     end of a menu or twice in a row, and menus left empty dropped (the application menu on Windows)."""
-    result = []
-    for title, items in MENUS:
-        kept: list[Item | None] = []
-        for item in items:
-            if item is SEPARATOR:
-                if kept and kept[-1] is not SEPARATOR:
-                    kept.append(SEPARATOR)
-            elif not item.only or item.only == platform:
-                kept.append(item)
-        while kept and kept[-1] is SEPARATOR:
-            kept.pop()
-        if kept:
-            result.append((title, kept))
-    return result
+    return [(title, kept) for title, items in MENUS if (kept := _kept(items, platform))]
+
+
+def walk(items) -> Iterator[Item]:
+    """Every item of a list, the ones inside submenus too."""
+    for item in items:
+        if isinstance(item, Submenu):
+            yield from walk(item.items)
+        elif item is not SEPARATOR:
+            yield item
 
 
 def items_by_id() -> dict[str, Item]:
-    return {item.id: item for _, items in MENUS for item in items if item is not SEPARATOR}
+    return {item.id: item for _, items in MENUS for item in walk(items)}
+
+
+def _entry_json(item: Item | Submenu | None, platform: str) -> dict | None:
+    if item is SEPARATOR:
+        return None
+    if isinstance(item, Submenu):
+        return {"submenu": item.label, "items": [_entry_json(i, platform) for i in item.items]}
+    return {"id": item.id, "label": item.label, "kind": item.kind, "key": item.win_key if platform == "win" else ""}
 
 
 def menu_json(platform: str) -> list[dict]:
     """``GET /api/menu``: the menus the UI draws (Windows)."""
-    return [
-        {
-            "title": title,
-            "items": [None if i is SEPARATOR else {"id": i.id, "label": i.label, "kind": i.kind, "key": i.win_key if platform == "win" else ""} for i in items],
-        }
-        for title, items in menus_for(platform)
-    ]
+    return [{"title": title, "items": [_entry_json(i, platform) for i in items]} for title, items in menus_for(platform)]
 
 
 def reveal(folder: str) -> None:
@@ -239,12 +269,17 @@ def native_menu(actions: MenuActions) -> list:
         run.__name__ = item.id.replace(".", "_")  # pywebview names the registered action after the function
         return run
 
+    def entries(items) -> list:
+        return [
+            MenuSeparator() if i is SEPARATOR else Menu(i.label, entries(i.items)) if isinstance(i, Submenu) else MenuAction(i.label, action(i))
+            for i in items
+        ]
+
     menus = []
     for title, items in menus_for("mac"):
         if title == "Edit":
             continue  # pywebview's own, native
-        entries = [MenuSeparator() if i is SEPARATOR else MenuAction(i.label, action(i)) for i in items]
-        menus.append(Menu("__app__" if title == "PitchControl" else title, entries))
+        menus.append(Menu("__app__" if title == "PitchControl" else title, entries(items)))
     return menus
 
 
@@ -285,7 +320,7 @@ def arrange_cocoa_menu(main_menu, about: Callable[[], None] | None = None) -> No
         main_menu.removeItem_(edit)
         main_menu.insertItem_atIndex_(edit, [sub.title() for _, sub in submenus()].index("File") + 1)
 
-    keys = {(title if title != "PitchControl" else "__app__", i.label): i.mac_key for title, items in menus_for("mac") for i in items if i is not SEPARATOR and i.mac_key}
+    keys = {(title if title != "PitchControl" else "__app__", i.label): i.mac_key for title, items in menus_for("mac") for i in items if isinstance(i, Item) and i.mac_key}
     for index, (entry, sub) in enumerate(submenus()):
         title = "__app__" if index == 0 else sub.title()
         for i in range(sub.numberOfItems()):

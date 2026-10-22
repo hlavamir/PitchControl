@@ -1,12 +1,15 @@
 """Generate PitchControl's built-in fixture library (``config/fixtures/types/``) from the Open Fixture Library.
 
-    python tools/fixture_library.py                  # download at the pinned commit, write the types and the notice
-    python tools/fixture_library.py --cache DIR      # keep the downloaded OFL files in DIR (default tools/.ofl-cache)
+    python tools/fixture_library.py                  # write the types and the notice (OFL files from tools/fixture_sources/ofl/)
+    python tools/fixture_library.py --refresh        # download the OFL files again at the pinned commit first
 
 The fixture list, the OFL commit it is pinned to and the corrections that come from the manuals are in this file; the
-mapping from OFL's format is in ``ofl_convert.py``. A fixture that isn't in OFL is written by hand in OFL's format
-from its manual (``tools/fixture_sources/``) and goes through the same conversion. Run it again to add a fixture or
-move to a newer OFL commit: change ``OFL_COMMIT`` (and read the report, OFL's files are community-written), then
+mapping from OFL's format and the shape of what a type keeps of the OFL fixture are in ``pitchcontrol.ofl`` (the same
+import the app's File → Import Fixture runs, item 53). A fixture that isn't in OFL is written by hand in OFL's format
+from its manual (``tools/fixture_sources/``) and goes through the same conversion. The OFL files of the pinned commit
+are kept in ``tools/fixture_sources/ofl/`` (MIT, see the notice), so the types can be rebuilt offline and the tests can
+check that each type still holds its OFL fixture exactly. Run it again to add a fixture or move to a newer OFL commit:
+change ``OFL_COMMIT``, run with ``--refresh`` (and read the report, OFL's files are community-written), then
 run ``tools/shipped_config_history.py`` once the files are committed (see "Releasing a version" in the README).
 
 OFL is MIT licensed (https://github.com/OpenLightingProject/open-fixture-library, LICENSE): the notice is shipped in
@@ -22,17 +25,20 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from ofl_convert import Converted, convert_fixture  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+
+from pitchcontrol.ofl.convert import Converted, short_reason  # noqa: E402
+from pitchcontrol.ofl.importer import import_fixture  # noqa: E402
+
 TYPES = ROOT / "config" / "fixtures" / "types"
 NOTICE = ROOT / "config" / "fixtures" / "Open Fixture Library notice.txt"
 SOURCES = Path(__file__).resolve().parent / "fixture_sources"
+OFL_FILES = SOURCES / "ofl"  # the OFL fixture files at OFL_COMMIT (maker__fixture.json)
 
 OFL_REPO = "OpenLightingProject/open-fixture-library"
 OFL_COMMIT = "d9d675eb686932a60f815301b8361b7d63b4e814"  # master on 2026-10-21
+OFL_SCHEMA_VERSION = "12.6.0"  # schemas/fixture.json at that commit
 
 NOTICE_TEXT = """\
 The fixture types in this folder whose description names the Open Fixture Library were generated from fixture
@@ -82,6 +88,7 @@ class LibraryFixture:
     intro: str  # the first sentences of the description
     default: str  # the mode a new fixture starts in (PitchControl mode name)
     ofl: str | None = None  # "maker/fixture" in OFL; None = built from the manual (tools/fixture_sources/)
+    maker: str = ""  # the manufacturer's name in OFL's manufacturers.json (OFL fixtures only)
     source_file: str = ""  # tools/fixture_sources/<this>.json when ofl is None
     manual: str = ""  # the manual's record in the PitchPlease wiki (docs/raw/2026-10-21_<this>-manual.md)
     skip: dict[str, str] = field(default_factory=dict)  # OFL mode name -> why it is left out
@@ -97,6 +104,7 @@ LIBRARY: list[LibraryFixture] = [
         intro="Stairville LED Flood Panel 150 (150 LEDs of 10 mm, red, green and blue, one colour for the whole panel; the 20° and 40° versions).",
         default="4CH",
         ofl="stairville/led-flood-panel-150",
+        maker="Stairville",
         manual="stairville-led-flood-panel-150",
     ),
     LibraryFixture(
@@ -107,6 +115,7 @@ LIBRARY: list[LibraryFixture] = [
         ),
         default="24CH",
         ofl="stairville/led-bar-240-8",
+        maker="Stairville",
         manual="stairville-led-bar-240-8-rgb",
         corrections=[
             Correction(
@@ -120,6 +129,7 @@ LIBRARY: list[LibraryFixture] = [
         intro="Stairville xBrick Quad 16x8W RGBW (16 quad-colour LEDs in 4 segments).",
         default="18CH",
         ofl="stairville/xbrick-quad-16x8w-rgbw",
+        maker="Stairville",
         manual="stairville-xbrick-quad-16x8w-rgbw",
         corrections=[
             Correction("6CH", "Strobe", "the manual prints 0 % to 100 % with no open range and OFL has none either; open = 0 is an assumption", shutter={"open": 0, "strobo": 255}),
@@ -135,6 +145,7 @@ LIBRARY: list[LibraryFixture] = [
         ),
         default="39CH",
         ofl="stairville/sonicpulse-led-bar-10",
+        maker="Stairville",
         manual="stairville-sonicpulse-led-bar-05-10",
         notes=["that the Mode Selection at 0..63 (RGBW colour change) lets the RGBW channels act is inferred from the manual, not verified on a unit"],
     ),
@@ -169,6 +180,7 @@ LIBRARY: list[LibraryFixture] = [
         ),
         default="42: RGB RGB 16pix",
         ofl="astera/fp1-titan-tube",
+        maker="Astera",
         manual="astera-fp1-titan-tube",
         keep=["1", "4", "5", "18", "19", "42", "43"],
         notes=["the manual does not say how many LEDs one pixel of the 4-pixel tables has", "on battery the tube dims itself to meet its set runtime, a DMX show may be dimmer than on AC"],
@@ -189,6 +201,7 @@ LIBRARY: list[LibraryFixture] = [
         ),
         default="8CH",
         ofl="cameo/root-par-6",
+        maker="cameo",
         manual="cameo-root-par-4-6",
     ),
     LibraryFixture(
@@ -199,6 +212,7 @@ LIBRARY: list[LibraryFixture] = [
         ),
         default="04CH",
         ofl="cameo/q-spot-40-rgbw",
+        maker="cameo",
         manual="cameo-q-spot-40-rgbw",
         renames={"2CH": ("02CH", "2ch"), "3CH1": ("03CH1", "3ch-1"), "3CH2": ("03CH2", "3ch-2"), "4CH": ("04CH", "4ch"), "9CH": ("09CH", "9ch")},
     ),
@@ -216,10 +230,10 @@ LIBRARY: list[LibraryFixture] = [
 # --------------------------------------------------------------------------- building
 
 
-def fetch(ofl: str, cache: Path) -> dict:
-    """The OFL fixture file at the pinned commit (cached by commit, maker and fixture)."""
-    path = cache / OFL_COMMIT / (ofl.replace("/", "__") + ".json")
-    if not path.exists():
+def fetch(ofl: str, refresh: bool = False) -> dict:
+    """The OFL fixture file at the pinned commit (kept in tools/fixture_sources/ofl/, downloaded when missing)."""
+    path = OFL_FILES / (ofl.replace("/", "__") + ".json")
+    if refresh or not path.exists():
         url = f"https://raw.githubusercontent.com/{OFL_REPO}/{OFL_COMMIT}/fixtures/{ofl}.json"
         print(f"  fetching {url}")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -232,16 +246,6 @@ def source_sentence(fx: LibraryFixture) -> str:
     if fx.ofl:
         return f"Generated from the Open Fixture Library (MIT licence, {fx.ofl} at commit {OFL_COMMIT[:7]}) and checked against the manual."
     return "Built from the manual (this fixture is not in the Open Fixture Library) with the same conversion as the Open Fixture Library types."
-
-
-def short_reason(why: str) -> str:
-    if why.startswith("a per-pixel block"):
-        return "a dimmer, amber, CCT or strobe per pixel, which PitchControl can't repeat"
-    if "leaves out (null)" in why:
-        return "an empty gap channel between the pixels"
-    if why.startswith("pixel colours"):
-        return "amber next to RGB on every pixel"
-    return why
 
 
 def skipped_by_reason(converted: Converted) -> dict[str, list[str]]:
@@ -257,7 +261,11 @@ def build_type(fx: LibraryFixture, data: dict) -> tuple[dict, Converted, list[st
     skip = dict(fx.skip)
     if fx.keep:
         skip.update({m["name"]: "not shipped: little used, or PitchControl can't express them" for m in data["modes"] if m["name"].split(":")[0] not in fx.keep and m["name"] not in skip})
-    converted = convert_fixture(data, skip)
+    if fx.ofl:
+        imported = import_fixture(data, fixture=fx.ofl, manufacturer=fx.maker, commit=OFL_COMMIT, schema_version=OFL_SCHEMA_VERSION, skip=skip)
+    else:
+        imported = import_fixture(data, file=f"{fx.source_file}.json", skip=skip, note="written by hand in OFL's format from the manufacturer's manual (tools/fixture_sources/); not in the Open Fixture Library")
+    converted, ftype = imported.converted, imported.ftype
     modes = converted.modes
     by_name = {m["name"]: m for m in modes}
     applied = []
@@ -284,15 +292,9 @@ def build_type(fx: LibraryFixture, data: dict) -> tuple[dict, Converted, list[st
         note += " Left out: " + "; ".join(f"{why}: {', '.join(names)}" for why, names in skipped_by_reason(converted).items()) + "."
     if fx.notes:
         note += " Not in the manual or not verified: " + "; ".join(fx.notes) + "."
-    ftype = {
-        "description": description,
-        "transport": "dmx",
-        "modes": modes,
-        "default_mode": by_name[fx.default]["id"],
-        "gamma": 1.0,
-        "strobo_color": {"h": 0.0, "s": 0.0, "b": 1.0},
-        "_note": note,
-    }
+    # the shape of ofl/importer.py, with this tool's description, default mode and note
+    ftype.update(description=description, default_mode=by_name[fx.default]["id"])
+    ftype = {**{k: ftype[k] for k in ("description", "transport", "modes", "default_mode", "gamma", "strobo_color")}, "_note": note, **ftype}
     return ftype, converted, applied
 
 
@@ -302,11 +304,11 @@ def write_json(path: Path, data: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--cache", type=Path, default=Path(__file__).resolve().parent / ".ofl-cache")
+    parser.add_argument("--refresh", action="store_true", help="download the OFL files again at the pinned commit")
     args = parser.parse_args()
 
     for fx in LIBRARY:
-        data = fetch(fx.ofl, args.cache) if fx.ofl else json.loads((SOURCES / f"{fx.source_file}.json").read_text(encoding="utf-8"))
+        data = fetch(fx.ofl, args.refresh) if fx.ofl else json.loads((SOURCES / f"{fx.source_file}.json").read_text(encoding="utf-8"))
         ftype, converted, applied = build_type(fx, data)
         write_json(TYPES / f"{fx.name}.json", ftype)
         print(f"{fx.name}: {len(converted.modes)} modes ({', '.join(m['name'] for m in converted.modes)}), default {fx.default}")

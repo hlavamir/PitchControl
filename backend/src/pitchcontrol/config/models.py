@@ -148,6 +148,8 @@ class ChannelMode(Model):
     # how many pixels the light has in this mode (a bar can have 1 or 8 depending on the mode)
     pixels: int = Field(default=1, ge=1)
     channels: list[ChannelSlot] = Field(default_factory=lambda: [ChannelSlot(pixels="RGB")])
+    # imported from the Open Fixture Library (item 53): the ``name`` of the OFL mode this one was converted from
+    ofl_mode: str | None = None
 
     def channel_count(self) -> int:
         total = 0
@@ -172,6 +174,23 @@ class FixtureType(Model):
     # back to 1 with a warning).
     gamma: float = 1.0
     strobo_color: HSB = Field(default_factory=lambda: HSB(h=0, s=0, b=1))
+    # Kept data of an import (item 53, shape in ``ofl/importer.py``): where the type came from, and the original
+    # fixture's keys under their Open Fixture Library names, not used by the engine, written back as they were read.
+    # Typed ``Any``: the data is OFL's (or a later importer's), PitchControl only carries it.
+    source: dict[str, Any] | None = None
+    ofl_modes: list[Any] | None = None  # OFL's own ``modes`` list (OFL's name collides with ``modes`` above)
+    shortName: Any = None
+    categories: Any = None
+    meta: Any = None
+    comment: Any = None
+    links: Any = None  # {"manual": [url, ...], "productPage": [...], "video": [...]}: shown on the Fixtures page
+    helpWanted: Any = None
+    rdm: Any = None
+    physical: Any = None
+    matrix: Any = None
+    wheels: Any = None
+    availableChannels: Any = None
+    templateChannels: Any = None
     # Whether a fixture flashes on strobo peaks is a rig setting (FixtureInstance.react_to_strobo).
     # Type files written before 2026-10-08 still say it; that value only fills in rig fixtures that
     # don't set it themselves (ConfigStore.load_rig), and is not written back.
