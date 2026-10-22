@@ -72,7 +72,7 @@ MENUS: list[tuple[str, list[Item | Submenu | None]]] = [
         [
             Item("file.save", "Save", "ui", win_key="Ctrl+S", mac_key="cmd+s"),
             SEPARATOR,
-            Submenu("Import Fixture", (Item("file.import.ofl", "Open Fixture Library…", "ui"),)),
+            Submenu("Import Fixture", (Item("file.import.ofl", "Open Fixture Library…", "ui"), Item("file.import.qlc", "QLC+…", "ui"))),
             SEPARATOR,
             Item("file.data_folder", "Open data folder", "app"),
             Item("file.logs_folder", "Open logs folder", "app"),

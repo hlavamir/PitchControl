@@ -75,15 +75,22 @@ def test_kinds():
     assert by_id["file.quit"].kind == "app"  # through the quit guard
 
 
-def test_file_import_fixture_is_a_submenu_with_the_open_fixture_library():
-    """File → Import Fixture ▸ Open Fixture Library… (item 53); the QLC+ import (item 54) joins it."""
+def test_file_import_fixture_is_a_submenu_with_the_open_fixture_library_and_qlcplus():
+    """File → Import Fixture ▸ Open Fixture Library… (item 53) and QLC+… (item 54)."""
     for platform in ("mac", "win"):
         (file_items,) = [items for t, items in menus_for(platform) if t == "File"]
         (sub,) = [i for i in file_items if isinstance(i, Submenu)]
-        assert sub.label == "Import Fixture" and [i.label for i in sub.items] == ["Open Fixture Library…"]
+        assert sub.label == "Import Fixture" and [i.label for i in sub.items] == ["Open Fixture Library…", "QLC+…"]
     assert items_by_id()["file.import.ofl"].kind == "ui"  # the Fixtures page's dialog
+    assert items_by_id()["file.import.qlc"].kind == "ui"
     file_menu = next(m for m in menu_json("win") if m["title"] == "File")
-    assert {"submenu": "Import Fixture", "items": [{"id": "file.import.ofl", "label": "Open Fixture Library…", "kind": "ui", "key": ""}]} in file_menu["items"]
+    assert {
+        "submenu": "Import Fixture",
+        "items": [
+            {"id": "file.import.ofl", "label": "Open Fixture Library…", "kind": "ui", "key": ""},
+            {"id": "file.import.qlc", "label": "QLC+…", "kind": "ui", "key": ""},
+        ],
+    } in file_menu["items"]
 
 
 def test_the_native_macos_menu_nests_the_submenu():
@@ -91,14 +98,16 @@ def test_the_native_macos_menu_nests_the_submenu():
 
     file_menu = next(m for m in native_menu(MenuActions("/d", "/l")) if m.title == "File")
     nested = next(i for i in file_menu.items if isinstance(i, Menu))
-    assert nested.title == "Import Fixture" and [i.title for i in nested.items] == ["Open Fixture Library…"]
+    assert nested.title == "Import Fixture" and [i.title for i in nested.items] == ["Open Fixture Library…", "QLC+…"]
     assert all(isinstance(i, MenuAction) for i in nested.items)
 
 
 def test_importing_from_the_native_menu_asks_the_page():
     window = FakeWindow()
-    MenuActions("/d", "/l", window=window).run("file.import.ofl")
-    assert window.calls == [("js", "window.pitchMenu && window.pitchMenu('file.import.ofl')")]
+    for item in ("file.import.ofl", "file.import.qlc"):
+        window.calls.clear()
+        MenuActions("/d", "/l", window=window).run(item)
+        assert window.calls == [("js", f"window.pitchMenu && window.pitchMenu('{item}')")]
 
 
 class FakeWindow:

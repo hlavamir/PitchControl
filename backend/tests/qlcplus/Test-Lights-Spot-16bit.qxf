@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE FixtureDefinition>
+<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">
+ <Creator>
+  <Name>Q Light Controller Plus</Name>
+  <Version>4.12.2</Version>
+  <Author>PitchControl tests, Miro</Author>
+ </Creator>
+ <Manufacturer>Test Lights</Manufacturer>
+ <Model>Spot 16bit</Model>
+ <Type>Moving Head</Type>
+ <Channel Name="Pan" Preset="PositionPan"/>
+ <Channel Name="Pan Fine" Preset="PositionPanFine"/>
+ <Channel Name="Tilt" Preset="PositionTilt"/>
+ <Channel Name="Tilt Fine" Preset="PositionTiltFine"/>
+ <Channel Name="Dimmer" Preset="IntensityMasterDimmer"/>
+ <Channel Name="Dimmer Fine" Preset="IntensityMasterDimmerFine"/>
+ <Channel Name="Red" Preset="IntensityRed"/>
+ <Channel Name="Green" Preset="IntensityGreen"/>
+ <Channel Name="Blue" Preset="IntensityBlue"/>
+ <Channel Name="Program">
+  <Group Byte="0">Effect</Group>
+  <Capability Min="0" Max="127">Off</Capability>
+  <Capability Min="128" Max="255">Program 1-8</Capability>
+ </Channel>
+ <Channel Name="Function" Default="0">
+  <Group Byte="0">Maintenance</Group>
+  <Capability Min="0" Max="127">Colour mixing</Capability>
+  <Capability Min="128" Max="255" Preset="Alias">Programs<Alias Mode="Extended" Channel="Red" With="Program"/></Capability>
+ </Channel>
+ <Channel Name="Gobo Wheel">
+  <Group Byte="0">Gobo</Group>
+  <Capability Min="0" Max="9">Open</Capability>
+  <Capability Min="10" Max="19" Res1="Gobos/gobo00001.svg">Stars</Capability>
+  <Capability Min="20" Max="29" Res1="Gobos/gobo00002.svg">Dots</Capability>
+ </Channel>
+ <Mode Name="Standard">
+  <Channel Number="0">Pan</Channel>
+  <Channel Number="1">Pan Fine</Channel>
+  <Channel Number="2">Tilt</Channel>
+  <Channel Number="3">Tilt Fine</Channel>
+  <Channel Number="4">Dimmer</Channel>
+  <Channel Number="5">Dimmer Fine</Channel>
+  <Channel Number="6">Red</Channel>
+  <Channel Number="7">Green</Channel>
+  <Channel Number="8">Blue</Channel>
+ </Mode>
+ <Mode Name="Extended">
+  <Channel Number="0">Pan</Channel>
+  <Channel Number="1">Pan Fine</Channel>
+  <Channel Number="2">Tilt</Channel>
+  <Channel Number="3">Tilt Fine</Channel>
+  <Channel Number="4">Dimmer</Channel>
+  <Channel Number="5">Dimmer Fine</Channel>
+  <Channel Number="6">Function</Channel>
+  <Channel Number="7">Red</Channel>
+  <Channel Number="8">Green</Channel>
+  <Channel Number="9">Blue</Channel>
+  <Channel Number="10">Gobo Wheel</Channel>
+ </Mode>
+ <Physical>
+  <Bulb Type="LED" Lumens="3000" ColourTemperature="6500"/>
+  <Dimensions Weight="7" Width="250" Height="350" Depth="200"/>
+  <Lens Name="Other" DegreesMin="12" DegreesMax="12"/>
+  <Focus Type="Head" PanMax="540" TiltMax="270"/>
+  <Technical PowerConsumption="90" DmxConnector="5-pin"/>
+ </Physical>
+</FixtureDefinition>

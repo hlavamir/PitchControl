@@ -27,7 +27,8 @@ THE SHAPE OF AN IMPORTED TYPE FILE (everything not listed here is PitchControl's
   ``manufacturer``  the manufacturer's name (OFL's ``manufacturers.json``; absent when not known)
   ``url``         the fixture's page on open-fixture-library.org
   ``schema``      OFL's ``$schema`` value
-  ``license``     ``"MIT"`` (the Open Fixture Library's licence)
+  ``license``     ``"MIT"`` (the Open Fixture Library's licence; absent for a QLC+ file, which is the user's own)
+  ``via``         ``"qlcplus"`` when the OFL fixture was built from a QLC+ ``.qxf`` (item 54), absent otherwise
   ``converter``   the version of this mapping (``CONVERTER_VERSION``; item 55's JavaScript has the same number)
   ``key_order``   OFL's top-level keys in their original order (for an exact rebuild)
   ``note``        free text, e.g. for a fixture written by hand from a manual
@@ -38,8 +39,12 @@ THE SHAPE OF AN IMPORTED TYPE FILE (everything not listed here is PitchControl's
   54 and 55 leaves them out): ``commit`` (OFL's git commit, online imports), ``file`` (the file name, imports
   from a file), ``schema_version`` (the version of OFL's schema at that commit, when known).
 
-* the importer adds no other keys, so a type that came from QLC+ (item 54) has the same shape with
-  ``source.format = "ofl"`` (it went through the OFL model) and what OFL's model can't hold under a ``qlcplus`` key.
+* the importer adds no other keys, so a type that came from QLC+ (item 54) has the same shape: ``source.format``
+  is ``"ofl"`` (it went through the OFL model, ``qlcplus.py``), ``source.via`` is ``"qlcplus"``, ``source.file`` the
+  ``.qxf``'s name, and the top-level key ``qlcplus`` has what OFL's model can't hold: ``creator`` (name, version,
+  author of the file), ``type`` (QLC+'s own ``Type``), ``unmapped`` (every element and attribute of the file the
+  reader did not use, with its path) and ``xml`` (the file itself). ``rebuild_ofl`` then gives the OFL fixture the
+  reader built from the file (``fixture`` and ``schema_version`` are absent: it is no OFL fixture).
 
 ``rebuild_ofl`` is the inverse: the top-level keys in ``source.key_order``, with ``$schema`` and ``name`` from
 ``source``, ``modes`` from ``ofl_modes`` and the rest from the type. For a type that was imported and not edited
@@ -95,6 +100,7 @@ class Report:
     notes: list[str] = field(default_factory=list)
     manual: list[str] = field(default_factory=list)  # the fixture's manual links, if OFL has any
     check: str = CHECK
+    dropped: list[str] = field(default_factory=list)  # what the source format has and the OFL model can't hold (QLC+ import: kept under ``qlcplus``)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -105,6 +111,7 @@ class Report:
             "notes": self.notes,
             "manual": self.manual,
             "check": self.check,
+            "dropped": self.dropped,
         }
 
 
@@ -190,15 +197,25 @@ def import_fixture(
     schema_version: str | None = None,
     skip: dict[str, str] | None = None,
     note: str | None = None,
+    via: str | None = None,
+    where: str | None = None,
+    licence: str | None = LICENSE,
+    keep: dict[str, Any] | None = None,
+    check: str = CHECK,
 ) -> Imported:
     """The PitchControl type for one OFL fixture (the parsed JSON) and the report of the import. ``skip`` leaves OFL
     modes out on purpose (OFL mode name -> why; reported like the ones that can't be converted). Raises
-    ``ImportProblem`` for data that isn't an OFL fixture and ``Redirect`` for a redirect file."""
+    ``ImportProblem`` for data that isn't an OFL fixture and ``Redirect`` for a redirect file.
+
+    The QLC+ import (``qlcplus.py``) builds an OFL fixture from a ``.qxf`` and calls this with ``via="qlcplus"`` (where
+    it came from, ``source.via``), ``where`` (the words for the description), ``licence`` (None: the user's own file),
+    ``keep`` (more keys of the type: ``{"qlcplus": …}``) and its own ``check`` line."""
     data = copy.deepcopy(_check_fixture(data))
     converted = convert_fixture(data, skip)
     key = fixture or _key_of(data)
     schema_version = schema_version or _schema_version_of(data)
     report = Report(
+        check=check,
         fixture={"name": data["name"], "manufacturer": manufacturer, "key": key, "url": fixture_url(key) if key else None},
         skipped=[{"mode": name, "reason": short_reason(why), "detail": why} for name, why in converted.skipped],
         assumptions=_assumptions(converted),
@@ -219,7 +236,7 @@ def import_fixture(
 
     shown = f"{manufacturer} {data['name']}" if manufacturer and not data["name"].lower().startswith(manufacturer.lower()) else data["name"]
     cats = data.get("categories")
-    where = f"the Open Fixture Library (MIT licence{', ' + key if key else ''}{', commit ' + commit[:7] if commit else ''})"
+    where = where or f"the Open Fixture Library (MIT licence{', ' + key if key else ''}{', commit ' + commit[:7] if commit else ''})"
     source: dict[str, Any] = {
         "format": "ofl",
         "fixture": key,
@@ -227,7 +244,8 @@ def import_fixture(
         "manufacturer": manufacturer,
         "url": fixture_url(key) if key else None,
         "schema": data.get("$schema"),
-        "license": LICENSE,
+        "license": licence,
+        "via": via,
         "converter": CONVERTER_VERSION,
         "key_order": list(data),
         "note": note,
@@ -251,6 +269,7 @@ def import_fixture(
         if k not in NOT_KEPT:
             ftype[k] = v
     ftype[MODES_KEY] = data["modes"]
+    ftype.update(copy.deepcopy(keep or {}))
     return Imported(name, ftype, report, converted)
 
 

@@ -30,8 +30,9 @@ from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..menu import menu_json, platform_of, reveal as reveal_folder
-from ..ofl import online
+from ..ofl import online, qlcplus_files
 from ..ofl.importer import ImportProblem, Redirect, import_fixture
+from ..ofl.qlcplus import import_qxf
 from ..version import system_label, version_label
 from .network import Network, NetworkGate
 
@@ -62,6 +63,15 @@ class OflSource(BaseModel):
     commit: str | None = None
     text: str | None = None
     file: str | None = None
+
+
+class QlcSource(BaseModel):
+    """What File → Import Fixture → QLC+ converts: the text of a ``.qxf`` the user picked (``text``, from ``file``) or one of
+    the files of QLC+'s own folders on this computer (``folder``: the index in ``/api/qlcplus/fixtures``, and ``file``)."""
+
+    text: str | None = None
+    file: str | None = None
+    folder: int | None = None
 
 
 class OflImport(BaseModel):
@@ -465,7 +475,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         type_state["unsaved"].discard(name)
         return {"ok": True}
 
-    # ---- import from the Open Fixture Library (item 53; this computer only: it writes the user's data folder, and the
+    # ---- import from the Open Fixture Library (item 53) and from QLC+ (item 54; this computer only: it writes the user's data folder, and the
     # picked file is on this computer)
     def existing_type(name: str) -> dict | None:
         """The type that ``name`` would clash with (the same name in any letter case: they are file names)."""
@@ -476,6 +486,10 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
 
     def ofl_error(exc: Exception) -> HTTPException:
         return HTTPException(502 if isinstance(exc, online.OnlineError) else 400, str(exc))
+
+    def converted(result) -> dict:
+        """What both import dialogs show: the suggested name, the type (None: nothing to import), the report, a name clash."""
+        return {"name": result.name, "type": result.ftype, "report": result.report.as_json(), "existing": existing_type(result.name)}
 
     @app.get("/api/ofl/manufacturers", dependencies=local_only)
     def ofl_manufacturers():
@@ -513,7 +527,8 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
                 try:
                     data = json.loads(body.text)
                 except ValueError as exc:
-                    raise ImportProblem("this file is not JSON: pick a fixture file of the Open Fixture Library (.json)") from exc
+                    hint = " (it looks like a QLC+ fixture: use File → Import Fixture → QLC+…)" if body.text.lstrip().startswith("<") else ""
+                    raise ImportProblem("this file is not JSON: pick a fixture file of the Open Fixture Library (.json)" + hint) from exc
                 extra = {"file": body.file}
             else:
                 raise ImportProblem("say which fixture to import")
@@ -522,7 +537,33 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             raise ofl_error(exc) from exc
         if note:
             result.report.notes.insert(0, note)
-        return {"name": result.name, "type": result.ftype, "report": result.report.as_json(), "existing": existing_type(result.name)}
+        return converted(result)
+
+    @app.get("/api/qlcplus/fixtures", dependencies=local_only)
+    def qlcplus_fixtures():
+        """The QLC+ fixture folders that exist on this computer and the ``.qxf`` files in them (empty without QLC+)."""
+        places = qlcplus_files.folders()
+        return {"folders": [{"label": f.label, "path": str(f.path)} for f in places], "fixtures": qlcplus_files.listing(places)}
+
+    @app.post("/api/qlcplus/convert", dependencies=local_only)
+    def qlcplus_convert(body: QlcSource):
+        """Convert one QLC+ fixture definition and report; nothing is saved (``POST /api/fixture-types/import`` saves)."""
+        try:
+            if body.text is not None:
+                source: str | bytes = body.text
+            elif body.folder is not None and body.file:
+                source = qlcplus_files.read(qlcplus_files.folders(), body.folder, body.file)
+            else:
+                raise ImportProblem("say which fixture to import")
+            result = import_qxf(source, file=body.file)
+        except ImportProblem as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(400, f"can't read that file: {exc}") from exc
+        except Exception as exc:  # a definition the reader didn't expect: say so instead of a bare 500
+            log.exception("QLC+ import of %s failed", body.file)
+            raise HTTPException(400, f"this QLC+ file could not be converted ({type(exc).__name__}: {exc}); the log has the details") from exc
+        return converted(result)
 
     @app.post("/api/fixture-types/import", dependencies=local_only)
     def import_fixture_type(body: OflImport):

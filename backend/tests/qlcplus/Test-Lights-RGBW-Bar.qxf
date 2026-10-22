@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE FixtureDefinition>
+<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">
+ <Creator>
+  <Name>Q Light Controller Plus</Name>
+  <Version>4.12.2</Version>
+  <Author>PitchControl tests</Author>
+ </Creator>
+ <Manufacturer>Test Lights</Manufacturer>
+ <Model>RGBW Bar 4</Model>
+ <Type>LED Bar (Pixels)</Type>
+ <Channel Name="Dimmer" Preset="IntensityMasterDimmer"/>
+ <Channel Name="Red 1" Preset="IntensityRed"/>
+ <Channel Name="Green 1" Preset="IntensityGreen"/>
+ <Channel Name="Blue 1" Preset="IntensityBlue"/>
+ <Channel Name="White 1" Preset="IntensityWhite"/>
+ <Channel Name="Red 2" Preset="IntensityRed"/>
+ <Channel Name="Green 2" Preset="IntensityGreen"/>
+ <Channel Name="Blue 2" Preset="IntensityBlue"/>
+ <Channel Name="White 2" Preset="IntensityWhite"/>
+ <Channel Name="Red 3" Preset="IntensityRed"/>
+ <Channel Name="Green 3" Preset="IntensityGreen"/>
+ <Channel Name="Blue 3" Preset="IntensityBlue"/>
+ <Channel Name="White 3" Preset="IntensityWhite"/>
+ <Channel Name="Red 4" Preset="IntensityRed"/>
+ <Channel Name="Green 4" Preset="IntensityGreen"/>
+ <Channel Name="Blue 4" Preset="IntensityBlue"/>
+ <Channel Name="White 4" Preset="IntensityWhite"/>
+ <Channel Name="Strobe">
+  <Group Byte="0">Shutter</Group>
+  <Capability Min="0" Max="15">Open</Capability>
+  <Capability Min="16" Max="255" Preset="StrobeSlowToFast">Strobe slow to fast</Capability>
+ </Channel>
+ <Mode Name="4 Pixels">
+  <Channel Number="0">Dimmer</Channel>
+  <Channel Number="1">Red 1</Channel>
+  <Channel Number="2">Green 1</Channel>
+  <Channel Number="3">Blue 1</Channel>
+  <Channel Number="4">White 1</Channel>
+  <Channel Number="5">Red 2</Channel>
+  <Channel Number="6">Green 2</Channel>
+  <Channel Number="7">Blue 2</Channel>
+  <Channel Number="8">White 2</Channel>
+  <Channel Number="9">Red 3</Channel>
+  <Channel Number="10">Green 3</Channel>
+  <Channel Number="11">Blue 3</Channel>
+  <Channel Number="12">White 3</Channel>
+  <Channel Number="13">Red 4</Channel>
+  <Channel Number="14">Green 4</Channel>
+  <Channel Number="15">Blue 4</Channel>
+  <Channel Number="16">White 4</Channel>
+  <Channel Number="17">Strobe</Channel>
+  <Head>
+   <Channel>1</Channel>
+   <Channel>2</Channel>
+   <Channel>3</Channel>
+   <Channel>4</Channel>
+  </Head>
+  <Head>
+   <Channel>5</Channel>
+   <Channel>6</Channel>
+   <Channel>7</Channel>
+   <Channel>8</Channel>
+  </Head>
+  <Head>
+   <Channel>9</Channel>
+   <Channel>10</Channel>
+   <Channel>11</Channel>
+   <Channel>12</Channel>
+  </Head>
+  <Head>
+   <Channel>13</Channel>
+   <Channel>14</Channel>
+   <Channel>15</Channel>
+   <Channel>16</Channel>
+  </Head>
+  <Physical>
+   <Bulb Type="LED" Lumens="0" ColourTemperature="0"/>
+   <Dimensions Weight="1.6" Width="1000" Height="70" Depth="90"/>
+   <Lens Name="Other" DegreesMin="0" DegreesMax="0"/>
+   <Focus Type="Fixed" PanMax="0" TiltMax="0"/>
+   <Technical PowerConsumption="40" DmxConnector="3-pin"/>
+   <Layout Width="4" Height="1"/>
+  </Physical>
+ </Mode>
+ <Mode Name="2 Pixels">
+  <Channel Number="0">Red 1</Channel>
+  <Channel Number="1">Green 1</Channel>
+  <Channel Number="2">Blue 1</Channel>
+  <Channel Number="3">White 1</Channel>
+  <Channel Number="4">Red 2</Channel>
+  <Channel Number="5">Green 2</Channel>
+  <Channel Number="6">Blue 2</Channel>
+  <Channel Number="7">White 2</Channel>
+  <Head>
+   <Channel>0</Channel>
+   <Channel>1</Channel>
+   <Channel>2</Channel>
+   <Channel>3</Channel>
+  </Head>
+  <Head>
+   <Channel>4</Channel>
+   <Channel>5</Channel>
+   <Channel>6</Channel>
+   <Channel>7</Channel>
+  </Head>
+ </Mode>
+ <Mode Name="Grouped by colour">
+  <Channel Number="0">Red 1</Channel>
+  <Channel Number="1">Red 2</Channel>
+  <Channel Number="2">Green 1</Channel>
+  <Channel Number="3">Green 2</Channel>
+  <Channel Number="4">Blue 1</Channel>
+  <Channel Number="5">Blue 2</Channel>
+  <Head>
+   <Channel>0</Channel>
+   <Channel>2</Channel>
+   <Channel>4</Channel>
+  </Head>
+  <Head>
+   <Channel>1</Channel>
+   <Channel>3</Channel>
+   <Channel>5</Channel>
+  </Head>
+ </Mode>
+ <Mode Name="Mixed heads">
+  <Channel Number="0">Red 1</Channel>
+  <Channel Number="1">Green 1</Channel>
+  <Channel Number="2">Blue 1</Channel>
+  <Channel Number="3">Red 2</Channel>
+  <Channel Number="4">Green 2</Channel>
+  <Head>
+   <Channel>0</Channel>
+   <Channel>1</Channel>
+   <Channel>2</Channel>
+  </Head>
+  <Head>
+   <Channel>3</Channel>
+   <Channel>4</Channel>
+  </Head>
+ </Mode>
+</FixtureDefinition>

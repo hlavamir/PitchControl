@@ -191,6 +191,7 @@ class FixtureType(Model):
     wheels: Any = None
     availableChannels: Any = None
     templateChannels: Any = None
+    qlcplus: dict[str, Any] | None = None  # item 54: what a QLC+ import kept (creator, type, unmapped, the .qxf's own text)
     # Whether a fixture flashes on strobo peaks is a rig setting (FixtureInstance.react_to_strobo).
     # Type files written before 2026-10-08 still say it; that value only fills in rig fixtures that
     # don't set it themselves (ConfigStore.load_rig), and is not written back.
