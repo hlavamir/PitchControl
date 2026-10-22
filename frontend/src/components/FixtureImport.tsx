@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
-import { actionFor, clashOf, clashText, filterKeys, groupSkipped, type Converted } from '../oflImport'
+import { actionFor, clashOf, clashText, filterKeys, groupSkipped, makersOf, modelsOf, type Converted, type ImportKind, type QlcLibrary } from '../fixtureImport'
 import type { Origin } from './RigPanel'
 import { Button } from './forms'
 
-type Source = 'file' | 'online'
+type Source = 'file' | 'online' | 'installed'
 
 interface Manufacturers {
   commit: string
@@ -12,11 +12,13 @@ interface Manufacturers {
 }
 
 /**
- * File → Import Fixture → Open Fixture Library… (item 53): pick a fixture (a .json file, or a manufacturer and fixture from the
- * Open Fixture Library on GitHub), read the import report, name the type and save it. Nothing is written before the last
- * button. The conversion, the report and the kept original data are the backend's (``ofl/importer.py``).
+ * File → Import Fixture → Open Fixture Library… (item 53) and → QLC+… (item 54): pick a fixture (OFL: a .json file, or a
+ * manufacturer and fixture from the Open Fixture Library on GitHub; QLC+: a .qxf file, or one of the fixtures in QLC+'s own folders
+ * on this computer), read the import report, name the type and save it. Nothing is written before the last button. The conversion,
+ * the report and the kept original data are the backend's (``ofl/importer.py``, ``ofl/qlcplus.py``).
  */
-export function OflImportDialog({
+export function FixtureImportDialog({
+  kind,
   types,
   origins,
   usage,
@@ -24,6 +26,7 @@ export function OflImportDialog({
   onDone,
   onClose,
 }: {
+  kind: ImportKind
   types: Record<string, unknown>
   origins: Record<string, Origin>
   usage: Record<string, string[]>
@@ -44,7 +47,14 @@ export function OflImportDialog({
   const [fixture, setFixture] = useState('')
   const [address, setAddress] = useState('')
   const [fileName, setFileName] = useState('')
+  // QLC+'s own folders on this computer
+  const [library, setLibrary] = useState<QlcLibrary | null>(null)
+  const [qMaker, setQMaker] = useState('')
+  const [qFilter, setQFilter] = useState('')
+  const [qFile, setQFile] = useState('')
+  const [qSearch, setQSearch] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const qlc = kind === 'qlc'
   const root = useRef<HTMLDivElement>(null)
 
   useEffect(() => root.current?.querySelector<HTMLElement>('[data-first]')?.focus(), [source, converted])
@@ -69,8 +79,18 @@ export function OflImportDialog({
   const pickFile = (file: File | undefined) => {
     if (!file) return
     setFileName(file.name)
-    work('Converting…', async () => show(await api.post<Converted>('/api/ofl/convert', { text: await file.text(), file: file.name })))
+    work('Converting…', async () => show(await api.post<Converted>(qlc ? '/api/qlcplus/convert' : '/api/ofl/convert', { text: await file.text(), file: file.name })))
   }
+
+  const openInstalled = () => {
+    setSource('installed')
+    setError(null)
+    if (library) return
+    work('Looking for QLC+ on this computer…', async () => setLibrary(await api.get<QlcLibrary>('/api/qlcplus/fixtures')))
+  }
+  const makers = library ? makersOf(library.fixtures, qSearch) : []
+  const models = library && qMaker ? modelsOf(library.fixtures, qMaker, qFilter) : []
+  const convertInstalled = (folder: number, file: string) => work('Converting…', async () => show(await api.post<Converted>('/api/qlcplus/convert', { folder, file })))
 
   const openOnline = () => {
     setSource('online')
@@ -105,7 +125,7 @@ export function OflImportDialog({
   const report = converted?.report
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 px-3 pt-14 pb-6" role="dialog" aria-label="Import fixture from the Open Fixture Library">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 px-3 pt-14 pb-6" role="dialog" aria-label={qlc ? 'Import fixture from QLC+' : 'Import fixture from the Open Fixture Library'}>
       <div
         ref={root}
         className="flex w-full max-w-3xl flex-col border border-ink bg-panel shadow-[0_0_30px_rgb(0_0_0/0.6)]"
@@ -116,7 +136,7 @@ export function OflImportDialog({
         }}
       >
         <div className="flex h-[26px] flex-none items-center justify-between border-b border-edge px-2.5 text-[11px]">
-          <h2 className="lbl font-medium">Import fixture / Open Fixture Library</h2>
+          <h2 className="lbl font-medium">{qlc ? 'Import fixture / QLC+' : 'Import fixture / Open Fixture Library'}</h2>
           <button className="lbl px-1 text-dim hover:text-ink" onClick={onClose} data-tip="Close without importing (Esc)">
             ✕ close
           </button>
@@ -126,31 +146,112 @@ export function OflImportDialog({
           {!converted ? (
             <>
               <p className="text-dim">
-                The Open Fixture Library (open-fixture-library.org) describes thousands of lights. PitchControl converts the modes it can drive, tells you what it left out, and keeps the
-                library’s original data in the type file.
+                {qlc
+                  ? 'QLC+ (qlcplus.org) is a lighting program with thousands of fixture definitions. PitchControl reads a definition (.qxf) the way the Open Fixture Library does, makes pixels of the heads, converts the modes it can drive, tells you what it left out, and keeps the QLC+ data in the type file.'
+                  : 'The Open Fixture Library (open-fixture-library.org) describes thousands of lights. PitchControl converts the modes it can drive, tells you what it left out, and keeps the library’s original data in the type file.'}
               </p>
               <div className="flex gap-1.5">
-                {(['file', 'online'] as const).map((s) => (
+                {(qlc ? (['file', 'installed'] as const) : (['file', 'online'] as const)).map((s) => (
                   <button
                     key={s}
-                    onClick={() => (s === 'online' ? openOnline() : (setSource('file'), setError(null)))}
+                    onClick={() => (s === 'online' ? openOnline() : s === 'installed' ? openInstalled() : (setSource('file'), setError(null)))}
                     className={`lbl h-8 px-3 text-[11px] font-medium ${source === s ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge bg-panel text-ink'}`}
-                    data-tip={s === 'file' ? 'Import a fixture file (.json) you downloaded from the Open Fixture Library: works offline' : 'Pick the manufacturer and fixture from the Open Fixture Library on GitHub: needs the internet'}
+                    data-tip={
+                      s === 'file'
+                        ? qlc
+                          ? 'Import a QLC+ fixture definition (.qxf) from any folder: works offline'
+                          : 'Import a fixture file (.json) you downloaded from the Open Fixture Library: works offline'
+                        : s === 'installed'
+                          ? 'Pick one of the fixtures in the folders of QLC+ on this computer'
+                          : 'Pick the manufacturer and fixture from the Open Fixture Library on GitHub: needs the internet'
+                    }
                   >
-                    {s === 'file' ? 'From a file' : 'From the library (online)'}
+                    {s === 'file' ? 'From a file' : s === 'installed' ? 'From QLC+ on this computer' : 'From the library (online)'}
                   </button>
                 ))}
               </div>
 
               {source === 'file' && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" onChange={(e) => (pickFile(e.target.files?.[0]), (e.target.value = ''))} />
-                  <Button primary onClick={() => fileInput.current?.click()} tip="Choose a fixture file of the Open Fixture Library (a .json file, e.g. from the Download button of a fixture’s page)">
-                    Choose a .json file…
+                  <input ref={fileInput} type="file" accept={qlc ? '.qxf,.xml,application/xml,text/xml' : '.json,application/json'} className="hidden" onChange={(e) => (pickFile(e.target.files?.[0]), (e.target.value = ''))} />
+                  <Button
+                    primary
+                    onClick={() => fileInput.current?.click()}
+                    tip={qlc ? 'Choose a QLC+ fixture definition (a .qxf file, e.g. from QLC+’s Fixtures folder or the QLC+ forum)' : 'Choose a fixture file of the Open Fixture Library (a .json file, e.g. from the Download button of a fixture’s page)'}
+                  >
+                    {qlc ? 'Choose a .qxf file…' : 'Choose a .json file…'}
                   </Button>
                   <span className="text-dim">
-                    {fileName || 'On the fixture’s page of the library, “Download as” → “Open Fixture Library JSON”'}
+                    {fileName || (qlc ? 'A QLC+ fixture definition: a file ending in .qxf' : 'On the fixture’s page of the library, “Download as” → “Open Fixture Library JSON”')}
                   </span>
+                </div>
+              )}
+
+              {source === 'installed' && (
+                <div className="flex flex-col gap-2">
+                  {library && library.folders.length === 0 && (
+                    <p className="border border-edge p-2 text-dim">
+                      No QLC+ fixture folder was found on this computer (QLC+ keeps its definitions in a “Fixtures” folder of its installation and of your user folder). Is QLC+ installed? You can still
+                      choose a .qxf file.
+                    </p>
+                  )}
+                  {library && library.folders.length > 0 && (
+                    <>
+                      <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-2">
+                        <span className="lbl text-[11px] text-dim">Manufacturer</span>
+                        <span className="flex min-w-0 gap-2">
+                          <input data-first type="text" className="w-36 flex-none" placeholder="filter" value={qSearch} onChange={(e) => setQSearch(e.target.value)} data-tip="Type part of the manufacturer's name to narrow the list" />
+                          <select
+                            className="min-w-0 flex-1"
+                            value={qMaker}
+                            onChange={(e) => {
+                              setQMaker(e.target.value)
+                              setQFile('')
+                              setQFilter('')
+                            }}
+                            data-tip="The manufacturers of the fixtures in QLC+'s folders"
+                          >
+                            <option value="">{`choose one (${makers.length})`}</option>
+                            {makers.map((m) => (
+                              <option key={m.name} value={m.name}>
+                                {m.name} ({m.count})
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <span className="lbl text-[11px] text-dim">Fixture</span>
+                        <span className="flex min-w-0 gap-2">
+                          <input type="text" className="w-36 flex-none" placeholder="filter" value={qFilter} disabled={!qMaker} onChange={(e) => setQFilter(e.target.value)} data-tip="Type part of the fixture's name or type to narrow the list" />
+                          <select className="min-w-0 flex-1" value={qFile} disabled={!qMaker} onChange={(e) => setQFile(e.target.value)} data-tip="The fixtures of this manufacturer; a folder other than QLC+'s own is named">
+                            <option value="">{qMaker ? `${models.length} fixtures` : '—'}</option>
+                            {models.map((f) => (
+                              <option key={`${f.folder}/${f.file}`} value={`${f.folder}/${f.file}`}>
+                                {f.model}
+                                {f.type ? ` · ${f.type}` : ''}
+                                {library.folders.length > 1 ? ` · ${library.folders[f.folder].label}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                      </div>
+                      <div>
+                        <Button
+                          primary
+                          disabled={!qFile || !!busy}
+                          onClick={() => {
+                            const at = qFile.indexOf('/')
+                            convertInstalled(Number(qFile.slice(0, at)), qFile.slice(at + 1))
+                          }}
+                          tip="Read the fixture definition and show what would be imported"
+                        >
+                          Show the import report
+                        </Button>
+                      </div>
+                      <p className="lbl text-[10px] text-dim">
+                        {library.fixtures.length} fixtures in {library.folders.map((f) => f.path).join(' and ')}
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -267,6 +368,19 @@ export function OflImportDialog({
                   </div>
                 )}
                 {!converted.type && <p className="border border-ink p-2">None of this fixture’s modes can be imported, so there is nothing to save.</p>}
+
+                {report.dropped && report.dropped.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="lbl text-[10px] text-dim">in the QLC+ file but not in OFL’s model (kept in the type file under “qlcplus”)</p>
+                    <div className="flex max-h-32 flex-col gap-1 overflow-auto">
+                      {report.dropped.map((d) => (
+                        <p key={d} className="border-l border-edge pl-2 text-dim">
+                          {d}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {(report.assumptions.length > 0 || report.notes.length > 0) && (
                   <div className="flex flex-col gap-1">

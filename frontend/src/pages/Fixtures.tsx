@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api, byName, channelCount, slotKind, type ChannelMode, type FixtureType, type HSB, type MacroDef, type PixelFormat } from '../api'
 import { hsvCss } from '../components/MacroControl'
-import { OflImportDialog } from '../components/OflImport'
+import { FixtureImportDialog } from '../components/FixtureImport'
 import { Button, NumberInput, Row, Section } from '../components/forms'
 import { useSaveAction } from '../leaveGuard'
 import type { Origin } from '../components/RigPanel'
 import { copyOfLastMode, edited, slotOfKind, type Kind } from '../fixtureEdit'
 import { fixturesInMode, hasSameName } from '../modes'
 import { linkGroups } from '../links'
-import { onOflImportRequest, takeOflImportRequest } from '../oflImport'
+import { onImportRequest, takeImportRequest, type ImportKind } from '../fixtureImport'
 import { useFieldNav } from '../useFieldNav'
 import { OPEN_TYPE_KEY } from './Rig'
 
@@ -54,7 +54,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [modeAsk, setModeAsk] = useState<{ index: number; fixtures: string[] } | null>(null) // deleting a mode the rig uses
-  const [importing, setImporting] = useState(false) // File → Import Fixture → Open Fixture Library…
+  const [importing, setImporting] = useState<ImportKind | null>(null) // File → Import Fixture → Open Fixture Library… / QLC+… (which dialog is open)
   const [app, setApp] = useState<{ desktop: boolean; local: boolean }>({ desktop: false, local: true })
 
   const loadStatus = useCallback(() => api.get<Status>('/api/fixture-types/status').then(setStatus), [])
@@ -84,10 +84,14 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
   useEffect(() => {
     api.get<{ desktop: boolean; local: boolean }>('/api/app-info').then(setApp).catch(() => undefined)
   }, [])
-  // the menu bar's File → Import Fixture → Open Fixture Library… (on this page already, or asked before it was shown)
+  // the menu bar's File → Import Fixture → … (on this page already, or asked before it was shown)
   useEffect(() => {
-    if (takeOflImportRequest()) setImporting(true)
-    return onOflImportRequest(() => takeOflImportRequest() && setImporting(true))
+    const take = () => {
+      const kind = takeImportRequest()
+      if (kind) setImporting(kind)
+    }
+    take()
+    return onImportRequest(take)
   }, [])
   // a link of a type (manual, product page): the desktop app opens it in the default browser through the backend
   const openLink = (e: MouseEvent, url: string) => {
@@ -299,11 +303,18 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
               Rename
             </Button>
             <Button
-              onClick={() => setImporting(true)}
+              onClick={() => setImporting('ofl')}
               disabled={!app.local}
               tip={app.local ? 'Import a fixture from the Open Fixture Library: a .json file, or online by manufacturer and fixture (File → Import Fixture)' : 'Importing works on the computer that runs PitchControl: it writes that computer’s data folder'}
             >
-              Import…
+              Import OFL…
+            </Button>
+            <Button
+              onClick={() => setImporting('qlc')}
+              disabled={!app.local}
+              tip={app.local ? 'Import a fixture from QLC+: a .qxf file, or one of the fixtures in the folders of QLC+ on this computer (File → Import Fixture)' : 'Importing works on the computer that runs PitchControl: it writes that computer’s data folder'}
+            >
+              Import QLC+…
             </Button>
             {origin === 'modified' ? (
               <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={!t} tip="Back to the version that comes with the app: your changes to this type are deleted (asks first)">
@@ -443,9 +454,17 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
               </Row>
             )}
             {t.source?.format === 'ofl' && (
-              <Row label="Source" hint="This type was imported from the Open Fixture Library; the library's original data is kept in the type file, whatever you edit here" plain>
+              <Row
+                label="Source"
+                hint={
+                  t.source.via === 'qlcplus'
+                    ? "This type was imported from a QLC+ fixture definition; the data is kept in the type file (the OFL keys and the original in qlcplus), whatever you edit here"
+                    : "This type was imported from the Open Fixture Library; the library's original data is kept in the type file, whatever you edit here"
+                }
+                plain
+              >
                 <span className="text-[12px] text-dim">
-                  Open Fixture Library
+                  {t.source.via === 'qlcplus' ? 'QLC+ fixture definition' : 'Open Fixture Library'}
                   {[t.source.fixture, t.source.file, t.source.commit?.slice(0, 7)].filter(Boolean).map((x) => ` · ${x}`)}
                 </span>
               </Row>
@@ -669,14 +688,15 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
       </Section>
     </div>
     {importing && (
-      <OflImportDialog
+      <FixtureImportDialog
+        kind={importing}
         types={types}
         origins={status.origins}
         usage={status.usage}
         openLink={openLink}
-        onClose={() => setImporting(false)}
+        onClose={() => setImporting(null)}
         onDone={(name, text) => {
-          setImporting(false)
+          setImporting(null)
           run(async () => (setMessage(text), name))
         }}
       />

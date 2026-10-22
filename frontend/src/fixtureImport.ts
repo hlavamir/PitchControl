@@ -1,5 +1,6 @@
-// Import Fixture → Open Fixture Library (item 53): what the dialog needs that isn't React. The conversion, the report and
-// the saving are the backend's (ofl/importer.py, POST /api/ofl/convert and /api/fixture-types/import).
+// Import Fixture → Open Fixture Library (item 53) and → QLC+ (item 54): what the dialog needs that isn't React. The conversion,
+// the report and the saving are the backend's (ofl/importer.py, POST /api/ofl/convert, /api/qlcplus/convert and
+// /api/fixture-types/import).
 
 import type { FixtureType } from './api'
 import type { Origin } from './components/RigPanel'
@@ -12,6 +13,43 @@ export interface OflReport {
   notes: string[]
   manual: string[]
   check: string
+  dropped?: string[] // what the QLC+ file has and OFL's model can't hold (kept in the type under qlcplus)
+}
+
+/** Which dialog: the Open Fixture Library (a .json file, or online) or QLC+ (a .qxf file, or QLC+'s own folders on this computer). */
+export type ImportKind = 'ofl' | 'qlc'
+
+/** A fixture file of QLC+'s own folders (GET /api/qlcplus/fixtures); ``folder`` is the index of the folder in the answer. */
+export interface QlcListed {
+  folder: number
+  file: string
+  manufacturer: string
+  model: string
+  type: string
+}
+
+export interface QlcLibrary {
+  folders: { label: string; path: string }[]
+  fixtures: QlcListed[]
+}
+
+/** The manufacturers of the list with how many fixtures each has, by name (the filter keeps the ones whose name has every word). */
+export function makersOf(fixtures: QlcListed[], text = ''): { name: string; count: number }[] {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean)
+  const counts = new Map<string, number>()
+  for (const f of fixtures) counts.set(f.manufacturer, (counts.get(f.manufacturer) ?? 0) + 1)
+  return [...counts]
+    .filter(([name]) => words.every((w) => name.toLowerCase().includes(w)))
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+}
+
+/** The fixtures of one manufacturer, by model, narrowed to the ones whose model (or type) has every word typed. */
+export function modelsOf(fixtures: QlcListed[], maker: string, text = ''): QlcListed[] {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean)
+  return fixtures
+    .filter((f) => f.manufacturer === maker && words.every((w) => `${f.model} ${f.type}`.toLowerCase().includes(w)))
+    .sort((a, b) => a.model.localeCompare(b.model, undefined, { numeric: true, sensitivity: 'base' }))
 }
 
 
@@ -71,25 +109,28 @@ export function filterKeys(keys: string[], text: string): string[] {
   return keys.filter((k) => words.every((w) => k.includes(w)))
 }
 
-// ---- the menu's File → Import Fixture → Open Fixture Library…: the page that has the dialog opens it. The menu may have to switch
-// to the Fixtures page first (it mounts later), so the request waits a moment for it.
+// ---- the menu's File → Import Fixture → …: the page that has the dialog opens it. The menu may have to switch to the Fixtures
+// page first (it mounts later), so the request waits a moment for it.
 const WAIT_MS = 15_000
 let requested = 0
+let requestedKind: ImportKind = 'ofl'
 const listeners = new Set<() => void>()
 
-export function requestOflImport(now = Date.now()): void {
+export function requestImport(kind: ImportKind, now = Date.now()): void {
   requested = now
+  requestedKind = kind
   listeners.forEach((f) => f())
 }
 
-/** true once per request, and only while it is fresh (a request the Fixtures page never took, e.g. after "unsaved changes? Stay", dies). */
-export function takeOflImportRequest(now = Date.now()): boolean {
+/** The kind of the request, once per request, and only while it is fresh (a request the Fixtures page never took, e.g. after
+ * "unsaved changes? Stay", dies); null when there is none. */
+export function takeImportRequest(now = Date.now()): ImportKind | null {
   const fresh = requested > 0 && now - requested < WAIT_MS
   requested = 0
-  return fresh
+  return fresh ? requestedKind : null
 }
 
-export function onOflImportRequest(listener: () => void): () => void {
+export function onImportRequest(listener: () => void): () => void {
   listeners.add(listener)
   return () => void listeners.delete(listener)
 }

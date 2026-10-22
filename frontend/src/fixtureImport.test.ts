@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NAME_RULE, actionFor, clashOf, clashText, filterKeys, groupSkipped, onOflImportRequest, requestOflImport, takeOflImportRequest, type Converted } from './oflImport'
+import { NAME_RULE, actionFor, clashOf, clashText, filterKeys, groupSkipped, makersOf, modelsOf, onImportRequest, requestImport, takeImportRequest, type Converted, type QlcListed } from './fixtureImport'
 
 const converted = (type: Converted['type'] = { name: '', description: '', transport: 'dmx', modes: [], default_mode: '', gamma: 1, strobo_color: { h: 0, s: 0, b: 1 } }): Converted => ({
   name: 'Stairville LED Bar 240-8',
@@ -64,22 +64,45 @@ describe('the fixture filter', () => {
 })
 
 describe('the menu’s request for the dialog', () => {
-  it('is taken once, when it is fresh', () => {
-    requestOflImport(1000)
-    expect(takeOflImportRequest(2000)).toBe(true)
-    expect(takeOflImportRequest(2000)).toBe(false)
+  it('is taken once, when it is fresh, with the kind of dialog', () => {
+    requestImport('ofl', 1000)
+    expect(takeImportRequest(2000)).toBe('ofl')
+    expect(takeImportRequest(2000)).toBeNull()
+    requestImport('qlc', 1000)
+    expect(takeImportRequest(2000)).toBe('qlc')
   })
   it('dies when nobody took it (e.g. the page change was refused)', () => {
-    requestOflImport(1000)
-    expect(takeOflImportRequest(1000 + 20_000)).toBe(false)
+    requestImport('qlc', 1000)
+    expect(takeImportRequest(1000 + 20_000)).toBeNull()
   })
   it('tells a page that is already shown', () => {
     let heard = 0
-    const stop = onOflImportRequest(() => heard++)
-    requestOflImport()
+    const stop = onImportRequest(() => heard++)
+    requestImport('ofl')
     stop()
-    requestOflImport()
-    takeOflImportRequest()
+    requestImport('qlc')
+    takeImportRequest()
     expect(heard).toBe(1)
+  })
+})
+
+describe('the list of QLC+’s own fixtures', () => {
+  const f = (manufacturer: string, model: string, type = 'Color Changer', folder = 0): QlcListed => ({ folder, file: `${manufacturer}-${model}.qxf`, manufacturer, model, type })
+  const fixtures = [f('Stairville', 'LED Bar 240/8', 'LED Bar (Beams)'), f('Stairville', 'LED Bar 10', 'LED Bar (Beams)', 1), f('american dj', 'Mega Par'), f('Cameo', 'Q-Spot 40')]
+  it('has the manufacturers by name with their counts, narrowed by every word', () => {
+    expect(makersOf(fixtures)).toEqual([
+      { name: 'american dj', count: 1 },
+      { name: 'Cameo', count: 1 },
+      { name: 'Stairville', count: 2 },
+    ])
+    expect(makersOf(fixtures, 'stair')).toEqual([{ name: 'Stairville', count: 2 }])
+    expect(makersOf(fixtures, 'dj american')).toEqual([{ name: 'american dj', count: 1 }])
+    expect(makersOf(fixtures, 'nobody')).toEqual([])
+  })
+  it('has a manufacturer’s models in natural order, narrowed by the model or the type', () => {
+    expect(modelsOf(fixtures, 'Stairville').map((x) => x.model)).toEqual(['LED Bar 10', 'LED Bar 240/8'])
+    expect(modelsOf(fixtures, 'Stairville', '240').map((x) => x.model)).toEqual(['LED Bar 240/8'])
+    expect(modelsOf(fixtures, 'Stairville', 'beams').length).toBe(2)
+    expect(modelsOf(fixtures, 'Nobody')).toEqual([])
   })
 })
