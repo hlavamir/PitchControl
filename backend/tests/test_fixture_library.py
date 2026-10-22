@@ -1,4 +1,4 @@
-"""The built-in fixture library (item 50): the OFL conversion (tools/ofl_convert.py) on a small fixture, and the ten
+"""The built-in fixture library (item 50): the OFL conversion (pitchcontrol/ofl/convert.py) on a small fixture, and the ten
 shipped types checked against their manuals (the channel tables below are typed from the manual records in the
 PitchPlease wiki, ``raw/2026-10-21_<slug>-manual.md``, not copied from the generated files)."""
 

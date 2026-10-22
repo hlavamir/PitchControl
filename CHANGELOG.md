@@ -6,6 +6,15 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Import from the Open Fixture Library:** File → Import Fixture → Open Fixture Library… (and **Import…** on the Fixtures page) converts a fixture of the [Open Fixture Library](https://open-fixture-library.org) into a fixture type, from a downloaded `.json` file or online by manufacturer and fixture (read from OFL's GitHub at one commit; or paste the address of the fixture's page). Before anything is saved a report lists the modes taken, the modes left out with the reason, the assumptions and the reminder to check the type against the manual; a name that is already taken (a shipped type too) asks before it is replaced. The conversion is the one the shipped fixture library was made with (item 50), now part of the app (`pitchcontrol.ofl`). This computer only: a device on the network can't import.
+- **Imports keep the original data.** A type from the Open Fixture Library keeps OFL's own keys under their OFL names (`shortName`, `categories`, `meta`, `links`, `physical`, `matrix`, `availableChannels`, `templateChannels`, …), OFL's mode list as `ofl_modes`, the OFL mode each PitchControl mode came from (`modes[].ofl_mode`) and a `source` block (OFL's key, commit or file, schema, converter version), so the original fixture can be rebuilt exactly from the type. They survive loading, editing and saving on the Fixtures page. The Fixtures page shows the type's manual, product page and video links and its source. The shape is described in `backend/src/pitchcontrol/ofl/importer.py` and the README (Importing from the Open Fixture Library).
+- **Submenus in the menu bar** (File → Import Fixture ▸), in the app-drawn Windows menu (→ opens, ← or Esc closes, the keys as in any menu) and the native macOS one.
+- A link of a fixture type (its manual, …) can be opened in the browser from the Fixtures page; besides the project's pages, only the web addresses the user's own types carry.
+
+### Changed
+- The ten shipped fixture types are regenerated in the new shape (the same modes and values; each now carries its Open Fixture Library data and, for the three built from manuals, the hand-written OFL-format data). `tools/fixture_library.py` runs on the app's import and keeps the OFL originals at the pinned commit in `tools/fixture_sources/ofl/` (offline, and what the tests check the types against).
+
 ## 1.7.1 — 2026-10-21
 
 ### Changed
