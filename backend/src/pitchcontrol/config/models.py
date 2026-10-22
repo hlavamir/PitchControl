@@ -7,6 +7,7 @@ Missing keys are filled with the defaults defined here.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import math
 from typing import Any, Generic, Literal, TypeVar
@@ -598,6 +599,42 @@ class NetworkSettings(Model):
         return v
 
 
+ARTNET_PORT = 6454  # the Art-Net standard port, for the output and the default of the input
+
+
+class ArtNetInputSettings(Model):
+    """Art-Net in: the UDP listener (item 57). ``adapter`` is an IPv4 address of this computer; empty = all adapters."""
+
+    enabled: bool = False
+    port: int = Field(default=ARTNET_PORT, ge=1, le=65535)  # another one when another Art-Net program listens on 6454
+    adapter: str = ""
+
+    @field_validator("adapter", mode="after")
+    @classmethod
+    def _adapter_is_an_address(cls, v: str) -> str:
+        v = v.strip()
+        if v:
+            try:
+                ipaddress.IPv4Address(v)
+            except ValueError:
+                raise ValueError(f"'{v}' is not an IPv4 address (empty = all network adapters)") from None
+        return v
+
+
+class DmxInputSettings(Model):
+    """DMX in over USB: an Enttec DMX USB Pro that receives (item 57). A Pro that receives doesn't send."""
+
+    enabled: bool = False
+    device: DeviceRef = Field(default_factory=DeviceRef)
+
+
+class LiveInputSettings(Model):
+    """Live input (items 57 to 59): per computer, in machine.json."""
+
+    artnet: ArtNetInputSettings = Field(default_factory=ArtNetInputSettings)
+    dmx: DmxInputSettings = Field(default_factory=DmxInputSettings)
+
+
 class Settings(Model):
     fps: float = 40.0
     preview_fps: float = 15.0
@@ -612,6 +649,7 @@ class Settings(Model):
     auto_colors: list[HSB] = Field(default_factory=_default_palette)
     ui: UiSettings = Field(default_factory=UiSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
+    live_input: LiveInputSettings = Field(default_factory=LiveInputSettings)
 
 
 # --------------------------------------------------------------------------- MIDI controllers

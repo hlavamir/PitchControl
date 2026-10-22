@@ -23,11 +23,12 @@ from pydantic import BaseModel, ValidationError
 
 from .. import __version__
 from ..config.loader import CONTROLLERS, RIGS, RIG_NAME, TYPES, VERSION_KEY, report_unknown_keys, save_model
-from ..config.models import Controller, FixtureType, FogMachine, NetworkSettings, Rig, Settings
+from ..config.models import Controller, FixtureType, FogMachine, LiveInputSettings, NetworkSettings, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
+from ..io.live_input import adapter_choices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
 from ..logsetup import MemoryLogHandler, memory_log
 from ..menu import menu_json, platform_of, reveal as reveal_folder
@@ -343,7 +344,8 @@ def create_app(
     # ------------------------------------------------------------------ settings
     @app.get("/api/settings")
     def get_settings():
-        return store.settings.model_dump(mode="json", exclude={"network"})  # the PIN stays out: /api/network (this computer only)
+        # the PIN stays out: /api/network (this computer only); the live input is this computer's own: /api/live-input
+        return store.settings.model_dump(mode="json", exclude={"network", "live_input"})
 
     @app.get("/api/network", dependencies=local_only)
     def get_network():
@@ -360,6 +362,28 @@ def create_app(
         network.sync()
         return network.status()
 
+    def live_input_view() -> dict:
+        return {
+            "settings": store.settings.live_input.model_dump(mode="json"),
+            "adapters": [{"name": n, "ip": a} for n, a in adapter_choices()],
+            "status": engine.live.status(),
+        }
+
+    @app.get("/api/live-input", dependencies=local_only)
+    def get_live_input():
+        """Art-Net and DMX input (item 57): its settings (per computer), the network adapters to choose from, the status."""
+        return live_input_view()
+
+    @app.put("/api/live-input", dependencies=local_only)
+    def put_live_input(data: dict):
+        """Save the live input settings and apply them at once: a receiver that didn't change keeps running."""
+        new = LiveInputSettings.model_validate(data)
+        with engine.lock:
+            store.settings = store.settings.model_copy(update={"live_input": new})
+        store.save_settings()
+        engine.restart_live_input()
+        return live_input_view()
+
     @app.get("/api/osc/files")
     def osc_files():
         """The files that say what OSC sends: shipped examples and the user's own, from the osc folder."""
@@ -370,13 +394,15 @@ def create_app(
         new = Settings.model_validate(data)
         report_unknown_keys(new, "settings (from UI)")
         old = store.settings
-        new = new.model_copy(update={"network": old.network})  # only /api/network changes these (the PIN isn't in what the pages read)
+        # only /api/network and /api/live-input change these (the PIN isn't in what the pages read)
+        new = new.model_copy(update={"network": old.network, "live_input": old.live_input})
         with engine.lock:
             store.settings = new
         store.save_settings()
         if engine.enable_hardware and new.outputs != old.outputs:
             if new.outputs.model_copy(update={"osc": old.outputs.osc}) != old.outputs:
                 engine.outputs.restart(new.outputs)
+                engine.restart_live_input()  # a Pro that sends can't receive: the input checks its device again
             else:  # only OSC: the DMX outputs aren't touched
                 engine.outputs.restart_osc(new.outputs)
         if new.audio != old.audio:

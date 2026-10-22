@@ -18,13 +18,14 @@ from typing import Any
 # (device, channels, gain), the MIDI port, every output (which interface sends which internal
 # universe, Art-Net IPs, the serial port) and the UI (scale is per screen, brightness per booth).
 # Which universe a fixture writes to stays in the rig. The network switch and its PIN are this computer's own
-# too. ``None`` = the whole key.
+# too, and so is the live input (the Art-Net adapter and port, the DMX input device). ``None`` = the whole key.
 MACHINE_KEYS: dict[str, set[str] | None] = {
     "audio": {"device", "channels", "gain"},
     "midi_input": None,
     "outputs": None,
     "ui": None,
     "network": None,
+    "live_input": None,
 }
 
 

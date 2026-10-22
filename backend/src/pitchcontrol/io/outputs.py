@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from ..config.models import OutputSettings
+from ..config.models import ARTNET_PORT, OutputSettings
 from .devices import detect_dmx_type
 from .osc import OscOutput
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
@@ -22,13 +22,15 @@ ENTTEC_BAUD = 57600  # ignored by the FTDI chip of the Enttec Pro, any value wor
 class ArtNetWorker(LatestFrameWorker):
     name = "artnet"
 
-    def __init__(self) -> None:
+    def __init__(self, dest_port: int = ARTNET_PORT) -> None:
         self.sock: socket.socket | None = None
+        self.dest_port = dest_port
         super().__init__()
 
     def open(self) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.sock.bind(("", 0))  # the source port is known from now on: the input drops what comes from it (item 57)
         self.connected = True
         self.last_error = None
 
@@ -36,7 +38,7 @@ class ArtNetWorker(LatestFrameWorker):
         """``frame``: list of (ip, ArtDMX packet)."""
         assert self.sock is not None
         for ip, packet in frame:  # type: ignore[union-attr]
-            self.sock.sendto(packet, (ip, 6454))
+            self.sock.sendto(packet, (ip, self.dest_port))
 
     def close(self) -> None:
         if self.sock is not None:
@@ -65,6 +67,15 @@ class OutputManager:
         self._sequence = 0
         self._last_v2: bytes | None = None
         self._last_v2_time = 0.0
+
+    def artnet_source_ports(self) -> set[int]:
+        """The source port of the Art-Net output's socket: what the Art-Net input uses to know the app's own packets."""
+        worker = self.artnet
+        sock = worker.sock if worker is not None else None
+        try:
+            return {sock.getsockname()[1]} if sock is not None else set()
+        except OSError:
+            return set()
 
     def start(self) -> None:
         s = self.settings

@@ -18,6 +18,7 @@ from ..config.loader import ConfigStore, load_model, save_model
 from ..config.models import Scene
 from ..io import audio_in
 from ..io.audio_in import AudioInput
+from ..io.live_input import LiveInput
 from ..io.midi_in import MidiInput, list_midi_inputs_checked
 from ..io.outputs import OutputManager
 from ..quitguard import UnsavedReports
@@ -93,6 +94,7 @@ class Engine:
         self._preview_inputs: tuple[MaskParams, bool] = (MaskParams(), False)
 
         self.outputs = OutputManager(store.settings.outputs, store.find_osc, lambda: 1.0 / max(store.settings.fps, 1.0))
+        self.live = LiveInput(self.outputs.artnet_source_ports)  # Art-Net and DMX input (item 57): the sources of the routes
         self.audio: AudioInput | None = None
         self.midi: MidiInput | None = None
 
@@ -144,8 +146,15 @@ class Engine:
             return
         s = self.store.settings
         self.outputs.restart(s.outputs)
+        self.restart_live_input()
         self.restart_audio()
         self.restart_midi()
+
+    def restart_live_input(self) -> None:
+        """Make the Art-Net and DMX inputs match the saved settings (a receiver that didn't change keeps running)."""
+        if self.enable_hardware:
+            s = self.store.settings
+            self.live.apply(s.live_input, s.outputs)
 
     def restart_audio(self, reinit: bool = False) -> None:
         """Reopen the audio input from the saved settings. ``reinit`` makes PortAudio list the devices again first
@@ -520,6 +529,7 @@ class Engine:
             self.audio.stop()
         if self.midi is not None:
             self.midi.stop()
+        self.live.stop()
         self.outputs.stop()
 
     def _run(self) -> None:
@@ -606,6 +616,7 @@ class Engine:
                     "outputs": self.outputs.status(),
                     "audio": self.audio_status(),
                     "midi": self.midi_status(midi),
+                    "live_input": self.live.status(),
                 },
             }
 
