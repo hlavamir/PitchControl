@@ -511,6 +511,14 @@ class LiveInput:
         """The latest 512 values of a source, None while it has never sent. Kept when the receiver is switched off."""
         return self.store.get(key)
 
+    def sources(self) -> dict[str, dict]:
+        """Every source that has sent something, by key: sender, packets per second, seconds since the last packet."""
+        return {e["key"]: e for e in self.store.snapshot()}
+
+    def sources(self) -> dict[str, dict]:
+        """Every source that has sent something, by key: sender, packets per second, seconds since the last packet."""
+        return {e["key"]: e for e in self.store.snapshot()}
+
     def status(self) -> dict:
         art = self.artnet.status() if self.artnet is not None else {"enabled": False}
         if self.dmx is not None:

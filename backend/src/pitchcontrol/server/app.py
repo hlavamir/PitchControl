@@ -26,6 +26,7 @@ from ..config.loader import CONTROLLERS, RIGS, RIG_NAME, TYPES, VERSION_KEY, rep
 from ..config.models import Controller, FixtureType, FogMachine, LiveInputSettings, NetworkSettings, Rig, Settings
 from ..engine.engine import Engine
 from ..engine.macros import MACRO_DEFS
+from ..engine.routes import Route
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.live_input import adapter_choices
@@ -326,6 +327,48 @@ def create_app(
     def clear_overrides():
         """Control Desk "reset all": release every override in every universe."""
         return {"ok": True, "released": engine.overrides.clear()}
+
+    @app.get("/api/routes")
+    def get_routes():
+        """The routes of the Control Desk (item 58) with the state of their sources, and the output channels that two
+        routes cover."""
+        return {"routes": engine.routes.status(engine.live.sources()), "overlaps": engine.routes.overlaps()}
+
+    @app.put("/api/routes")
+    def put_routes(data: dict):
+        """Replace the list of routes (``{"routes": [...]}``); applies at the next frame and is saved within a second."""
+        routes = [Route.model_validate(r) for r in data.get("routes", [])]
+        try:
+            engine.routes.set_all(routes)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return get_routes()
+
+    @app.post("/api/routes")
+    def add_route(data: dict):
+        """Add one route (fields as in the list; an id is made)."""
+        try:
+            engine.routes.add(Route.model_validate(data))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return get_routes()
+
+    @app.patch("/api/routes/{route_id}")
+    def patch_route(route_id: str, data: dict):
+        """Change some fields of one route; the others stay as they are."""
+        try:
+            engine.routes.patch(route_id, data)
+        except KeyError:
+            raise HTTPException(404, f"no route '{route_id}'") from None
+        return get_routes()
+
+    @app.delete("/api/routes/{route_id}")
+    def delete_route(route_id: str):
+        try:
+            engine.routes.remove(route_id)
+        except KeyError:
+            raise HTTPException(404, f"no route '{route_id}'") from None
+        return get_routes()
 
     @app.get("/api/universes")
     def universes():

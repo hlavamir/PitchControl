@@ -29,6 +29,7 @@ from .fog import FogController
 from .macros import MacroBank
 from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, mixed_mask
 from .overrides import Overrides
+from .routes import Routes
 from .phase import PhaseTracker
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,9 @@ class Engine:
         self.overrides = Overrides()  # Control Desk: manual DMX channel values, saved across restarts
         self.overrides.load(self.store.state_dir / "overrides.json")
         self._overrides_saved = self.overrides.version
+        self.routes = Routes()  # Control Desk: live input copied onto output channels (item 58), saved across restarts
+        self.routes.load(self.store.state_dir / "routes.json")
+        self._routes_saved = self.routes.version
 
         self.phase = PhaseTracker()
         self.colors = GroupColors()
@@ -423,6 +427,7 @@ class Engine:
                 end = min(start + len(data), 512)
                 uni[start:end] = bytes(data[: end - start])
             self.fog.update(dt, self.store.rig.fog_machines, m, universes)
+            self.routes.apply(universes, self.live)  # after the fixtures and fog: live input wins over the app's own output
             self.overrides.apply(universes)  # last: manual overrides win
             self.universes, self.v2_strips = universes, v2_strips
 
@@ -434,6 +439,7 @@ class Engine:
                 self.outputs.osc.send(self.base_colors())
         self._autosave_macros()
         self._autosave_overrides()
+        self._autosave_routes()
         self.frame += 1
         self.tick_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -509,6 +515,18 @@ class Engine:
         except OSError as exc:
             log.warning("override autosave failed: %s", exc)
 
+    def _autosave_routes(self, force: bool = False) -> None:
+        """Like the overrides: saved within a second of a change."""
+        if self.routes.version == self._routes_saved:
+            return
+        if not force and self.frame % max(1, int(self.store.settings.fps)) != 0:
+            return
+        self._routes_saved = self.routes.version
+        try:
+            self.routes.save(self.store.state_dir / "routes.json")
+        except OSError as exc:
+            log.warning("routes autosave failed: %s", exc)
+
     # ------------------------------------------------------------------ thread
     def start(self) -> None:
         self.start_io()
@@ -525,6 +543,7 @@ class Engine:
             self._thread.join(timeout=2)
         self._autosave_macros(force=True)
         self._autosave_overrides(force=True)
+        self._autosave_routes(force=True)
         if self.audio is not None:
             self.audio.stop()
         if self.midi is not None:
@@ -612,6 +631,8 @@ class Engine:
                 "fixtures": fixtures,
                 "fog": self.fog.active,
                 "overrides": self.overrides.snapshot(),
+                "routes": self.routes.status(self.live.sources()),
+                "route_overlaps": self.routes.overlaps(),
                 "io": {
                     "outputs": self.outputs.status(),
                     "audio": self.audio_status(),
