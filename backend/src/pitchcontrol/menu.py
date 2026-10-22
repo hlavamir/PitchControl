@@ -113,6 +113,7 @@ MENUS: list[tuple[str, list[Item | Submenu | None]]] = [
             Item("help.docs", "Documentation", "app"),
             Item("help.keys", "Keyboard shortcuts", "ui"),
             SEPARATOR,
+            Item("help.log", "Show log", "ui"),
             Item("help.report", "Report a problem", "ui"),
             Item("help.discord", "Join the Discord", "app"),
             SEPARATOR,

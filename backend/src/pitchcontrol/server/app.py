@@ -29,6 +29,7 @@ from ..engine.macros import MACRO_DEFS
 from ..io.audio_in import list_input_devices_fresh
 from ..io.devices import list_serial_devices
 from ..io.midi_in import LEARN_SECONDS, list_midi_inputs
+from ..logsetup import MemoryLogHandler, memory_log
 from ..menu import menu_json, platform_of, reveal as reveal_folder
 from ..ofl import online, qlcplus_files
 from ..ofl.importer import ImportProblem, Redirect, import_fixture
@@ -119,10 +120,21 @@ def describe_validation_error(exc: ValidationError, limit: int = 5) -> str:
     return "invalid content: " + "; ".join(problems[:limit]) + more
 
 
-def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | None = None, folders: dict | None = None) -> FastAPI:
+LOG_BATCH_SECONDS = 0.5  # the log view's live records go out together at this interval (item 56)
+LOG_BATCH_MAX = 500  # records in one batch (a burst is sent over several)
+
+
+def create_app(
+    engine: Engine,
+    static_dir: Path | None = None,
+    desktop: dict | None = None,
+    folders: dict | None = None,
+    log_buffer: MemoryLogHandler | None = None,
+) -> FastAPI:
     """``desktop``: set by the standalone app (``url``, ``data_dir``, ``logs_dir``, later ``fullscreen``: a
     ``Fullscreen`` controller once the window exists) to enable the app-only actions. ``folders``: the
-    data and logs folders when running from source (shown in the UI)."""
+    data and logs folders when running from source (shown in the UI). ``log_buffer``: the records of this run
+    for the log view (default: the handler ``setup_logging`` attached)."""
     app = FastAPI(title="PitchControl", version="0.1.0")
     store = engine.store
     folders = {**(folders or {}), **{k: v for k, v in (desktop or {}).items() if k in ("data_dir", "logs_dir")}}
@@ -239,6 +251,14 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
     @app.post("/api/open-logs-folder", dependencies=local_only)
     def open_logs_folder():
         return reveal((desktop or {}).get("logs_dir", ""))
+
+    # ------------------------------------------------------------------ the log of this run (Settings → Log, item 56)
+    @app.get("/api/log", dependencies=local_only)
+    def read_log(after: int = 0):
+        """The records of this run that are kept (the last few thousand), or those after sequence number ``after``.
+        This computer only: the log carries paths and device names. The live ones follow over the websocket."""
+        buffer = log_buffer or memory_log()
+        return {"records": buffer.since(after), "last": buffer.last_seq, "capacity": buffer.capacity}
 
     # ------------------------------------------------------------------ menu bar (menu.py)
     @app.get("/api/menu", dependencies=local_only)
@@ -898,6 +918,7 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
         await socket.accept()
         # ?preview=0: the state only (the phone layout shows no scene preview: less wifi, and no render per frame)
         sender = asyncio.create_task(_push_state(socket, engine, preview=socket.query_params.get("preview") != "0"))
+        log_task: asyncio.Task | None = None
         try:
             while True:
                 msg = await socket.receive_json()
@@ -915,10 +936,21 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
                         engine.overrides.set(int(msg["universe"]), int(msg["channel"]), None if value is None else float(value))
                     except (KeyError, TypeError, ValueError) as exc:
                         log.warning("bad override message %s: %s", msg, exc)
+                elif msg.get("type") == "log_subscribe":  # the log view is open: its records follow, batched
+                    if log_task is not None:
+                        log_task.cancel()
+                    log_task = None
+                    if socket.scope.get("pc_local"):  # a device on the network gets no log (paths, device names)
+                        log_task = asyncio.create_task(_push_log(socket, log_buffer or memory_log(), int(msg.get("after", 0))))
+                elif msg.get("type") == "log_unsubscribe" and log_task is not None:
+                    log_task.cancel()
+                    log_task = None
         except WebSocketDisconnect:
             pass
         finally:
             sender.cancel()
+            if log_task is not None:
+                log_task.cancel()
 
     # ------------------------------------------------------------------ frontend
     if static_dir is not None and (static_dir / "index.html").exists():
@@ -934,6 +966,27 @@ def create_app(engine: Engine, static_dir: Path | None = None, desktop: dict | N
             return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
+
+
+async def _push_log(socket: WebSocket, buffer: MemoryLogHandler, after: int) -> None:
+    """The records after ``after``, then each new one, as ``{"type": "log", "records": [...]}`` messages: what has come
+    in during ``LOG_BATCH_SECONDS`` goes out together, so a burst of records costs one message and the engine nothing.
+    ``reset``: ``after`` is ahead of this run's records (the server restarted): the records are all of the new run."""
+    try:
+        reset = after > buffer.last_seq
+        if reset:
+            after = 0
+        while True:
+            records = buffer.since(after, LOG_BATCH_MAX)
+            if records or reset:
+                after = records[-1]["seq"] if records else after
+                await socket.send_json({"type": "log", "records": records, **({"reset": True} if reset else {})})
+                reset = False
+            await asyncio.sleep(LOG_BATCH_SECONDS)
+    except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+        pass
+    except Exception:  # noqa: BLE001
+        log.exception("websocket log push failed")
 
 
 async def _push_state(socket: WebSocket, engine: Engine, preview: bool = True) -> None:

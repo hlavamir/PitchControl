@@ -33,8 +33,8 @@ def test_one_definition_for_both_platforms():
     assert labels("win", "View") == [*PAGES, None, "Full screen"]
     assert labels("mac", "Window") == ["Minimize", "Zoom"]
     assert labels("win", "Window") == ["Minimize", "Maximize"]
-    assert labels("win", "Help") == ["Documentation", "Keyboard shortcuts", None, "Report a problem", "Join the Discord", None, "About PitchControl"]
-    assert labels("mac", "Help") == ["Documentation", "Keyboard shortcuts", None, "Report a problem", "Join the Discord"]
+    assert labels("win", "Help") == ["Documentation", "Keyboard shortcuts", None, "Show log", "Report a problem", "Join the Discord", None, "About PitchControl"]
+    assert labels("mac", "Help") == ["Documentation", "Keyboard shortcuts", None, "Show log", "Report a problem", "Join the Discord"]
     # same item, same action on both platforms: an id has one meaning
     for platform in ("mac", "win"):
         ids = [i.id for _, items in menus_for(platform) for i in walk(items)]
