@@ -65,6 +65,7 @@ The rig: the fixtures of one event and everything that differs per fixture.
 - **Audio input:** device, input channels and gain, with the 32-band meter. The dotted line shows how strongly each band counts towards the strobo trigger.
 - **MIDI controller:** controller mapping and port, and a monitor of the last received messages, showing which macro each one moved or why it was ignored.
 - **MIDI mapping:** one row per macro with its control (CC or note, channel), Learn, behaviour (fader, encoder, toggle, held, press), page and shift (one shift button); saved as your own copy of the controller file.
+- **Art-Net / DMX input:** DMX that comes in from another program or a console, for the routes of the Control Desk. **Art-Net** listens on UDP port 6454 (the standard; change it when another Art-Net program on this computer has the port without sharing it) on all network adapters or on the one you pick; PitchControl's own Art-Net output is ignored. **DMX over USB** takes an Enttec DMX USB Pro that receives (the Pro only; a Pro that receives can't send, so the same device can't also be an output, and the output wins). A list shows each Art-Net universe that has sent something (the raw Art-Net port address, counted from 0), its sender, packets per second and when it was last seen. The values of an input are kept when the sender goes quiet. Per computer (`machine.json`, key `live_input`); the switches apply at once, only on the computer that runs PitchControl. `py tools/live_input_sim.py artnet` sends test Art-Net.
 
 ### 6 · Outputs
 
@@ -265,7 +266,7 @@ A file in your data folder wins over a default of the same name (ignoring case);
 | Path | Content |
 |---|---|
 | `settings.json` | the show's settings that differ from the defaults: frame rate (`fps`), active rig and controller, Auto Color palette, masks, audio analysis |
-| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`), the network switch with its port and PIN (`network`) |
+| `machine.json` (this computer) | what belongs to one computer: audio input (device, channels, gain), MIDI port, outputs (up to 4 USB DMX interfaces, Art-Net targets, v2 serial, OSC), appearance (`ui`), the network switch with its port and PIN (`network`), the live input (`live_input`: the Art-Net port and adapter, the DMX input device) |
 | `fixtures/types/*.json` | one file per fixture model (edited on the Fixtures page); missing keys get defaults; ten ready-made models ship, see [Fixture library](#fixture-library); an imported one also carries the original data, see [Importing from the Open Fixture Library](#importing-from-the-open-fixture-library) |
 | `rigs/<name>.json` | fixture instances and fog machines (`fog_machines`, edited on the Fog page) for one event (edited on the Rig page): type, group A/B, universe/address, UV placement (rotation in degrees), dimmer, colour sources, overrides of type values as `{"enabled": …, "value": …}`; the dimmer names (`dimmer_names`); the rig's mask curve (`mask_curve`, 0 if missing) |
 | `controllers/*.json` | MIDI controller mappings (CC or note → macro), edited on the Inputs page |
