@@ -119,6 +119,16 @@ select,
 textarea {
   font-family: var(--font-sans);
 }
+/* the select's own arrow (the system's differs per platform, a macOS one is blue-grey and round): a small ink-grey triangle.
+   The list that opens is the system's own, as for every web app */
+select {
+  appearance: none;
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238a8c87'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 8px 5px;
+}
 /* disabled (e.g. an override that is switched off): readable, but clearly not editable */
 input:disabled,
 textarea:disabled,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type DeviceRef, type SerialDevice, type Settings } from '../api'
+import type { HintKind } from '../hints'
 import { useLeaveGuard } from '../leaveGuard'
 
 /**
@@ -296,13 +297,13 @@ export function Toggle({
  * Small square checkbox in ink, for marking a value as overridden (Unreal-style override toggle).
  * ``mixed`` (multi-edit) shows a dash; clicking it switches all on.
  */
-export function Check({ checked, mixed, onChange, tip }: { checked: boolean; mixed?: boolean; onChange: (v: boolean) => void; tip?: string }) {
+export function Check({ checked, mixed, onChange, tip, hint = 'override' }: { checked: boolean; mixed?: boolean; onChange: (v: boolean) => void; tip?: string; hint?: HintKind }) {
   const on = checked && !mixed
   return (
     <button
       type="button"
       role="checkbox"
-      data-hint="override"
+      data-hint={hint}
       aria-checked={mixed ? 'mixed' : checked}
       data-tip={tip}
       onClick={() => onChange(mixed ? true : !checked)}

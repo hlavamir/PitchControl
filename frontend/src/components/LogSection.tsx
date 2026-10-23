@@ -3,7 +3,7 @@ import { api } from '../api'
 import { LOG_SECTION } from '../appMenu'
 import { FOLLOW, addRecords, atBottom, clock, followAfterScroll, followAfterToggle, lastSeq, linesText, toneOf, type LogBatch, type LogRecord } from '../logView'
 import type { EngineConnection } from '../useEngine'
-import { Section } from './forms'
+import { Section, Toggle } from './forms'
 
 const TONE_CLASS = {
   error: 'text-log-error',
@@ -87,9 +87,8 @@ export function LogSection({ index, engine }: { index: string; engine: EngineCon
       className="wide:col-span-2"
     >
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="flex cursor-pointer items-center gap-2 text-[12px]" data-hint="switch" data-tip="Keep the view at the newest line. Scrolling up stops it, and so does unticking; scroll back to the end or tick it to follow again">
-          <input type="checkbox" checked={follow.auto} onChange={() => setFollow(followAfterToggle)} />
-          <span className="lbl">Auto-scroll</span>
+        <label className="flex cursor-pointer items-center gap-2 text-[12px]" data-tip="Keep the view at the newest line. Scrolling up stops it, and so does switching it off; scroll back to the end or switch it on to follow again">
+          <Toggle checked={follow.auto} onChange={() => setFollow(followAfterToggle)} label="Auto-scroll" />
           {!follow.auto && follow.paused && <span className="lbl text-[10px] text-dim">paused: you scrolled up</span>}
         </label>
         <button

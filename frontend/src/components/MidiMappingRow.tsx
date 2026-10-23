@@ -1,6 +1,6 @@
 import type { MacroDef, MidiMappingEntry, MidiMode } from '../api'
 import { MODE_LABEL, MODE_TIP, defaultMode, modesFor } from '../midiMapping'
-import { NumberInput } from './forms'
+import { Check, NumberInput } from './forms'
 
 /** One row of the mapping editor: a macro and the control that drives it (or an empty row to take one). */
 export function MidiMappingRow({
@@ -151,7 +151,7 @@ export function MidiMappingRow({
       <span className="flex items-center gap-1.5">
         {m && !special && (
           <label className="lbl flex items-center gap-1 text-[10px] text-dim" data-tip="Flip the direction: 127 becomes 0">
-            <input type="checkbox" checked={m.invert} onChange={(e) => i !== null && patch(i, { invert: e.target.checked })} />
+            <Check checked={m.invert} onChange={(v) => i !== null && patch(i, { invert: v })} hint="switch" />
             inv
           </label>
         )}

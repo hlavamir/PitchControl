@@ -425,12 +425,24 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
             </span>
           </Row>
           <Row label="MIDI port" hint="Part of the MIDI port's name: the controller is found by it (unless a port is chosen above)">
-            <input type="text" className="w-full" list="midi-port-names" value={draft.port_match} onChange={(e) => set('port_match', e.target.value)} />
-            <datalist id="midi-port-names">
-              {midiPorts.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
+            <input type="text" className="w-full" value={draft.port_match} onChange={(e) => set('port_match', e.target.value)} />
+            {midiPorts.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="lbl text-[10px] text-dim">Connected</span>
+                {midiPorts.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`lbl h-6 border px-2 text-[10px] ${draft.port_match === p ? 'glow-on border-ink' : 'glow-hover border-edge'}`}
+                    data-hint="button"
+                    data-tip="Use this port's full name as the part to look for"
+                    onClick={() => set('port_match', p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
           </Row>
           <Row label="Channel" hint="The MIDI channel the controls send on (a single control can use another one)">
             <select value={draft.channel} onChange={(e) => changeChannel(Number(e.target.value))}>
