@@ -23,6 +23,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ### Fixed
 - **No more system-looking controls.** The Auto-scroll box above the log (Settings → Log) was the operating system's own checkbox (blue and round on macOS); it is now the app's switch. The "inv" box of a MIDI mapping row is the app's square check. The arrow of every dropdown is the app's small triangle instead of the system's (the list that opens is still the system's). The MIDI port field of the mapping's Controller tab no longer opens the system's suggestion list: the connected ports are buttons under the field. A test keeps native checkboxes, radio buttons, date / colour inputs and datalists out of the sources.
+- **Dialogs block the app underneath.** The Import Fixture dialog let the keys through when the focus was on the page behind it (a click on the dimmed area, Tab out of the dialog): the number keys changed the page, W A S D moved the selection. Now every modal dialog (Import Fixture, and the "Unsaved changes" question, which also gets a dimmed backdrop and takes Esc as Stay) uses one shared mechanism: no page keys, no W A S D, no Ctrl / ⌘ + S and no menu-bar keys reach the page, clicks outside do nothing, Tab goes round the dialog's controls, **Esc** closes it as Cancel and the focus returns to where it was. The macOS menu bar's page items (pages, Save, Import, Settings, Help, Show log) wait until the dialog is closed. UI scale (Ctrl / ⌘ + + − 0) still works.
 
 ## 1.7.1 — 2026-10-21
 

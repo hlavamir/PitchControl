@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AltTap, CLOSED, LOG_SECTION, activate, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
+import { AltTap, CLOSED, LOG_SECTION, actsOnPage, activate, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
 
 const item = (id: string, label = id) => ({ id, label, kind: 'ui' as const, key: '' })
 const MENUS: MenuDef[] = [
@@ -164,5 +164,14 @@ describe('the items that show a page', () => {
   })
   it('leaves the items that do something else to their own actions', () => {
     for (const id of ['file.save', 'view.page.3', 'help.report', 'help.docs', 'file.logs_folder']) expect(menuTarget(id)).toBeNull()
+  })
+})
+
+describe('the items that wait while a dialog is open (item 63)', () => {
+  it('the ones that change, save or open something on the page', () => {
+    for (const id of ['view.page.3', 'file.save', 'file.import.ofl', 'file.import.qlc', 'app.settings', 'help.keys', 'app.about', 'help.log']) expect(actsOnPage(id)).toBe(true)
+  })
+  it('not the ones that leave the page alone', () => {
+    for (const id of ['help.report', 'help.docs', 'file.logs_folder', 'file.quit', 'edit.copy', 'view.fullscreen']) expect(actsOnPage(id)).toBe(false)
   })
 })

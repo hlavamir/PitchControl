@@ -3,6 +3,7 @@ import { api } from '../api'
 import { actionFor, clashOf, clashText, filterKeys, groupSkipped, makersOf, modelsOf, type Converted, type ImportKind, type QlcLibrary } from '../fixtureImport'
 import type { Origin } from './RigPanel'
 import { Button } from './forms'
+import { Modal } from './Modal'
 
 type Source = 'file' | 'online' | 'installed'
 
@@ -125,15 +126,10 @@ export function FixtureImportDialog({
   const report = converted?.report
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 px-3 pt-14 pb-6" role="dialog" aria-label={qlc ? 'Import fixture from QLC+' : 'Import fixture from the Open Fixture Library'}>
+    <Modal label={qlc ? 'Import fixture from QLC+' : 'Import fixture from the Open Fixture Library'} onCancel={onClose}>
       <div
         ref={root}
         className="flex w-full max-w-3xl flex-col border border-ink bg-panel shadow-[0_0_30px_rgb(0_0_0/0.6)]"
-        onKeyDown={(e) => {
-          // the dialog's own keys: nothing reaches the page behind it (the number keys switch pages)
-          e.stopPropagation()
-          if (e.key === 'Escape') onClose()
-        }}
       >
         <div className="flex h-[26px] flex-none items-center justify-between border-b border-edge px-2.5 text-[11px]">
           <h2 className="lbl font-medium">{qlc ? 'Import fixture / QLC+' : 'Import fixture / Open Fixture Library'}</h2>
@@ -453,6 +449,6 @@ export function FixtureImportDialog({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

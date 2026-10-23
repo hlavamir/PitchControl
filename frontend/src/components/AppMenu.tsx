@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { modalOpen } from '../modal'
 import { AltTap, CLOSED, accessKey, activate, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
 
 /**
@@ -34,6 +35,7 @@ export function AppMenu({
       if (id) latest.current.run(id)
     }
     const onDown = (e: KeyboardEvent) => {
+      if (modalOpen()) return // a dialog is open: the bar gets no keys
       alt.down(e)
       const { state: s, menus: ms, enabled: en } = latest.current
       const plain = !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey
@@ -59,7 +61,7 @@ export function AppMenu({
       choose(r.state, r.run)
     }
     const onUp = (e: KeyboardEvent) => {
-      if (!alt.up(e)) return
+      if (modalOpen() || !alt.up(e)) return
       e.preventDefault()
       choose(latest.current.state.active ? CLOSED : activate())
     }

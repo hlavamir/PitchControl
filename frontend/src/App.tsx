@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
 import { showLogPanel } from './logView'
-import { menuTarget, showDrawnMenu, type MenuDef } from './appMenu'
+import { actsOnPage, menuTarget, showDrawnMenu, type MenuDef } from './appMenu'
 import { AppMenu } from './components/AppMenu'
+import { Modal } from './components/Modal'
 import { Button, StatusDot } from './components/forms'
 import { LeaveGuardContext, type Guard } from './leaveGuard'
+import { modalOpen } from './modal'
 import { HINT_KEYS, MOD, hintAt, rigFieldKeys, type HintKind } from './hints'
 import { Dimmers } from './pages/Dimmers'
 import { Fixtures } from './pages/Fixtures'
@@ -260,6 +262,7 @@ export default function App() {
   }, [page])
   const runMenu = useCallback(
     async (id: string) => {
+      if (modalOpen() && actsOnPage(id)) return // the macOS menu bar can't be covered by the dialog's backdrop (item 63)
       if (id.startsWith('view.page.')) go(pageOfKey(Number(id.slice('view.page.'.length))))
       else if (id === 'file.save') save()
       else if (id === 'file.import.ofl' || id === 'file.import.qlc') {
@@ -288,6 +291,7 @@ export default function App() {
   // what the drawn menu offers, asked while it is open
   const menuEnabled = (id: string) => {
     const field = textField(document.activeElement)
+    if (modalOpen() && actsOnPage(id)) return false
     if (id === 'file.save') return [...guards.current].some((g) => g.dirty())
     if (id === 'edit.cut' || id === 'edit.copy') return Boolean(field) && hasSelection(field!)
     if (id === 'edit.paste' || id === 'edit.select_all') return Boolean(field)
@@ -542,7 +546,7 @@ export default function App() {
           </footer>
         )}
         {leave && (
-          <div className="fixed inset-x-0 top-14 z-50 flex justify-center px-3" role="alertdialog" aria-label="Unsaved changes">
+          <Modal label="Unsaved changes" onCancel={() => setLeave(null)} className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 px-3 pt-14">
             <div className="flex max-w-full flex-wrap items-center gap-2 border border-ink bg-panel p-3 shadow-[0_0_30px_rgb(0_0_0/0.6)]">
               <span className="text-[12px]">
                 Unsaved changes in {leave.dirty.map((g) => g.label).join(' and ')} on {page}. Save them before leaving?
@@ -554,11 +558,11 @@ export default function App() {
               <Button onClick={() => navigate(leave.to)} tip="Throw the changes away and go to the other page">
                 Discard
               </Button>
-              <Button onClick={() => setLeave(null)} tip="Stay on this page">
+              <Button onClick={() => setLeave(null)} tip="Stay on this page (Esc)">
                 Stay
               </Button>
             </div>
-          </div>
+          </Modal>
         )}
       </div>
     </SelectionContext.Provider>
