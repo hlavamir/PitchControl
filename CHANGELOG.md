@@ -6,15 +6,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
-### Fixed
-- **QLC+ import on a Mac: every QLC+ fixture folder was listed twice** in the dialog. The check for a folder that is found
-  under two spellings (`Fixtures` and `fixtures`) compared lower-cased paths, which only lowercases on Windows; on a Mac
-  both spellings exist on the case-insensitive disk. A folder is now the same folder when the disk says so (its device and
-  inode), on every system.
+## 1.8.2 — 2026-10-23
 
-## 1.8.1 — 2026-10-23
-
-The first release with the changes below: 1.8.0 was tagged, but its build stopped in the tests (see 1.8.0).
+The first release with the changes below: 1.8.0 and 1.8.1 were tagged, but their builds stopped in the tests (see 1.8.1 and 1.8.0).
 
 ### Added
 - **Detail bubbles on the header's indicators.** The mouse resting on FPS, audio, midi, dmx or art-net, or the keyboard focus on it (Tab), shows a small bubble below it; Esc closes it, a click still opens the Connections tab (FPS: Settings, the target frame rate). **FPS:** a perf meter like vvvv's, the frame times of the last 10 s as a rolling graph, so a frame drop shows as a spike, the engine's compute time brighter at the bottom, the target frame time as a line, and "38.9 / 40 fps, 3 drops in 10 s" (a drop: over 1.5 × the target time), the longest frame and the engine's share. **Audio:** the device, its channels, the level and the live bands. **MIDI:** a light per MIDI input (the controller, each route device) that flashes with every message, and the last three messages. **DMX:** a row per USB DMX interface (status, universe, frames per second, the error), the USB DMX input and the PitchPlease v2 serial output. **Art-Net:** a row per output target and per sender heard. No bubbles on a phone or touch screen. Behind the FPS bubble: the engine writes two numbers per frame into a fixed ring (`engine/perf.py`, the last 1,024 frames), and the websocket sends them only while the bubble is open (`perf_subscribe` / `perf_unsubscribe`: the last 10 s, then the new frames every 0.25 s); the other bubbles use the state the UI already receives.
@@ -43,11 +37,19 @@ The first release with the changes below: 1.8.0 was tagged, but its build stoppe
 - **Settings fits a 14" MacBook** (1512 × 915, the size the layout is made for) without scrolling. The **Log** takes the right-hand column under Network instead of the full width below everything, and fills what is left of the window; **Start in full screen** is in Appearance; the **App** section is gone: Open data folder and Open logs folder were in the File menu already, and **Open in browser** (the third button) is now **View → Open in browser** on both platforms. The texts that sent you to "Settings → App → Open logs folder" (the bug report, the config notice) say File → Open logs folder.
 - **No more system-looking controls.** The Auto-scroll box above the log (Settings → Log) was the operating system's own checkbox (blue and round on macOS); it is now the app's switch. The "inv" box of a MIDI mapping row is the app's square check. The arrow of every dropdown is the app's small triangle instead of the system's (the list that opens is still the system's). The MIDI port field of the mapping's Controller tab no longer opens the system's suggestion list: the connected ports are buttons under the field. A test keeps native checkboxes, radio buttons, date / colour inputs and datalists out of the sources.
 - **Dialogs block the app underneath.** The Import Fixture dialog let the keys through when the focus was on the page behind it (a click on the dimmed area, Tab out of the dialog): the number keys changed the page, W A S D moved the selection. Now every modal dialog (Import Fixture, and the "Unsaved changes" question, which also gets a dimmed backdrop and takes Esc as Stay) uses one shared mechanism: no page keys, no W A S D, no Ctrl / ⌘ + S and no menu-bar keys reach the page, clicks outside do nothing, Tab goes round the dialog's controls, **Esc** closes it as Cancel and the focus returns to where it was. The macOS menu bar's page items (pages, Save, Import, Settings, Help, Show log) wait until the dialog is closed. UI scale (Ctrl / ⌘ + + − 0) still works.
+- **QLC+ import on a Mac: every QLC+ fixture folder was listed twice** in the dialog. The check for a folder that is found
+  under two spellings (`Fixtures` and `fixtures`) compared lower-cased paths, which only lowercases on Windows; on a Mac
+  both spellings exist on the case-insensitive disk. A folder is now the same folder when the disk says so (its device and
+  inode), on every system.
 
 ### Removed
 - **The v2 indicator in the header.** The PitchPlease v2 serial output's status is a row of the DMX bubble (shown when the output is set up).
 - **Settings → Appearance: Glow and UI brightness.** The glow stays at 100 % and the ink at its normal brightness, as everybody ran it (UI brightness only dimmed the ink, while the screen's own brightness does that better). Settings files that still carry the two keys (`ui.glow`, `ui.brightness` in `machine.json`, or a `settings.json` from before 1.4) load without a warning and are written back without them; a test covers both. Ink colour, UI scale and key hints stay.
 
+
+## 1.8.1 — 2026-10-23
+
+(not released) Tagged as `v1.8.1`, but the macOS build stopped in the tests (three tests failed on a Mac, one of them a real bug in the QLC+ folder list, fixed in 1.8.2); everything listed under 1.8.2 is its content.
 
 ## 1.8.0 — 2026-10-23
 
