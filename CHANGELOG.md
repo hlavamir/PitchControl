@@ -6,7 +6,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
-## 1.8.0 — 2026-10-23
+## 1.8.1 — 2026-10-23
+
+The first release with the changes below: 1.8.0 was tagged, but its build stopped in the tests (see 1.8.0).
 
 ### Added
 - **Detail bubbles on the header's indicators.** The mouse resting on FPS, audio, midi, dmx or art-net, or the keyboard focus on it (Tab), shows a small bubble below it; Esc closes it, a click still opens the Connections tab (FPS: Settings, the target frame rate). **FPS:** a perf meter like vvvv's, the frame times of the last 10 s as a rolling graph, so a frame drop shows as a spike, the engine's compute time brighter at the bottom, the target frame time as a line, and "38.9 / 40 fps, 3 drops in 10 s" (a drop: over 1.5 × the target time), the longest frame and the engine's share. **Audio:** the device, its channels, the level and the live bands. **MIDI:** a light per MIDI input (the controller, each route device) that flashes with every message, and the last three messages. **DMX:** a row per USB DMX interface (status, universe, frames per second, the error), the USB DMX input and the PitchPlease v2 serial output. **Art-Net:** a row per output target and per sender heard. No bubbles on a phone or touch screen. Behind the FPS bubble: the engine writes two numbers per frame into a fixed ring (`engine/perf.py`, the last 1,024 frames), and the websocket sends them only while the bubble is open (`perf_subscribe` / `perf_unsubscribe`: the last 10 s, then the new frames every 0.25 s); the other bubbles use the state the UI already receives.
@@ -30,6 +32,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - The ten shipped fixture types are regenerated in the new shape (the same modes and values; each now carries its Open Fixture Library data and, for the three built from manuals, the hand-written OFL-format data). `tools/fixture_library.py` runs on the app's import and keeps the OFL originals at the pinned commit in `tools/fixture_sources/ofl/` (offline, and what the tests check the types against).
 
 ### Fixed
+- **The release build installs pywebview for its tests.** Two tests of the native menu (Help → Show log, the File → Import Fixture submenu) import pywebview, which the test step didn't install, so the 1.8.0 build stopped before it built anything. `pip install -e "backend[dev]"` now brings pywebview along.
 - **macOS full screen no longer hides the menu bar for good.** In PitchControl's own full screen (the one that covers the camera-notch strip) the File, Edit, View … menus could not be reached. The menu bar and the Dock are now auto-hidden: they slide in when the mouse reaches the top or bottom edge of the screen, as in other full-screen Mac apps, and the picture still fills the whole screen. Windows is unchanged (its menu is drawn in the app's header). A test checks the option values and that the window still covers the screen.
 - **Settings fits a 14" MacBook** (1512 × 915, the size the layout is made for) without scrolling. The **Log** takes the right-hand column under Network instead of the full width below everything, and fills what is left of the window; **Start in full screen** is in Appearance; the **App** section is gone: Open data folder and Open logs folder were in the File menu already, and **Open in browser** (the third button) is now **View → Open in browser** on both platforms. The texts that sent you to "Settings → App → Open logs folder" (the bug report, the config notice) say File → Open logs folder.
 - **No more system-looking controls.** The Auto-scroll box above the log (Settings → Log) was the operating system's own checkbox (blue and round on macOS); it is now the app's switch. The "inv" box of a MIDI mapping row is the app's square check. The arrow of every dropdown is the app's small triangle instead of the system's (the list that opens is still the system's). The MIDI port field of the mapping's Controller tab no longer opens the system's suggestion list: the connected ports are buttons under the field. A test keeps native checkboxes, radio buttons, date / colour inputs and datalists out of the sources.
@@ -38,6 +41,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Removed
 - **The v2 indicator in the header.** The PitchPlease v2 serial output's status is a row of the DMX bubble (shown when the output is set up).
 - **Settings → Appearance: Glow and UI brightness.** The glow stays at 100 % and the ink at its normal brightness, as everybody ran it (UI brightness only dimmed the ink, while the screen's own brightness does that better). Settings files that still carry the two keys (`ui.glow`, `ui.brightness` in `machine.json`, or a `settings.json` from before 1.4) load without a warning and are written back without them; a test covers both. Ink colour, UI scale and key hints stay.
+
+
+## 1.8.0 — 2026-10-23
+
+(not released) Tagged as `v1.8.0`, but the build stopped in the tests before it built anything; everything listed under 1.8.1 is its content.
 
 ## 1.7.1 — 2026-10-21
 
