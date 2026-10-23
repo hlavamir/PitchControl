@@ -158,3 +158,9 @@ export function learnHint(learn: NonNullable<MidiRoutesStatus['learn']>): string
   const h = learn.heard
   return h && h.channel !== learn.channel ? `${base} · heard ${h.kind === 'cc' ? 'CC' : 'note'} ${h.number} on channel ${h.channel}: this route listens on channel ${learn.channel}` : base
 }
+
+/** The routes that write to other universes than ``universe``: how many, and which universes (item 74: the Routes subpage lists one universe). */
+export function otherUniverses(routes: RouteState[], universe: number): { count: number; universes: number[] } {
+  const others = routes.filter((r) => r.universe !== universe)
+  return { count: others.length, universes: [...new Set(others.map((r) => r.universe))].sort((a, b) => a - b) }
+}

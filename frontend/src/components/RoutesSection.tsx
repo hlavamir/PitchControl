@@ -6,6 +6,7 @@ import {
   midiInputText,
   newMidiRoute,
   newRoute,
+  otherUniverses,
   overlapText,
   routedCount,
   sourceState,
@@ -19,7 +20,7 @@ import {
   type RouteState,
 } from '../routes'
 import { usePolling } from '../usePolling'
-import { Button, NumberInput, Section, Toggle, UNIVERSES } from './forms'
+import { Button, NumberInput, Section, Toggle } from './forms'
 import { Icon } from './Icon'
 
 /** A text field that keeps what you type and applies it when you leave it or press Enter. */
@@ -58,7 +59,7 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
   )
 }
 
-const GRID = 'grid grid-cols-[2.6rem_minmax(7rem,1.2fr)_7.5rem_4.5rem_4.5rem_4.5rem_1.2rem_4.5rem_4.5rem_5rem] items-center gap-x-2'
+const GRID = 'grid grid-cols-[2.6rem_minmax(7rem,1.2fr)_7.5rem_4.5rem_4.5rem_4.5rem_1.2rem_5.5rem_5rem] items-center gap-x-2'
 const CHANNEL_GRID = 'grid grid-cols-[3.2rem_9rem_5rem_6.5rem_6rem_2.6rem_minmax(0,1fr)] items-center gap-x-2'
 
 const INPUT_TYPES: { value: MidiInputType; label: string }[] = [
@@ -179,8 +180,8 @@ function MidiChannels({
 export function RoutesSection({
   index,
   className = '',
-  routes,
-  overlaps,
+  routes: all,
+  overlaps: allOverlaps,
   universe,
   midi,
   notices,
@@ -190,11 +191,14 @@ export function RoutesSection({
   className?: string
   routes: RouteState[]
   overlaps: RouteOverlap[]
-  universe: number // the universe the Control Desk shows: new routes go there
+  universe: number // the universe the Control Desk shows: its routes are listed, new routes go there (item 74)
   midi?: MidiRoutesStatus
   notices: MidiNotice[]
   live: number[] // the output values of that universe
 }) {
+  const routes = all.filter((r) => r.universe === universe)
+  const overlaps = allOverlaps.filter((o) => o.universe === universe)
+  const others = otherUniverses(all, universe)
   const [problem, setProblem] = useState<string | null>(null)
   const [ports, setPorts] = useState<string[]>([])
   const [folded, setFolded] = useState<Record<string, boolean>>({}) // route id → its channel list is folded away
@@ -226,15 +230,20 @@ export function RoutesSection({
   return (
     <Section
       index={index}
-      title="Routes"
+      title={`Universe ${universe} · routes`}
       className={className}
       right={`${routes.filter((r) => r.enabled).length} of ${routes.length} on · ${covered} channel${covered === 1 ? '' : 's'} routed · saved across restarts`}
       bodyClassName="p-3 gap-2 overflow-y-auto"
       tip="Live input (Art-Net and DMX over USB: set up in Connections → DMX & Art-Net; or MIDI) copied onto output channels. Order of the layers, the later one wins: the app's output, then routes, then manual overrides"
     >
       <p className="text-[11px] leading-snug text-dim">
-        A route copies live input onto output channels: a block of an Art-Net universe or of the DMX input, up to a whole universe, or, for a MIDI route, one CC, note or fixed value for each channel. It sits over the fixtures and under the manual overrides: a channel you override keeps your value, and the route shows again when you release it. When the input stops, the last values stay; switch a route off or remove it to give the channels back to the fixtures.
+        The routes of the universe selected at the top right; a new route goes to it. A route copies live input onto output channels: a block of an Art-Net universe or of the DMX input, up to a whole universe, or, for a MIDI route, one CC, note or fixed value for each channel. It sits over the fixtures and under the manual overrides: a channel you override keeps your value, and the route shows again when you release it. When the input stops, the last values stay; switch a route off or remove it to give the channels back to the fixtures.
       </p>
+      {others.count > 0 && (
+        <p className="text-[11px] text-dim" data-tip="Routes are listed by the universe they write to. Choose another universe at the top right to see and edit them">
+          {others.count} more route{others.count === 1 ? '' : 's'} on other universes ({others.universes.join(', ')})
+        </p>
+      )}
       {routes.length > 0 && (
         <div className="flex flex-col gap-1.5 overflow-x-auto">
           <div className={`${GRID} lbl min-w-[56rem] border-b border-seam pb-1 text-[10px] text-dim`}>
@@ -250,9 +259,8 @@ export function RoutesSection({
             <span />
             <span className="flex items-center gap-1.5">
               <Icon name="out" label />
-              Out univ.
+              First out
             </span>
-            <span>First out</span>
             <span />
           </div>
           {routes.map((r) => {
@@ -307,15 +315,7 @@ export function RoutesSection({
                     onChange={(v) => edit(r.id, { count: v })}
                   />
                   <span className="text-center text-dim">→</span>
-                  <select value={r.universe} data-tip="The output universe the channels go to (the universes of the Rig page and Connections)" onChange={(e) => edit(r.id, { universe: Number(e.target.value) })}>
-                    {UNIVERSES.map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
-                    ))}
-                    {!UNIVERSES.includes(r.universe) && <option value={r.universe}>{r.universe}</option>}
-                  </select>
-                  <NumberInput value={r.first_output} min={1} max={512} integer className="w-full" tip="The first output channel (1–512) that gets the first input channel" onChange={(v) => edit(r.id, { first_output: v })} />
+                  <NumberInput value={r.first_output} min={1} max={512} integer className="w-full" tip={`The first output channel (1–512) of universe ${universe} that gets the first input channel`} onChange={(v) => edit(r.id, { first_output: v })} />
                   <Button onClick={() => remove(r.id)} tip="Remove this route; its channels follow the fixtures again">
                     Remove
                   </Button>
@@ -337,7 +337,7 @@ export function RoutesSection({
                 )}
                 <p className={`pl-[2.6rem] text-[11px] ${!r.enabled ? 'text-dim' : st.level === 'live' ? 'text-route' : st.level === 'holding' || st.level === 'problem' ? 'text-ink' : 'text-dim'}`}>
                   {r.enabled
-                    ? `${st.level === 'problem' ? '! ' : ''}${st.text} · output ${r.universe}, channels ${r.first_output}–${r.first_output + r.count - 1}`
+                    ? `${st.level === 'problem' ? '! ' : ''}${st.text} · output channels ${r.first_output}–${r.first_output + r.count - 1}`
                     : 'off: its channels follow the fixtures. Switch it on when it is set up'}
                   {r.enabled && overlapping.has(r.id) && ' · overlaps another route'}
                 </p>
@@ -345,7 +345,7 @@ export function RoutesSection({
                   <div className="pl-[2.6rem]">
                     <MidiChannels
                       route={r}
-                      live={r.universe === universe ? live : null}
+                      live={live}
                       learn={midi?.learn ?? null}
                       notices={notices}
                       onPatch={(i, patch) => patchChannel(r.id, i, patch)}
@@ -358,7 +358,7 @@ export function RoutesSection({
           })}
         </div>
       )}
-      {routes.length === 0 && <p className="text-[13px] text-dim">No routes. Add one to send what comes in (Connections → DMX & Art-Net), or from a MIDI device, to output channels.</p>}
+      {routes.length === 0 && <p className="text-[13px] text-dim">No routes in universe {universe}. Add one to send what comes in (Connections → DMX & Art-Net), or from a MIDI device, to its output channels.</p>}
       {overlaps.length > 0 && (
         <div className="border border-edge px-2.5 py-2 text-[12px] leading-snug" role="status" data-tip="Two routes write the same output channels; the one lower in the list wins there">
           <p>! Routes overlap:</p>

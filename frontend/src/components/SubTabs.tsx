@@ -56,41 +56,37 @@ function groups<T extends string>(tabs: SubTab<T>[]): SubTab<T>[][] {
   return out
 }
 
-/** The row of subpage tabs under the page row (Connections, Control Desk), with the keys at its ends. */
+/**
+ * The row of subpage tabs under the page row (Connections, Control Desk), starting at the page row's left edge. Q / E step
+ * through them (useSubTab), shown in the footer and the Help page, not in the row. A tab with ``gap`` stands apart from
+ * the ones before it (the Control Desk's Routes, item 74).
+ */
 export function SubTabs<T extends string>({ tabs, value, onChange }: { tabs: SubTab<T>[]; value: T; onChange: (id: T) => void }) {
   return (
     <div className="flex flex-none items-stretch" role="tablist">
-      <span className="flex items-center px-1.5 font-mono text-[11px] text-dim" data-hint="subtab" data-tip="Q: the previous subpage">
-        Q
-      </span>
-      <div className="flex gap-1.5">
-        {groups(tabs).map((group) => (
-          <div key={group[0].id} className="flex border border-edge">
-            {group.map((t) => {
-              const active = t.id === value
-              return (
-                <button
-                  key={t.id}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => onChange(t.id)}
-                  data-hint="subtab"
-                  data-tip={t.tip}
-                  className={`lbl relative flex h-8 items-center gap-1.5 border-edge px-3 text-[11px] whitespace-nowrap not-first:border-l ${t.mono ? 'font-mono' : ''} ${
-                    active ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
-                  }`}
-                >
-                  {t.label}
-                  {t.marks?.(active)}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-      <span className="flex items-center px-1.5 font-mono text-[11px] text-dim" data-hint="subtab" data-tip="E: the next subpage">
-        E
-      </span>
+      {groups(tabs).map((group, i) => (
+        <div key={group[0].id} className={`flex border border-edge ${i === 0 ? '' : group[0].gap ? 'ml-10' : 'ml-1.5'}`}>
+          {group.map((t) => {
+            const active = t.id === value
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => onChange(t.id)}
+                data-hint="subtab"
+                data-tip={t.tip}
+                className={`lbl relative flex h-8 items-center gap-1.5 border-edge px-3 text-[11px] whitespace-nowrap not-first:border-l ${t.mono ? 'font-mono' : ''} ${
+                  active ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
+                }`}
+              >
+                {t.label}
+                {t.marks?.(active)}
+              </button>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

@@ -162,6 +162,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const overrides = all[String(universe)] ?? {}
   const total = Object.values(all).reduce((n, chans) => n + Object.keys(chans).length, 0)
   const routes = engine.state?.routes ?? []
+  const universeRoutes = routes.filter((r) => r.universe === universe) // the Routes subpage shows these (item 74)
   const routed = useMemo(() => routedChannels(routes, universe), [routes, universe])
   const routedTotal = routedCount(routes)
 
@@ -169,12 +170,12 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const routedOnSubpage = (p: number) => [...routed.keys()].filter((c) => Math.floor((c - 1) / PER_PAGE) === p).length
   const tabs: SubTab<DeskTab>[] = DESK_TABS.map((id, p) => {
     if (id === 'routes') {
-      const on = routes.filter((r) => r.enabled).length
+      const on = universeRoutes.filter((r) => r.enabled).length
       return {
         id,
         label: 'Routes',
         gap: true,
-        tip: `Live input (Art-Net, DMX over USB, MIDI) copied onto output channels; Q / E step through the subpages. ${on} of ${routes.length} route(s) on`,
+        tip: `Live input (Art-Net, DMX over USB, MIDI) copied onto the output channels of the universe shown; Q / E step through the subpages. ${on} of ${universeRoutes.length} route(s) on in universe ${universe}`,
         marks: (active) => on > 0 && <span className={`size-[5px] ${active ? 'bg-ground' : 'bg-route'}`} />,
       }
     }
@@ -197,18 +198,18 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="flex flex-none flex-wrap items-center gap-1.5">
-        <label className="lbl flex items-center gap-2 text-[11px] text-dim" data-tip="DMX universe shown, numbered as on the Rig page and in Connections; each has 512 channels. New routes go to it">
-          Universe
-          <select value={universe} onChange={(e) => setUniverse(Number(e.target.value))}>
-            {UNIVERSES.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-        </label>
         <SubTabs tabs={tabs} value={tab} onChange={setTab} />
         <div className="ml-auto flex items-center gap-1.5">
+          <label className="lbl flex items-center gap-2 text-[11px] text-dim" data-tip="DMX universe shown, numbered as on the Rig page and in Connections; each has 512 channels. The channels and the Routes subpage show this universe, and new routes go to it">
+            Universe
+            <select value={universe} onChange={(e) => setUniverse(Number(e.target.value))}>
+              {UNIVERSES.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </label>
           {confirmReset ? (
             <>
               <span className="text-[11px]">

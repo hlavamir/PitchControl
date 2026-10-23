@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { learnHint, midiInputText, newMidiRoute, newRoute, overlapText, routeLabel, routedChannels, routedCount, sourceState, type MidiChannelState, type RouteState } from './routes'
+import { learnHint, midiInputText, newMidiRoute, newRoute, otherUniverses, overlapText, routeLabel, routedChannels, routedCount, sourceState, type MidiChannelState, type RouteState } from './routes'
 
 const route = (over: Partial<RouteState> = {}): RouteState => ({
   ...(newRoute(0) as Omit<RouteState, 'id' | 'seen' | 'age' | 'pps'>),
@@ -90,5 +90,17 @@ describe('MIDI routes', () => {
     expect(learnHint(learn)).toBe('Move a knob or press a key on the device (MIDI channel 1) · 13 s')
     expect(learnHint({ ...learn, heard: { kind: 'cc', number: 21, channel: 5 } })).toContain('heard CC 21 on channel 5: this route listens on channel 1')
     expect(learnHint({ ...learn, heard: { kind: 'note', number: 40, channel: 1 } })).not.toContain('heard')
+  })
+})
+
+describe('otherUniverses', () => {
+  it('counts the routes of other universes and names the universes', () => {
+    const routes = [route({ id: 'a' }), route({ id: 'b', universe: 2 }), route({ id: 'c', universe: 1 }), route({ id: 'd', universe: 2 })]
+    expect(otherUniverses(routes, 0)).toEqual({ count: 3, universes: [1, 2] })
+    expect(otherUniverses(routes, 2)).toEqual({ count: 2, universes: [0, 1] })
+  })
+  it('is empty when every route is in the shown universe', () => {
+    expect(otherUniverses([route(), route({ id: 'b' })], 0)).toEqual({ count: 0, universes: [] })
+    expect(otherUniverses([], 3)).toEqual({ count: 0, universes: [] })
   })
 })
