@@ -3,6 +3,7 @@ messages, the manager, and the settings endpoint."""
 
 import json
 import socket
+import sys
 import time
 
 import pytest
@@ -164,10 +165,14 @@ def test_loopback_own_output_is_ignored_and_an_external_packet_is_taken(monkeypa
 
 
 def test_a_taken_port_is_reported_and_tried_again():
+    # The receiver binds the adapter's address on Windows and all addresses elsewhere (ArtNetReceiver._open), so the
+    # blocker holds the same one: on macOS a socket on all addresses may share the port with one that holds only
+    # 127.0.0.1 (BSD rules), which is not a port that is taken.
+    host = "127.0.0.1" if sys.platform == "win32" else ""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as blocker:  # no SO_REUSEADDR: nobody else may bind
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             blocker.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        blocker.bind(("127.0.0.1", 0))
+        blocker.bind((host, 0))
         port = blocker.getsockname()[1]
         rx = ArtNetReceiver(InputStore(), ArtNetInputSettings(enabled=True, port=port, adapter="127.0.0.1"))
         rx.start()

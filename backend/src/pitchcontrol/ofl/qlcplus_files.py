@@ -47,19 +47,31 @@ def candidate_dirs(platform: str | None = None, env: dict[str, str] | None = Non
 def folders() -> list[Folder]:
     """The fixture folders that exist, without duplicates (a case-insensitive disk finds ``Fixtures`` and ``fixtures`` as one)."""
     found: list[Folder] = []
-    seen: set[str] = set()
+    seen: set[tuple] = set()
     for label, base in candidate_dirs():
         for sub in SUBFOLDERS:
             path = base / sub
             try:
-                real = os.path.normcase(str(path.resolve()))
-                if real in seen or not path.is_dir():
+                if not path.is_dir():
                     continue
+                key = _identity(path)
             except OSError:
                 continue
-            seen.add(real)
+            if key in seen:
+                continue
+            seen.add(key)
             found.append(Folder(label, path))
     return found
+
+
+def _identity(path: Path) -> tuple:
+    """What makes two spellings of a folder the same folder: the disk's own id of it (device and inode), so that
+    ``Fixtures`` and ``fixtures`` are one on macOS and Windows (``os.path.normcase`` only lowercases on Windows, so it
+    listed the QLC+ folders twice on a Mac). Where the id is 0, the lower-cased real path."""
+    st = path.stat()
+    if st.st_ino:
+        return ("id", st.st_dev, st.st_ino)
+    return ("path", os.path.normcase(str(path.resolve())).lower())
 
 
 def _tag(head: str, tag: str) -> str | None:

@@ -6,6 +6,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Fixed
+- **QLC+ import on a Mac: every QLC+ fixture folder was listed twice** in the dialog. The check for a folder that is found
+  under two spellings (`Fixtures` and `fixtures`) compared lower-cased paths, which only lowercases on Windows; on a Mac
+  both spellings exist on the case-insensitive disk. A folder is now the same folder when the disk says so (its device and
+  inode), on every system.
+
 ## 1.8.1 — 2026-10-23
 
 The first release with the changes below: 1.8.0 was tagged, but its build stopped in the tests (see 1.8.0).
