@@ -157,6 +157,7 @@ class AudioFeatures:
     norm_max: float = field(init=False)  # the shared maximum all bands are divided by
     peak_max: np.ndarray = field(init=False)
     peak_min: np.ndarray = field(init=False)
+    levels: np.ndarray = field(init=False)  # the bands as the analyser gave them, before the division by norm_max
     values: np.ndarray = field(init=False)
     peak: np.ndarray = field(init=False)
     peak_score: np.ndarray = field(init=False)
@@ -166,6 +167,7 @@ class AudioFeatures:
         self.norm_max = self.normalisation_floor
         self.peak_max = np.full(n, 0.01)
         self.peak_min = np.zeros(n)
+        self.levels = np.zeros(n)
         self.values = np.zeros(n)
         self.peak = np.zeros(n, dtype=bool)
         self.peak_score = np.zeros(n)
@@ -180,6 +182,7 @@ class AudioFeatures:
         # falls below the floor (so silence and noise aren't scaled up)
         self.norm_max = max(self.norm_max * self.normalisation_decay, self.normalisation_floor, float(levels.max()))
         v = np.clip(levels / self.norm_max, 0.0, 1.0)
+        self.levels = np.asarray(levels, dtype=float).copy()
 
         # peak detection (as AudioData.Update): compare against the previous frame's max
         old_max, old_min = self.peak_max, self.peak_min

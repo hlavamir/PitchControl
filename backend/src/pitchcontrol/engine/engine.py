@@ -658,6 +658,10 @@ class Engine:
                 "trigger": round(self.features.trigger_fraction, 4),
                 "bands": np.round(self.features.values, 3).tolist(),
                 "band_peaks": self.features.peak.astype(int).tolist(),
+                # the band displays (item 75): the live levels before the division, and the shared maximum they were
+                # divided by, in the same 0..1 scale, so a display can draw the one behind the other
+                "band_levels": np.round(self.features.levels, 3).tolist(),
+                "band_norm": round(self.features.norm_max, 3),
                 "peaks_map": np.round(self.peaks.blue, 3).tolist(),
                 "preset": PRESET_NAMES[self.masks.current],
                 "colors": {"A": rgb_a, "B": rgb_b},

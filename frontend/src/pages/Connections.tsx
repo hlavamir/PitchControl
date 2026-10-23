@@ -200,11 +200,11 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
       <div className="mt-3" data-tip="Level of each frequency band, low to high. Dotted line: how much a band counts for the strobo trigger (bass most)">
         <div className="mb-1 flex justify-between text-[11px] text-dim">
           <span>{bands ? `${bands.edges[0]} Hz` : ''}</span>
-          <span>{bandsHeld ? 'input stopped · lights hold the last look' : '32 bands · dotted line = strobo trigger weight'}</span>
+          <span>{bandsHeld ? 'input stopped · lights hold the last look' : '32 bands · bright = live, dim = normalisation · dotted line = strobo trigger weight'}</span>
           <span>{bands ? `${bands.edges[bands.edges.length - 1]} Hz` : ''}</span>
         </div>
         <div style={{ opacity: bandsHeld ? 0.35 : 1 }}>
-          <BandMeter bands={engine.state?.bands ?? []} peaks={engine.state?.band_peaks} weights={bands?.trigger_weights} height={420} />
+          <BandMeter bands={engine.state?.band_levels ?? engine.state?.bands ?? []} norm={engine.state?.band_norm} peaks={engine.state?.band_peaks} weights={bands?.trigger_weights} height={420} />
         </div>
       </div>
     </Section>

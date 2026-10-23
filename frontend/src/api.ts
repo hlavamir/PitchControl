@@ -138,7 +138,9 @@ export interface EngineState {
   idle: number
   peaks_total: number
   trigger: number
-  bands: number[]
+  bands: number[] // normalised (what drives the lights)
+  band_levels?: number[] // the same bands before the division by the shared maximum (item 75)
+  band_norm?: number // the shared, slowly decaying maximum the bands are divided by, in the scale of band_levels
   band_peaks: number[]
   peaks_map: number[]
   preset: string

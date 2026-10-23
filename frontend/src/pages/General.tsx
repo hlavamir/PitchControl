@@ -262,14 +262,14 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
           }
         >
           <div className="min-h-16 flex-1">
-            <BandMeter bands={state?.bands ?? []} peaks={state?.band_peaks} height="100%" tip="Level of each frequency band, low to high; a bright top cell marks a band that is peaking" />
+            <BandMeter bands={state?.band_levels ?? state?.bands ?? []} norm={state?.band_norm} peaks={state?.band_peaks} height="100%" tip="Level of each frequency band, low to high: the bright column is the live value, the dim column behind it the slowly decaying maximum the bands are divided by; a glowing band is peaking" />
           </div>
           <div className="lbl flex justify-between font-mono text-[10px] text-dim">
             <span>35 Hz</span>
             <span>peaks map</span>
             <span>10 kHz</span>
           </div>
-          <BandMeter bands={state?.peaks_map ?? []} rows={4} height={22} tip="Peaks map: which bands peaked recently; it shapes the idle mask (Audio Reactivity)" />
+          <BandMeter bands={state?.peaks_map ?? []} height={22} tip="Peaks map: which bands peaked recently; it shapes the idle mask (Audio Reactivity)" />
         </Section>
       </div>
     </div>

@@ -49,6 +49,7 @@ def test_shared_normalisation_and_peaks():
     assert f.values[0] == pytest.approx(1.0)  # the loudest band sets the scale for all of them ...
     assert f.values[1] == pytest.approx(1 / 3) and f.values[2] == pytest.approx(1 / 3)  # ... the others stay quieter
     assert f.values[3] == 0.0
+    assert f.levels.tolist() == pytest.approx([0.9, 0.3, 0.3, 0.0])  # the bands before the division (item 75's display)
     assert f.peak[:3].all() and not f.peak[3]  # peaks are still found per band, against that band's own recent maximum
     assert f.trigger_fraction == pytest.approx(0.75)
 
@@ -60,6 +61,7 @@ def test_the_shared_maximum_decays_and_has_a_floor():
     f.update(np.array([0.2, 0.1]))  # the loud band went quiet: the maximum follows down, by the decay
     assert f.norm_max == pytest.approx(0.4)
     assert f.values.tolist() == pytest.approx([0.5, 0.25])
+    assert f.levels.tolist() == pytest.approx([0.2, 0.1])  # the live level is below the slowly decaying maximum
     for _ in range(10):
         f.update(np.array([0.0, 0.0]))
     assert f.norm_max == pytest.approx(0.25)  # never below the floor: silence isn't scaled up

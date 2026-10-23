@@ -63,6 +63,7 @@ def test_api_and_websocket(store):
     with client.websocket_connect("/ws") as ws:
         state = ws.receive_json()
         assert "fixtures" in state and "bands" in state
+        assert len(state["band_levels"]) == len(state["bands"]) and state["band_norm"] >= 0.25  # item 75
         preview = ws.receive_bytes()
         assert len(preview) == 256 * 256
         ws.send_json({"type": "macro", "name": "Strobo", "value": 0.25})

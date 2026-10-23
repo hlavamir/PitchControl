@@ -206,7 +206,7 @@ function AudioBubble({ engine }: { engine: EngineConnection }) {
           <div className="dot-on h-1.5" style={{ width: `${Math.min(1, a?.level ?? 0) * 100}%` }} />
         </div>
       </div>
-      <BandMeter bands={s?.bands ?? []} peaks={s?.band_peaks} rows={10} height={64} />
+      <BandMeter bands={s?.band_levels ?? s?.bands ?? []} norm={s?.band_norm} peaks={s?.band_peaks} height={64} />
       <div className="lbl flex justify-between text-[10px] text-dim">
         <span>low</span>
         <span>{s?.bands.length ?? 0} bands</span>

@@ -1,49 +1,39 @@
-const SEAM = 'inset 0 1px 0 rgba(15,16,17,.6)'
+import { bandColumns } from './bandColumns'
 
 interface Props {
-  bands: number[]
+  bands: number[] // the live value of each band, 0–1
+  norm?: number | number[] // the slowly decaying normalisation value, drawn dimmer behind the live column
   peaks?: number[]
   weights?: number[] // strobo trigger weight per band, drawn as a dotted mark
-  rows?: number
   height?: number | string
   tip?: string
 }
 
 /**
- * Segmented meter of the audio bands: cells without gaps that fade in with the level; the top cell
- * of a peaking band is bright and glows.
+ * The audio bands as plain columns, one per band, no horizontal segments (item 75, as in vvvv): the band's live value
+ * in front, bright, and behind it, dimmer, the normalisation value (the slowly decaying maximum the analysis divides
+ * by). A peaking band glows. Every band display uses this one component.
  */
-export function BandMeter({ bands, peaks, weights, rows = 12, height = 80, tip }: Props) {
+export function BandMeter({ bands, norm, peaks, weights, height = 80, tip }: Props) {
+  const columns = bandColumns(bands, norm, peaks, weights)
   return (
     <div className="grid w-full gap-px" data-hint="info" data-tip={tip} style={{ height, gridTemplateColumns: `repeat(${bands.length || 1}, minmax(0, 1fr))` }}>
-      {bands.map((v, i) => {
-        const level = Math.max(0, Math.min(1, v)) * rows
-        const top = Math.ceil(level) - 1
-        const peak = Boolean(peaks?.[i])
-        const weightRow = weights ? Math.round(weights[i] * (rows - 1)) : -1
-        return (
-          <div key={i} className="flex flex-col-reverse">
-            {Array.from({ length: rows }, (_, c) => {
-              const fill = Math.max(0, Math.min(1, level - c))
-              const bright = peak && c === top
-              const alpha = bright ? 0.06 + 0.94 * fill : 0.06 + 0.55 * fill
-              return (
-                <div
-                  key={c}
-                  className="relative flex-1"
-                  style={{
-                    background: `rgb(var(--ink-rgb) / ${alpha.toFixed(3)})`,
-                    boxShadow: SEAM + (bright ? ', 0 0 8px rgb(var(--ink-rgb) / 0.45)' : ''),
-                    zIndex: bright ? 1 : undefined,
-                    borderTop: fill === 0 && c === weightRow ? '1px dotted var(--color-dim)' : undefined,
-                    transition: 'background-color 80ms linear',
-                  }}
-                />
-              )
-            })}
-          </div>
-        )
-      })}
+      {columns.map((c, i) => (
+        <div key={i} className="relative" style={{ background: 'rgb(var(--ink-rgb) / 0.06)' }}>
+          {c.norm > 0 && <div className="absolute inset-x-0 bottom-0" style={{ height: `${c.norm}%`, background: 'rgb(var(--ink-rgb) / 0.2)' }} />}
+          <div
+            className="absolute inset-x-0 bottom-0"
+            style={{
+              height: `${c.live}%`,
+              background: `rgb(var(--ink-rgb) / ${c.peak ? 1 : 0.7})`,
+              boxShadow: c.peak ? '0 0 8px rgb(var(--ink-rgb) / 0.45)' : undefined,
+              zIndex: c.peak ? 1 : undefined,
+              transition: 'height 80ms linear',
+            }}
+          />
+          {c.weight !== null && <div className="absolute inset-x-0" style={{ bottom: `${c.weight}%`, borderTop: '1px dotted var(--color-dim)', zIndex: 2 }} />}
+        </div>
+      ))}
     </div>
   )
 }
