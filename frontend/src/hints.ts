@@ -11,6 +11,7 @@ import type { MacroDef } from './api'
 export type HintKind =
   | 'fader'
   | 'fader-deferred'
+  | 'fader-wide'
   | 'dimmer'
   | 'dimmer-off'
   | 'toggle'
@@ -48,6 +49,7 @@ const MOVE: Keys = [['W A S D', 'move']]
 
 export const HINT_KEYS: Record<HintKind, Keys> = {
   fader: [['DRAG ↕', 'value'], ['↑ ↓', 'value'], ['SHIFT', 'fine'], ['DBL-CLICK', 'reset'], ...MOVE],
+  'fader-wide': [['DRAG ↔', 'value'], ['↑ ↓', 'value'], ['SHIFT', 'fine'], ['DBL-CLICK', 'reset'], ...MOVE], // a horizontal fader (Mask Curve)
   'fader-deferred': [['DRAG ↕', 'value'], ['↑ ↓', 'value'], ['SHIFT', 'fine'], ['ESC', 'cancel'], ['DBL-CLICK', 'reset'], ...MOVE],
   dimmer: [['DRAG ↕', 'value'], ['↑ ↓', 'value'], ['SHIFT', 'fine'], ['DBL-CLICK', 'reset'], ['DBL-CLICK NAME', 'rename'], ...MOVE],
   'dimmer-off': [['DBL-CLICK NAME', 'rename'], ['RIG → DIMMER', 'assign fixtures']],
@@ -91,6 +93,7 @@ export function rigFieldKeys(kind: HintKind, keys: Keys): Keys {
 
 /** Footer hint kind of a macro control (see hints.ts). */
 export function macroHint(def: MacroDef): HintKind {
+  if (def.kind === 'fader' && def.name === 'Mask Curve') return 'fader-wide'
   if (def.kind === 'fader') return def.page === 'dimmers' ? 'dimmer' : def.deferred ? 'fader-deferred' : 'fader'
   if (def.kind === 'momentary') return 'hold'
   if (def.kind === 'toggle') return 'toggle'
@@ -102,6 +105,7 @@ export const MACRO_TIPS: Record<string, string> = {
   'Strobo Decay': 'How long the strobo flash takes to fade after a peak (seconds)',
   'Idle Attack': 'How long the idle colours take to fade back in after the strobo (seconds)',
   'Mask Param A': 'Speed and direction of the mask animation',
+  'Mask Curve': 'Contrast of the mask: mask ^ value. Above 1 darker, below 1 brighter, 1 = the mask as it is',
   'Mask Param B': 'Mask parameter: Gradient = direction · Back & Forth = angle · Rotating Line = thickness · Noise = drift',
   'Hue A': 'Colour of group A (applied on release)',
   'Hue B': 'Colour of group B (applied on release)',

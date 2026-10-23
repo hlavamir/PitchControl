@@ -41,6 +41,9 @@ class MacroDef:
     display_scale: float = 1.0
     unit: str = ""
     decimals: int = 2
+    # the fader is logarithmic: the value in range runs from min to max by a constant ratio, so the control's middle is
+    # the geometric mean (Mask Curve: 0.25 ... 4, 1 in the middle). min must be above 0.
+    log_scale: bool = False
 
     @property
     def label(self) -> str:
@@ -76,6 +79,9 @@ def _defs() -> list[MacroDef]:
         MacroDef("Idle Bright. B", legacy_index=19, default=1.0),
         MacroDef("Mask Param A", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
         MacroDef("Mask Param B", legacy_index=21, default=_step(64)),
+        # the exponent of the mask before the fixtures' own idle remap (``mask ** value``): above 1 darker, below 1 brighter.
+        # 129 steps put the default 1 exactly on the middle step. Not in the vvvv patch: no legacy index.
+        MacroDef("Mask Curve", 0.25, 4.0, steps=129, default=0.5, log_scale=True),
         MacroDef("Invert Discoball", steps=2, kind="toggle", legacy_index=29),
         MacroDef("Fog Machine", steps=2, kind="momentary", legacy_index=30),
         MacroDef("Manual Strobo", steps=2, kind="momentary", legacy_index=31),
@@ -115,6 +121,10 @@ def _defs() -> list[MacroDef]:
 
 MACRO_DEFS: list[MacroDef] = _defs()
 
+# Macros that came after the first scenes were saved: a scene without one of them gets its default (the look it had when
+# it was saved), instead of keeping whatever the macro was set to before the scene was loaded.
+LATE_MACROS = ("Mask Curve",)
+
 
 def quantise(control: float, steps: int) -> float:
     control = min(max(control, 0.0), 1.0)
@@ -143,7 +153,10 @@ class MacroBank:
         m = self.defs.get(name)
         if m is None:
             return 0.0
-        return m.min + quantise(self._values[name], m.steps) * (m.max - m.min)
+        q = quantise(self._values[name], m.steps)
+        if m.log_scale:
+            return m.min * (m.max / m.min) ** q
+        return m.min + q * (m.max - m.min)
 
     def on(self, name: str) -> bool:
         return self._values.get(name, 0.0) > 0.5

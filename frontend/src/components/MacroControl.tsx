@@ -62,7 +62,7 @@ export function hsvCss(h: number, s: number, v: number): string {
 export function valueInRange(def: MacroDef, control: number): number {
   const steps = def.steps > 1 ? def.steps - 1 : 1
   const q = Math.floor(control * steps + 0.5) / steps
-  return def.min + q * (def.max - def.min)
+  return def.log_scale ? def.min * (def.max / def.min) ** q : def.min + q * (def.max - def.min)
 }
 
 /** The value as shown in the UI: scaled, with decimals and unit (hue in degrees, saturation in %). */

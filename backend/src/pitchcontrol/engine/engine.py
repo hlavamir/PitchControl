@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import threading
 import time
 
@@ -27,8 +28,8 @@ from .audio_analysis import AudioFeatures, SpectrumAnalyzer, trigger_weights
 from .colors import GroupColors, hsv_to_rgb
 from .fixtures import Fixture, GroupBrightness
 from .fog import FogController
-from .macros import MacroBank
-from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, mixed_mask
+from .macros import LATE_MACROS, MacroBank
+from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, curved, mixed_mask
 from .overrides import Overrides
 from .perf import FrameTimes
 from .routes import Routes
@@ -99,7 +100,7 @@ class Engine:
 
         grid = (np.arange(PREVIEW_SIZE) + 0.5) / PREVIEW_SIZE
         self.preview_u, self.preview_v = np.meshgrid(grid, grid)
-        self._preview_inputs: tuple[MaskParams, bool] = (MaskParams(), False)
+        self._preview_inputs: tuple[MaskParams, bool, float] = (MaskParams(), False, 1.0)
 
         self.outputs = OutputManager(store.settings.outputs, store.find_osc, lambda: 1.0 / max(store.settings.fps, 1.0))
         self.live = LiveInput(self.outputs.artnet_source_ports)  # Art-Net and DMX input (item 57): the sources of the routes
@@ -405,7 +406,9 @@ class Engine:
             self.colors.update(on_peak, m, s.auto_colors)
             symmetry = m.on("Vertical Symmetry")
 
-            mask = mixed_mask(self.masks, self.peaks, self._all_u, self._all_v, params, symmetry)
+            self._adopt_legacy_mask_curve()
+            curve = m.value("Mask Curve")
+            mask = curved(mixed_mask(self.masks, self.peaks, self._all_u, self._all_v, params, symmetry), curve)
             groups = {
                 "A": GroupBrightness(
                     m.value("Strobo Brightness") * m.control("Strobo Bright. A"),
@@ -416,11 +419,10 @@ class Engine:
                     m.value("Idle Brightness") * m.control("Idle Bright. B"),
                 ),
             }
-            mask_curve = self.store.rig.mask_curve
             universes: dict[int, bytearray] = {}
             v2_strips: list[list[int]] = []
             for i, fx in enumerate(self.fixtures):
-                fx.update(mask[self._offsets[i] : self._offsets[i + 1]], self.phase.phase, self.colors, groups[fx.inst.group], m, mask_curve)
+                fx.update(mask[self._offsets[i] : self._offsets[i + 1]], self.phase.phase, self.colors, groups[fx.inst.group], m)
                 if fx.ftype.transport == "pitchpls_v2":
                     fx.last_output = fx.pixel_bytes("RGB")
                     v2_strips.append(fx.last_output)
@@ -436,7 +438,7 @@ class Engine:
             self.overrides.apply(universes)  # last: manual overrides win
             self.universes, self.v2_strips = universes, v2_strips
 
-            self._preview_inputs = (params, symmetry)
+            self._preview_inputs = (params, symmetry, curve)
 
         if self.enable_hardware:
             self.outputs.send(universes, v2_strips)
@@ -482,9 +484,26 @@ class Engine:
             self.macros.reset_to_defaults()
             log.info("scene %d is empty: macros set to their defaults", index + 1)
             return False
-        self.macros.load(scene.values, source=f"scene {index + 1}")
+        defaults = {n: self.macros.defs[n].default for n in LATE_MACROS if n in self.macros.defs}
+        self.macros.load(defaults | scene.values, source=f"scene {index + 1}")
         log.info("loaded scene %d (%s)", index + 1, scene.name)
         return True
+
+    def _adopt_legacy_mask_curve(self) -> None:
+        """A rig file from before item 76 has a mask curve (the exponent was 2 ** it): the macro Mask Curve starts once at that
+        value, limited to its range, and the rig file is written again without the key."""
+        old = self.store.legacy_mask_curve
+        if old is None:
+            return
+        self.store.legacy_mask_curve = None
+        d = self.macros.defs["Mask Curve"]
+        value = min(max(2.0**old, d.min), d.max)
+        self.macros.set(d.name, math.log(value / d.min) / math.log(d.max / d.min))
+        log.info("rig '%s': its mask curve %g is now the macro Mask Curve, %.2f", self.store.rig.name, old, value)
+        try:
+            self.store.save_rig()
+        except OSError as exc:
+            log.warning("cannot rewrite the rig '%s' without its mask curve: %s", self.store.rig.name, exc)
 
     def _restore_macros(self) -> None:
         """The values of the last session (the autosave), or on a first start the macro defaults."""
@@ -619,8 +638,8 @@ class Engine:
         with self.lock:
             masks = copy.deepcopy(self.masks)
             peaks = copy.deepcopy(self.peaks)
-            params, symmetry = self._preview_inputs
-        img = mixed_mask(masks, peaks, self.preview_u, self.preview_v, params, symmetry)
+            params, symmetry, curve = self._preview_inputs
+        img = curved(mixed_mask(masks, peaks, self.preview_u, self.preview_v, params, symmetry), curve)
         return (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8).tobytes()
 
     def state(self) -> dict:

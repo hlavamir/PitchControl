@@ -142,6 +142,11 @@ class PeaksMap:
         return mask + (looked_up - mask) * self.control
 
 
+def curved(mask: np.ndarray, curve: float) -> np.ndarray:
+    """The macro Mask Curve (item 76): ``mask ** curve``, above 1 darker, below 1 brighter; before the fixtures' own remap."""
+    return np.clip(mask, 0.0, 1.0) ** curve
+
+
 def mixed_mask(gen: MaskGenerator, peaks: PeaksMap, u, v, params: MaskParams, symmetry: bool) -> np.ndarray:
     if symmetry:  # the left half of the image, mirrored onto the right half
         u = np.where(u > 0.5, 1.0 - u, u)

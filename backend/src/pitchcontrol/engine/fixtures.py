@@ -76,7 +76,6 @@ class Fixture:
         colors: GroupColors,
         group: GroupBrightness,
         macros,
-        mask_curve: float = 0.0,
     ) -> None:
         inst = self.inst
         react = self.react_to_strobo
@@ -115,7 +114,7 @@ class Fixture:
                 lo, hi, curve = 0.0, 1.0, 0.0
             else:
                 lo, hi, curve = rng.min, rng.max, rng.curve
-            m = np.clip(mask, 0.0, 1.0) ** (2.0 ** (mask_curve + curve))  # the rig's curve first, then the fixture's
+            m = np.clip(mask, 0.0, 1.0) ** (2.0**curve)  # the mask arrives already curved by the macro Mask Curve
             remapped = lo + (hi - lo) * m
             idle_value = b_idle * remapped * own.b  # palette B = max idle brightness
             if b_idle > 0.0:

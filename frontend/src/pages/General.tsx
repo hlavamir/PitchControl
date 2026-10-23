@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, rgbCss, type MacroDef } from '../api'
 import { BandMeter, SegmentBar } from '../components/BandMeter'
 import { MacroControl, colorTrackFor } from '../components/MacroControl'
+import { MacroSlider } from '../components/MacroSlider'
 import { Preview } from '../components/Preview'
 import { Section } from '../components/forms'
 import { BUTTONS, FADERS, MASKS, type SceneInfo } from '../generalControls'
@@ -66,6 +67,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
     pad8(BUTTONS.map(([n, , label]) => item(n, label))),
     pad8(MASKS.map(([n, label]) => item(n, label))),
     pad8(sceneItems),
+    [item('Mask Curve')],
   ]
   const { selectedId, select } = useGridNav('General', grid)
 
@@ -218,6 +220,9 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
           tip="The scene: the animated mask the fixtures sample, the strobo / idle state, and the two output colours of groups A and B"
         >
           <Preview preview={preview} state={state} />
+          {defs['Mask Curve'] && (
+            <MacroSlider def={defs['Mask Curve']} value={macros['Mask Curve'] ?? defs['Mask Curve'].default} setMacro={setMacro} selected={selectedId === 'Mask Curve'} onSelect={() => select('Mask Curve')} />
+          )}
           {/* one bar for both phases: strobo drains it from 1 to 0 after a peak, idle fills it back to 1 */}
           <div
             className="mt-2.5 flex items-center gap-2.5 text-[11px]"

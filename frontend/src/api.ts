@@ -20,6 +20,7 @@ export interface MacroDef {
   display_scale: number // shown value = value in range × display_scale
   unit: string
   decimals: number
+  log_scale?: boolean // logarithmic fader: min to max by a constant ratio (Mask Curve, 1 in the middle)
 }
 
 export interface FixtureState {
@@ -265,7 +266,6 @@ export interface FixtureInstance {
 export interface Rig {
   name: string
   description: string
-  mask_curve?: number // curve of the mask for all fixtures at once (default 0)
   fixtures: FixtureInstance[]
   dimmer_names?: Record<string, string> // "Dimmer 03" → "D Pinspots"
 }

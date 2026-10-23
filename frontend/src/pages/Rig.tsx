@@ -303,8 +303,6 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           rigs={rigs}
           dirty={dirty}
           description={rig?.description ?? ''}
-          maskCurve={rig?.mask_curve ?? 0}
-          onMaskCurve={(v) => rig && commitRig({ ...rig, mask_curve: v })}
           problems={problems}
           onDescription={(text) => rig && commitRig({ ...rig, description: text }, false)}
           onDescriptionCommit={() => rig && dirty && applyLive(rig)}

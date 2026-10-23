@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from pitchcontrol.config.models import Scene
@@ -371,3 +372,75 @@ def test_a_slow_midi_restart_does_not_hold_up_the_frames_and_restarts_run_one_by
     for t in restarts:
         t.join()
     assert log == ["started", "started"] and not overlap[0] and open_ports[0] == 1 and isinstance(engine.midi, SlowMidi)
+
+
+# ---------------------------------------------------------------- Mask Curve (item 76)
+
+
+def test_mask_curve_macro_darkens_the_scene_view_and_the_fixtures(store):
+    engine = Engine(store, enable_hardware=False)
+    for f in store.rig.fixtures:
+        f.enabled = True
+    engine.macros.set("Strobo", 0.0)
+    engine.macros.set("Mask Curve", 0.5)  # 1: the mask as it is
+    for _ in range(3):
+        engine.tick(1 / 40)
+    plain_view = np.frombuffer(engine.render_preview(), dtype=np.uint8).astype(float)
+    plain_light = sum(fx.rgb.max() for fx in engine.fixtures)
+    engine.macros.set("Mask Curve", 1.0)  # 4: darker
+    engine.tick(1 / 40)
+    dark_view = np.frombuffer(engine.render_preview(), dtype=np.uint8).astype(float)
+    dark_light = sum(fx.rgb.max() for fx in engine.fixtures)
+    assert dark_view.mean() < plain_view.mean() and dark_view.max() < plain_view.max()
+    assert dark_light < plain_light
+    engine.macros.set("Mask Curve", 0.0)  # 0.25: brighter
+    engine.tick(1 / 40)
+    bright_view = np.frombuffer(engine.render_preview(), dtype=np.uint8).astype(float)
+    assert bright_view.mean() > plain_view.mean()
+
+
+def test_mask_curve_is_saved_in_scenes_and_an_older_scene_gets_one(store):
+    engine = Engine(store, enable_hardware=False)
+    engine.macros.set("Mask Curve", 0.75)  # 2
+    engine.save_scene(3)
+    assert store.load_scene(3).values["Mask Curve"] == 0.75
+    engine.macros.set("Mask Curve", 0.1)
+    assert engine.load_scene(3)
+    assert engine.macros.value("Mask Curve") == pytest.approx(2.0)
+    scene = store.load_scene(3)
+    del scene.values["Mask Curve"]  # a scene saved before the macro existed
+    store.save_scene(3, scene)
+    engine.macros.set("Mask Curve", 0.9)
+    assert engine.load_scene(3)
+    assert engine.macros.value("Mask Curve") == pytest.approx(1.0)
+
+
+def test_an_old_rigs_mask_curve_starts_the_macro_once(store, caplog):
+    store.save_rig()
+    path = store.rig_path(store.rig.name)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["mask_curve"] = 1.0  # as a rig of 1.8.2 and before has it: the mask's exponent was 2 ** 1
+    path.write_text(json.dumps(data), encoding="utf-8")
+    store.load_rig(store.rig.name)
+    engine = Engine(store, enable_hardware=False)
+    with caplog.at_level("WARNING"):
+        engine.tick(1 / 40)
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]  # no warning
+    assert engine.macros.value("Mask Curve") == pytest.approx(2.0)
+    assert "mask_curve" not in json.loads(path.read_text(encoding="utf-8"))  # the key is gone from the file
+    engine.macros.set("Mask Curve", 0.5)
+    engine.tick(1 / 40)
+    assert engine.macros.value("Mask Curve") == pytest.approx(1.0)  # once: it doesn't come back
+
+    data["mask_curve"] = 3.0  # beyond the macro's range: limited to 4
+    path.write_text(json.dumps(data), encoding="utf-8")
+    store.load_rig(store.rig.name)
+    engine.tick(1 / 40)
+    assert engine.macros.value("Mask Curve") == pytest.approx(4.0)
+
+    data["mask_curve"] = 0.0  # nothing to carry over
+    path.write_text(json.dumps(data), encoding="utf-8")
+    engine.macros.set("Mask Curve", 0.5)
+    store.load_rig(store.rig.name)
+    engine.tick(1 / 40)
+    assert engine.macros.value("Mask Curve") == pytest.approx(1.0)

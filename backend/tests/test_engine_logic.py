@@ -9,7 +9,7 @@ from pitchcontrol.engine.audio_analysis import AudioFeatures, SpectrumAnalyzer, 
 from pitchcontrol.engine.colors import GroupColors
 from pitchcontrol.engine.fixtures import Fixture, GroupBrightness, pixel_positions
 from pitchcontrol.engine.macros import MacroBank, from_legacy_values, quantise
-from pitchcontrol.engine.masks import MaskGenerator, MaskParams, PeaksMap, mixed_mask, sample_linear_clamp
+from pitchcontrol.engine.masks import MaskGenerator, MaskParams, PeaksMap, curved, mixed_mask, sample_linear_clamp
 from pitchcontrol.engine.noise import noise_mask
 from pitchcontrol.engine.phase import PhaseTracker
 
@@ -152,39 +152,52 @@ def test_invert_discoball_range_only_with_macro(store):
     assert fx.rgb.max() == pytest.approx(0.0)
 
 
-def test_rig_mask_curve_adds_to_the_fixture_curve(store):
+def test_mask_curve_macro_is_logarithmic_with_one_in_the_middle():
+    bank = MacroBank()
+    assert bank.value("Mask Curve") == pytest.approx(1.0)  # the default, exactly on the middle step
+    bank.set("Mask Curve", 0.0)
+    assert bank.value("Mask Curve") == pytest.approx(0.25)
+    bank.set("Mask Curve", 1.0)
+    assert bank.value("Mask Curve") == pytest.approx(4.0)
+    bank.set("Mask Curve", 0.25)
+    assert bank.value("Mask Curve") == pytest.approx(0.5)  # a quarter of the travel: half of 1
+    bank.set("Mask Curve", 0.75)
+    assert bank.value("Mask Curve") == pytest.approx(2.0)
+
+
+def test_curved_mask_is_in_to_the_value():
+    mask = np.array([0.0, 0.5, 1.0])
+    assert curved(mask, 1.0).tolist() == pytest.approx([0.0, 0.5, 1.0])
+    assert curved(mask, 4.0).tolist() == pytest.approx([0.0, 0.0625, 1.0])  # above 1: darker
+    assert curved(mask, 0.25).tolist() == pytest.approx([0.0, 0.5**0.25, 1.0])  # below 1: brighter
+    assert curved(np.array([1.5, -0.5]), 2.0).tolist() == pytest.approx([1.0, 0.0])  # a mask is 0..1
+
+
+def test_the_macro_curve_comes_before_the_fixture_remap(store):
     colors, macros = GroupColors(), MacroBank()
     colors.update(False, macros, [])
     g = GroupBrightness(1.0, 1.0)
-    mask = np.array([0.5])
-    fx = _fixture(store, idle_mask_range=IdleMaskRange(curve=0.0))
-    fx.update(mask, 1.0, colors, g, macros)
-    assert fx.rgb.max() == pytest.approx(0.5)  # no rig curve: as before
-    fx.update(mask, 1.0, colors, g, macros, mask_curve=1.0)
-    assert fx.rgb.max() == pytest.approx(0.5**2)  # mask ** (2 ** 1)
-    fx.update(mask, 1.0, colors, g, macros, mask_curve=-1.0)
-    assert fx.rgb.max() == pytest.approx(0.5**0.5)
-    fx = _fixture(store, idle_mask_range=IdleMaskRange(curve=-1.0))  # the exponents add: 2 ** (1 - 1) = 1
-    fx.update(mask, 1.0, colors, g, macros, mask_curve=1.0)
-    assert fx.rgb.max() == pytest.approx(0.5)
+    fx = _fixture(store, idle_mask_range=IdleMaskRange(curve=1.0))  # the fixture's own curve: mask ** 2
+    fx.update(np.array([0.5]), 1.0, colors, g, macros)
+    assert fx.rgb.max() == pytest.approx(0.25)
+    fx.update(curved(np.array([0.5]), 2.0), 1.0, colors, g, macros)  # the macro at 2: (0.5 ** 2) ** 2
+    assert fx.rgb.max() == pytest.approx(0.5**4)
 
 
-def test_rig_mask_curve_also_applies_while_the_fixture_remap_macro_is_off(store):
+def test_the_curve_applies_while_the_fixture_remap_macro_is_off(store):
     colors, macros = GroupColors(), MacroBank()
     colors.update(False, macros, [])
     fx = _fixture(store, idle_mask_range=IdleMaskRange(min=1.0, max=0.0, curve=-3.0, macro="Invert Discoball"))
-    fx.update(np.array([0.5]), 1.0, colors, GroupBrightness(1.0, 1.0), macros, mask_curve=1.0)
-    assert fx.rgb.max() == pytest.approx(0.25)  # macro off: identity remap, only the rig's curve
+    fx.update(curved(np.array([0.5]), 2.0), 1.0, colors, GroupBrightness(1.0, 1.0), macros)
+    assert fx.rgb.max() == pytest.approx(0.25)  # macro off: identity remap, only the macro's curve
 
 
-def test_rig_mask_curve_default_and_limits(caplog):
-    assert Rig().mask_curve == 0.0  # a rig file without it
-    assert Rig.model_validate({"mask_curve": -1.5}).mask_curve == -1.5
-    with caplog.at_level(logging.WARNING):
-        assert Rig.model_validate({"mask_curve": 7}).mask_curve == 3.0
-        assert Rig.model_validate({"mask_curve": -9}).mask_curve == -3.0
-        assert Rig.model_validate({"mask_curve": float("nan")}).mask_curve == 0.0
-    assert "mask_curve" in caplog.text
+def test_a_rigs_old_mask_curve_is_read_but_never_written():
+    assert Rig().legacy_mask_curve is None  # a rig file without it
+    rig = Rig.model_validate({"mask_curve": -1.5})
+    assert rig.legacy_mask_curve == -1.5
+    assert "mask_curve" not in rig.model_dump(mode="json", exclude_none=True) and "legacy_mask_curve" not in rig.model_dump()
+    assert Rig.model_validate({"mask_curve": float("nan")}).legacy_mask_curve is None
 
 
 def test_gamma_on_output_per_channel(store):

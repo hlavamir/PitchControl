@@ -204,6 +204,7 @@ class ConfigStore:
     controller: Controller | None = None
     # problems the user should see in the UI (broken files, missing items, an unwritable folder)
     notices: list[str] = field(default_factory=list)
+    legacy_mask_curve: float | None = field(default=None, repr=False)  # an old rig file's mask curve, until the engine has taken it (item 76)
     _legacy_fog: list | None = field(default=None, repr=False)  # see move_fog_into_rigs
 
     def notice(self, text: str) -> None:
@@ -617,6 +618,8 @@ class ConfigStore:
                 except OSError as exc:
                     log.warning("cannot save the settings: %s", exc)
         self.rig = rig
+        # an old rig file's mask curve becomes the macro Mask Curve, once (the engine takes it; item 76)
+        self.legacy_mask_curve = rig.legacy_mask_curve or None
         self.fill_legacy_react_to_strobo(self.rig)
         problems = self.validate_rig()
         for p in problems:

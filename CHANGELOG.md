@@ -6,7 +6,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Mask Curve, a macro in the General page's Scene section** (item 76). A fader under the scene view, **0.25 to 4, 1 in the middle** (logarithmic, so 0.5 and 2 are a quarter of the travel either side of 1 and the darkening isn't squeezed into a fifth of the fader). The engine raises the mask to this power, `out = in ** value`, before each fixture's own idle remap (their curves stay as they are): above 1 the mid-tones go darker, below 1 brighter, and **the scene view shows the curved mask**. It is a macro like the others: saved in scenes (a scene saved before has none and gets 1), MIDI Learn on the Connections → MIDI mapping page, keyboard (↑ ↓, Shift for fine, W A S D to get there), footer hints, double-click resets to 1. The state of macros that are logarithmic: `MacroDef.log_scale`.
+
 ### Changed
+- **The rig no longer has a mask curve** (item 76): the Mask curve field is gone from the Rig page, the macro replaces it. A rig file with `mask_curve` still loads, without a warning: the first time, the macro Mask Curve starts at `2 ** mask_curve` (limited to 0.25 to 4, the same curve as before), a line in the log says so, and the rig file is written again without the key.
+- **The scene view has no corner brackets** (item 77): the four marks round the scene view are gone (General, Rig). The view keeps its size; no fixture moves.
 - **Connections → DMX & Art-Net reads inputs, outputs, live output** from left to right (before: outputs, inputs, live output); the section numbers follow the reading order (01 Art-Net input, 02 USB DMX input, 03 Art-Net output, 04 USB DMX output, 05 Live output), and the keys W A S D follow the layout.
 - **Subpage tab rows without the Q / E labels, left-aligned with the page row** (Connections, Control Desk). Q / E still step through the tabs; they stay in the footer and the Help page. On the Control Desk the Universe selector moved from the left end of the row to the right, next to the override counts.
 - **Control Desk → Routes is per universe.** The Routes subpage lists the routes whose output is the universe chosen with the Universe selector; a new route goes to that universe, so the output-universe field is gone from the form (the route still stores its universe, saved routes don't change); a line counts the routes on other universes ("3 more routes on other universes (1, 2)"). The Routes tab is set apart from the channel tabs by a wider gap.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api'
-import { Button, NumberInput, Section } from './forms'
+import { Button, Section } from './forms'
 
 /** default: shipped with the app, unchanged; user: the user's own; modified: a shipped one the user changed */
 export type Origin = 'default' | 'user' | 'modified'
@@ -34,10 +34,8 @@ export function RigPanel({
   rigs,
   dirty,
   description,
-  maskCurve,
   problems,
   onDescription,
-  onMaskCurve,
   onDescriptionCommit,
   save,
   revert,
@@ -48,10 +46,8 @@ export function RigPanel({
   rigs: RigList
   dirty: boolean
   description: string
-  maskCurve: number
   problems: string[]
   onDescription: (text: string) => void
-  onMaskCurve: (v: number) => void
   onDescriptionCommit: () => void
   save: () => Promise<void>
   revert: () => Promise<void>
@@ -150,16 +146,6 @@ export function RigPanel({
         onChange={(e) => onDescription(e.target.value)}
         onBlur={onDescriptionCommit}
       />
-      <div className="flex items-center gap-2">
-        <span
-          className="lbl text-[10px] text-dim"
-          data-hint="info"
-          data-tip="Brightness curve of the mask for all fixtures at once: mask ^ 2^curve, applied before each fixture's own idle remap curve (the two add up). 0 = as before; above 0 darkens the mid-tones, below 0 lifts them. Saved in the rig file"
-        >
-          Mask curve
-        </span>
-        <NumberInput value={maskCurve} min={-3} max={3} className="w-20" onChange={onMaskCurve} />
-      </div>
 
       {prompt === null && (
         <>
