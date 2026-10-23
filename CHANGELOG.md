@@ -6,6 +6,11 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Connections → DMX & Art-Net reads inputs, outputs, live output** from left to right (before: outputs, inputs, live output); the section numbers follow the reading order (01 Art-Net input, 02 USB DMX input, 03 Art-Net output, 04 USB DMX output, 05 Live output), and the keys W A S D follow the layout.
+- **Subpage tab rows without the Q / E labels, left-aligned with the page row** (Connections, Control Desk). Q / E still step through the tabs; they stay in the footer and the Help page. On the Control Desk the Universe selector moved from the left end of the row to the right, next to the override counts.
+- **Control Desk → Routes is per universe.** The Routes subpage lists the routes whose output is the universe chosen with the Universe selector; a new route goes to that universe, so the output-universe field is gone from the form (the route still stores its universe, saved routes don't change); a line counts the routes on other universes ("3 more routes on other universes (1, 2)"). The Routes tab is set apart from the channel tabs by a wider gap.
+
 ## 1.8.2 — 2026-10-23
 
 The first release with the changes below: 1.8.0 and 1.8.1 were tagged, but their builds stopped in the tests (see 1.8.1 and 1.8.0).
