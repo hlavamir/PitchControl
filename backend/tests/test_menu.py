@@ -226,6 +226,13 @@ def test_the_drawn_menu_of_macos_full_screen(monkeypatch):
             assert all(not (a is None and b is None) for a, b in zip(m["items"], m["items"][1:]))
 
 
+def test_the_application_menu_is_the_one_the_logo_stands_for():
+    """The page shows the first drawn menu on macOS as the logo, by this title (frontend/src/appMenu.ts: APP_MENU)."""
+    ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "appMenu.ts").read_text(encoding="utf-8")
+    assert re.search(r"export const APP_MENU = '([^']+)'", ts).group(1) == menu_json("mac")[0]["title"]
+    assert "PitchControl" not in [m["title"] for m in menu_json("win")]  # Windows: the logo stays the logo
+
+
 def test_mac_key_labels():
     from pitchcontrol.menu import mac_key_label
 

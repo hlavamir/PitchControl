@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { modalOpen } from '../modal'
-import { AltTap, CLOSED, accessKey, activate, altLetter, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
+import { APP_MENU, AltTap, CLOSED, accessKey, activate, altLetter, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
 
 const MAC = navigator.userAgent.includes('Mac')
 
@@ -13,12 +13,14 @@ const MAC = navigator.userAgent.includes('Mac')
  */
 export function AppMenu({
   menus,
+  logo,
   run,
   enabled,
   checked,
   label,
 }: {
   menus: MenuDef[]
+  logo?: ReactNode // the wordmark, shown as the title of the application menu (macOS: About, Settings…, Quit)
   run: (id: string) => void
   enabled: (id: string) => boolean
   checked: (id: string) => boolean // a small mark: the current page, full screen on
@@ -117,6 +119,7 @@ export function AppMenu({
     <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip={`Menu bar: ${MAC ? 'Option' : 'Alt'} or F10 gives it the keys, ${MAC ? 'Option' : 'Alt'} + the underlined letter opens a menu`}>
       {menus.map((m, i) => {
         const lit = state.active && state.menu === i
+        const isLogo = Boolean(logo) && m.title === APP_MENU
         return (
           <div key={m.title} className="relative flex">
             <button
@@ -131,9 +134,14 @@ export function AppMenu({
                 setState(lit && state.open ? CLOSED : openAt(i))
               }}
               onMouseEnter={() => state.open && !lit && setState(openAt(i))}
-              className={`lbl flex items-center px-2.5 text-[12px] ${lit ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'}`}
+              data-tip={isLogo ? 'PitchControl menu: About, Settings, Quit' : undefined}
+              className={`lbl flex items-center text-[12px] ${isLogo ? 'gap-2.5 px-2.5' : 'px-2.5'} ${
+                lit ? `glow-on bg-ink text-ground ${isLogo ? '[&_.bg-ink]:bg-ground' : ''}` : 'text-ink hover:bg-panel-2'
+              }`}
             >
-              {state.keys && state.active ? (
+              {isLogo ? (
+                logo
+              ) : state.keys && state.active ? (
                 <>
                   <span className="underline underline-offset-[3px]">{m.title[0]}</span>
                   {m.title.slice(1)}

@@ -27,6 +27,7 @@ _HIDE_DOCK = 1 << 1  # NSApplicationPresentationHideDock
 _HIDE_MENU_BAR = 1 << 3  # NSApplicationPresentationHideMenuBar
 _STYLE_BORDERLESS = 0  # NSWindowStyleMaskBorderless
 _FULLSCREEN_NONE = 1 << 9  # NSWindowCollectionBehaviorFullScreenNone: green button = zoom
+_RETAKE_AFTER = (0.3, 1.5, 4.0)  # seconds after full screen starts: the window has settled, the page has loaded, the app is active
 
 
 class Fullscreen:
@@ -36,6 +37,7 @@ class Fullscreen:
         self._saved: tuple | None = None  # (frame, style mask, shadow) to restore
         self._lock = threading.Lock()
         self.mac = sys.platform == "darwin"
+        self._area: tuple | None = None  # (view, tracking area, owner) of _watch_mouse
 
     # -- helpers
     def _on_main(self, fn) -> None:
@@ -54,6 +56,10 @@ class Fullscreen:
                 ns.setCollectionBehavior_(_FULLSCREEN_NONE)
 
         self._on_main(apply)
+        try:
+            self.window.events.loaded += self._on_loaded
+        except Exception:  # noqa: BLE001
+            log.exception("full screen: can't listen for the page loading")
 
     # -- public
     def set(self, on: bool) -> bool:
@@ -87,8 +93,10 @@ class Fullscreen:
             ns.setFrame_display_(screen.frame(), True)
             self._take_the_mouse(ns, app)
             log.info("full screen on: window %s, screen %s, shadow %s", _size(ns.frame()), _size(screen.frame()), ns.hasShadow())
-            self._later(0.3, lambda: self._take_the_mouse(ns, app, report=True))
+            for seconds in _RETAKE_AFTER:
+                self._later(seconds, self._retake)
         else:
+            self._unwatch_mouse()
             frame, style, shadow = self._saved or (ns.frame(), ns.styleMask(), True)
             ns.setStyleMask_(style)
             ns.setHasShadow_(shadow)
@@ -97,7 +105,6 @@ class Fullscreen:
             ns.makeFirstResponder_(ns.contentView())
             log.info("full screen off: window %s", _size(ns.frame()))
 
-
     def _later(self, seconds: float, fn) -> None:
         from PyObjCTools import AppHelper
 
@@ -105,14 +112,95 @@ class Fullscreen:
 
     def _take_the_mouse(self, ns, app, report: bool = False) -> None:
         """The borderless window is the key window of the active app and takes mouse-moved events: the web view's
-        hover (the header's bubbles, the footer hints) needs all three. A style mask change can leave the window
-        without the key, so it is asked again once the change has settled, and the state is logged (item 71)."""
+        hover (the header's bubbles, the footer hints, the drawn menu) needs all three, and the web view is the first
+        responder. A style mask change can leave the window without the key, and when the app starts in full screen
+        this all runs before the web view is the window's content view (pywebview adds it when the page has loaded),
+        so it is asked again: when the page has loaded, after a few seconds, and when the mouse first enters the
+        window (items 71 and 72: after a start in full screen the menu didn't react to the mouse until a key press).
+        The state is logged."""
         app.activateIgnoringOtherApps_(True)
         ns.setAcceptsMouseMovedEvents_(True)
         ns.makeKeyAndOrderFront_(None)
         ns.makeFirstResponder_(ns.contentView())
+        self._watch_mouse(ns, app)
         if report and self.active:
             log.info("full screen: key window %s, app active %s, accepts mouse moved %s", ns.isKeyWindow(), app.isActive(), ns.acceptsMouseMovedEvents())
+
+    def _retake(self) -> None:
+        """The same again, later (main thread): nothing if full screen has ended meanwhile."""
+        import AppKit
+
+        ns = self.window.native
+        if ns is not None and self.active:
+            self._take_the_mouse(ns, AppKit.NSApplication.sharedApplication(), report=True)
+
+    def _on_loaded(self) -> None:
+        """The page has loaded (a thread of pywebview's): the web view is the content view now."""
+        if self.active:
+            self._on_main(self._retake)
+
+    def _mouse_entered(self) -> None:
+        """The mouse came into the window (main thread). Full screen was entered at start-up or the window isn't key or
+        the web view isn't the first responder: take the mouse again, and say so in the log."""
+        import AppKit
+
+        ns = self.window.native
+        if ns is None or not self.active:
+            return
+        view = ns.contentView()
+        if ns.isKeyWindow() and ns.acceptsMouseMovedEvents() and ns.firstResponder() == view:
+            return
+        log.info("full screen: the mouse entered a window that was not ready (key %s, mouse moved %s): asking again", ns.isKeyWindow(), ns.acceptsMouseMovedEvents())
+        self._take_the_mouse(ns, AppKit.NSApplication.sharedApplication(), report=True)
+
+    def _watch_mouse(self, ns, app) -> None:
+        """A tracking area that is active whether or not the window is key, on the content view: its mouse-entered
+        event calls ``_mouse_entered``. Moved to the new content view when pywebview swaps it in."""
+        try:
+            import AppKit
+
+            view = ns.contentView()
+            if self._area is not None and self._area[0] == view:
+                return
+            self._unwatch_mouse()
+            owner = _entered_owner()
+            owner.fullscreen = self
+            options = AppKit.NSTrackingMouseEnteredAndExited | AppKit.NSTrackingActiveAlways | AppKit.NSTrackingInVisibleRect
+            area = AppKit.NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(view.bounds(), options, owner, None)
+            view.addTrackingArea_(area)
+            self._area = (view, area, owner)
+        except Exception:  # noqa: BLE001
+            log.exception("full screen: can't watch for the mouse entering the window")
+
+    def _unwatch_mouse(self) -> None:
+        if self._area is not None:
+            view, area, _ = self._area
+            self._area = None
+            try:
+                view.removeTrackingArea_(area)
+            except Exception:  # noqa: BLE001
+                log.exception("full screen: can't remove the mouse watcher")
+
+
+_owner_class = None
+
+
+def _entered_owner():
+    """An Objective-C object that gets the tracking area's mouseEntered_ (the class is made once, on first use)."""
+    global _owner_class
+    import AppKit
+
+    if _owner_class is None:
+
+        class MouseEntered(AppKit.NSObject):
+            def mouseEntered_(self, event):
+                try:
+                    self.fullscreen._mouse_entered()
+                except Exception:  # noqa: BLE001
+                    log.exception("full screen: mouse entered")
+
+        _owner_class = MouseEntered
+    return _owner_class.alloc().init()
 
 
 def _size(rect) -> str:

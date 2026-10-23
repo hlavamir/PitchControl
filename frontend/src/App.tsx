@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
 import { showLogPanel } from './logView'
-import { actsOnPage, drawnMenuMode, menuTarget, showDrawnMenu, type DrawnMenu, type MenuDef } from './appMenu'
+import { APP_MENU, actsOnPage, drawnMenuMode, menuTarget, showDrawnMenu, type DrawnMenu, type MenuDef } from './appMenu'
 import { AppMenu } from './components/AppMenu'
 import { Modal } from './components/Modal'
 import { Button } from './components/forms'
@@ -456,6 +456,16 @@ export default function App() {
   // In full screen on a MacBook the camera notch covers the top 32 pt; below 100 % UI scale the top
   // row grows so that it still measures 38 pt on screen.
   const topRow = fullscreen.on && navigator.userAgent.includes('Mac') ? Math.max(38, Math.ceil(38 / clampScale(ui.scale))) : 38
+  // the wordmark; in the drawn menu of macOS the logo is the application menu (About, Settings, Quit), the way the
+  // app's name is in the macOS menu bar, so the menu doesn't say PitchControl twice (item 72)
+  const logo = (
+    <>
+      <Glyph />
+      <h1 className="lbl text-glow text-[15px] font-semibold tracking-[0.14em]">PitchControl!</h1>
+    </>
+  )
+  const drawnMenu = menus !== null && showDrawnMenu(menuMode, fullscreen.on)
+  const appMenuIsLogo = drawnMenu && menus![0]?.title === APP_MENU
   return (
     <LeaveGuardContext.Provider value={guardApi}>
     <SelectionContext.Provider value={setFooter}>
@@ -466,14 +476,12 @@ export default function App() {
             the line below it clears the camera island */}
         <header className="flex-none px-1.5">
           <div className="flex items-center justify-between border-b border-edge" style={{ height: topRow }}>
-            <div className="flex flex-none items-center gap-2.5 px-2.5">
-              <Glyph />
-              <h1 className="lbl text-glow text-[15px] font-semibold tracking-[0.14em]">PitchControl!</h1>
-            </div>
-            {menus && showDrawnMenu(menuMode, fullscreen.on) && (
-              <div className="ml-1 flex h-full min-w-0 flex-1 items-stretch">
+            {!appMenuIsLogo && <div className="flex flex-none items-center gap-2.5 px-2.5">{logo}</div>}
+            {drawnMenu && (
+              <div className={`flex h-full min-w-0 flex-1 items-stretch ${appMenuIsLogo ? '' : 'ml-1'}`}>
                 <AppMenu
                   menus={menus}
+                  logo={appMenuIsLogo ? logo : undefined}
                   run={runMenu}
                   enabled={menuEnabled}
                   checked={(id) => id === `view.page.${keyOfPage(page)}` || (id === 'view.fullscreen' && fullscreen.on)}

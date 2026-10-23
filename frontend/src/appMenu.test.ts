@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AltTap, CLOSED, LOG_SECTION, actsOnPage, activate, altLetter, drawnMenuMode, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
+import { APP_MENU, AltTap, CLOSED, LOG_SECTION, actsOnPage, activate, altLetter, drawnMenuMode, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
 
 const item = (id: string, label = id) => ({ id, label, kind: 'ui' as const, key: '' })
 const MENUS: MenuDef[] = [
@@ -27,6 +27,10 @@ describe('drawnMenuMode: only in the app window', () => {
     expect(drawnMenuMode('?window=app', { local: true, platform: 'linux' })).toBeNull()
     expect(drawnMenuMode('?window=app', null)).toBeNull()
   })
+})
+
+describe('APP_MENU: the logo is the application menu on macOS (item 72)', () => {
+  it('is the title of the macOS application menu in the menu definition', () => expect(APP_MENU).toBe('PitchControl'))
 })
 
 describe('showDrawnMenu: on the screen now', () => {

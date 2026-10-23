@@ -24,6 +24,9 @@ export interface MenuDef {
 
 export const isSub = (entry: MenuEntry): entry is SubmenuDef => entry !== null && 'submenu' in entry
 
+/** The title of macOS' application menu (About, Settings…, Quit): the drawn menu shows it as the logo (item 72). */
+export const APP_MENU = 'PitchControl'
+
 /** When the app draws the menu itself: ``always`` in the Windows desktop window, ``fullscreen`` on macOS (item 72: in
  * PitchControl's own full screen the native menu bar is hidden), ``null`` anywhere else. Only in the app's own window
  * (``?window=app``, set by desktop.py), never in a browser (here or on another device on the network). */
