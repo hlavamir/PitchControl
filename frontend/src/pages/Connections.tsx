@@ -139,7 +139,7 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
   return (
     <Section
       index="01"
-      title="Audio input"
+      title="Audio input" icon="in"
       right={<StatusDot ok={io?.audio ? io.audio.running : null} label={io?.audio?.running ? 'running' : 'stopped'} error={io?.audio?.error} tip="Whether the audio input is open and being analysed" />}
       tip="The sound that drives the strobo and the idle mask: it is split into 32 frequency bands"
     >
@@ -233,7 +233,7 @@ function MidiTab({
     <div className="grid gap-1.5 wide:h-full wide:min-h-0 wide:grid-cols-[25rem_minmax(0,1fr)]">
       <Section
         index="01"
-        title="MIDI controller"
+        title="MIDI controller" icon="in"
         className="wide:min-h-0"
         right={<StatusDot ok={io?.midi ? Boolean(io.midi.port) : null} label={io?.midi?.port ?? 'not connected'} error={io?.midi?.error} tip="The MIDI port the controller is connected to" />}
         tip="The hardware controller (e.g. Launch Control XL 3) that drives the macros: faders, knobs and buttons"
@@ -326,7 +326,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
     <div className="grid gap-1.5 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.85fr)] wide:grid-rows-[minmax(0,auto)_minmax(0,1fr)]">
       <Section
         index="01"
-        title="Art-Net output"
+        title="Art-Net output" icon="out"
         className="wide:min-h-0"
         bodyClassName="p-3 pt-3.5 overflow-y-auto"
         right={<StatusDot ok={io?.artnet?.connected ?? null} label={io?.artnet ? 'sending' : 'off'} error={io?.artnet?.error} tip="Whether Art-Net packets are being sent" />}
@@ -378,13 +378,13 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
 
       <ArtnetInputSection index="02" input={liveInput} engine={engine} className="wide:min-h-0" />
 
-      <Section index="05" title="Live output" className="wide:row-span-2 wide:min-h-0" bodyClassName="p-3 overflow-y-auto" tip="What the fixtures send right now, after gamma: the DMX and serial data that leaves this app">
+      <Section index="05" title="Live output" icon="out" className="wide:row-span-2 wide:min-h-0" bodyClassName="p-3 overflow-y-auto" tip="What the fixtures send right now, after gamma: the DMX and serial data that leaves this app">
         <OutputMonitor state={engine.state} />
       </Section>
 
       <Section
         index="03"
-        title="USB DMX output"
+        title="USB DMX output" icon="out"
         className="wide:min-h-0"
         bodyClassName="p-3 overflow-y-auto"
         tip="DMX over USB: each interface (Enttec DMX USB Pro and compatibles, or the Enttec Open DMX USB) sends one universe to the lights on its cable"
@@ -492,7 +492,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                               <span className="w-28 text-dim">Log frame timing</span>
                               <Toggle
                                 checked={e.log_timing}
-                                tip="Writes the timing of every frame to the log file: a summary every 10 seconds (frames per second, longest write, largest gap, dropped frames) and one line for each frame that came more than twice the frame time after the one before. For finding out why a frame is lost now and then. Open the log with Settings → Open logs folder. Leave it off otherwise"
+                                tip="Writes the timing of every frame to the log file: a summary every 10 seconds (frames per second, longest write, largest gap, dropped frames) and one line for each frame that came more than twice the frame time after the one before. For finding out why a frame is lost now and then. Open the log with File → Open logs folder. Leave it off otherwise"
                                 onChange={(v) => update((s) => (s.outputs.enttec[i].log_timing = v))}
                               />
                               <span className="text-dim">{e.log_timing ? 'on: writing to the log file' : 'off'}</span>
@@ -530,7 +530,7 @@ function OscTab({ engine, settingsApi }: { engine: EngineConnection; settingsApi
     <div className="grid gap-1.5 wide:grid-cols-2">
       <Section
         index="01"
-        title="OSC output"
+        title="OSC output" icon="out"
         right={<StatusDot ok={dot.ok} label={dot.label} error={dot.error} tip="Whether OSC messages are being sent" />}
         tip="OSC over the network (UDP): the base colours A and B, as the file below describes, to one IP address and port"
       >
@@ -574,7 +574,7 @@ function SerialTab({ engine, settingsApi, devices }: { engine: EngineConnection;
     <div className="grid gap-1.5 wide:grid-cols-2">
       <Section
         index="01"
-        title="PitchPlease v2 (serial)"
+        title="PitchPlease v2 (serial)" icon="out"
         tip="The PitchPlease v2 strips take RGB bytes over a USB serial line instead of DMX (fixture type output: v2 serial)"
         right={<StatusDot ok={v2?.connected ?? null} label={v2 ? (v2.connected ? 'connected' : 'not connected') : 'off'} error={v2?.error} />}
       >

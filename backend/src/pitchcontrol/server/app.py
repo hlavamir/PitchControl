@@ -129,6 +129,8 @@ def describe_validation_error(exc: ValidationError, limit: int = 5) -> str:
 
 LOG_BATCH_SECONDS = 0.5  # the log view's live records go out together at this interval (item 56)
 LOG_BATCH_MAX = 500  # records in one batch (a burst is sent over several)
+PERF_SECONDS = 0.25  # the FPS bubble's frame times go out at this interval while it is open (item 66)
+PERF_HISTORY_S = 10.0  # what the bubble shows: the first message carries this much
 
 
 def create_app(
@@ -1020,6 +1022,7 @@ def create_app(
         # ?preview=0: the state only (the phone layout shows no scene preview: less wifi, and no render per frame)
         sender = asyncio.create_task(_push_state(socket, engine, preview=socket.query_params.get("preview") != "0"))
         log_task: asyncio.Task | None = None
+        perf_task: asyncio.Task | None = None
         try:
             while True:
                 msg = await socket.receive_json()
@@ -1046,12 +1049,19 @@ def create_app(
                 elif msg.get("type") == "log_unsubscribe" and log_task is not None:
                     log_task.cancel()
                     log_task = None
+                elif msg.get("type") == "perf_subscribe":  # the FPS bubble is open: the frame times follow (item 66)
+                    if perf_task is None:
+                        perf_task = asyncio.create_task(_push_perf(socket, engine))
+                elif msg.get("type") == "perf_unsubscribe" and perf_task is not None:
+                    perf_task.cancel()
+                    perf_task = None
         except WebSocketDisconnect:
             pass
         finally:
             sender.cancel()
-            if log_task is not None:
-                log_task.cancel()
+            for task in (log_task, perf_task):
+                if task is not None:
+                    task.cancel()
 
     # ------------------------------------------------------------------ frontend
     if static_dir is not None and (static_dir / "index.html").exists():
@@ -1088,6 +1098,23 @@ async def _push_log(socket: WebSocket, buffer: MemoryLogHandler, after: int) -> 
         pass
     except Exception:  # noqa: BLE001
         log.exception("websocket log push failed")
+
+
+async def _push_perf(socket: WebSocket, engine: Engine) -> None:
+    """The FPS bubble's frame times: first the last ``PERF_HISTORY_S``, then every ``PERF_SECONDS`` the frames that came
+    since, as ``{"type": "perf", "frame": n, "fps": target, "rows": [[interval_ms, tick_ms], ...]}``. Read from the
+    engine's ring (engine/perf.py), which the engine thread never waits for."""
+    try:
+        target = max(engine.store.settings.fps, 1.0)
+        after, rows = engine.frame_times.since(0, int(PERF_HISTORY_S * target) + 1)
+        while True:
+            await socket.send_json({"type": "perf", "frame": after, "fps": engine.store.settings.fps, "rows": rows})
+            await asyncio.sleep(PERF_SECONDS)
+            after, rows = engine.frame_times.since(after)
+    except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+        pass
+    except Exception:  # noqa: BLE001
+        log.exception("websocket perf push failed")
 
 
 async def _push_state(socket: WebSocket, engine: Engine, preview: bool = True) -> None:

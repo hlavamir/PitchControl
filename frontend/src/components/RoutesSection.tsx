@@ -20,6 +20,7 @@ import {
 } from '../routes'
 import { usePolling } from '../usePolling'
 import { Button, NumberInput, Section, Toggle, UNIVERSES } from './forms'
+import { Icon } from './Icon'
 
 /** A text field that keeps what you type and applies it when you leave it or press Enter. */
 function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
@@ -239,12 +240,18 @@ export function RoutesSection({
           <div className={`${GRID} lbl min-w-[56rem] border-b border-seam pb-1 text-[10px] text-dim`}>
             <span>On</span>
             <span>Name</span>
-            <span>Source</span>
+            <span className="flex items-center gap-1.5">
+              <Icon name="in" label />
+              Source
+            </span>
             <span>Art-Net / MIDI ch.</span>
             <span>First in</span>
             <span>Count</span>
             <span />
-            <span>Out univ.</span>
+            <span className="flex items-center gap-1.5">
+              <Icon name="out" label />
+              Out univ.
+            </span>
             <span>First out</span>
             <span />
           </div>

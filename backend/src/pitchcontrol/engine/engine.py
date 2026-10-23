@@ -30,6 +30,7 @@ from .fog import FogController
 from .macros import MacroBank
 from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, mixed_mask
 from .overrides import Overrides
+from .perf import FrameTimes
 from .routes import Routes
 from .phase import PhaseTracker
 
@@ -108,6 +109,7 @@ class Engine:
         self.frame = 0
         self.fps = 0.0
         self.tick_ms = 0.0
+        self.frame_times = FrameTimes()
         self.peaks_total = 0
         self._last_save_version = self.macros.version
         self._last_save_time = time.monotonic()
@@ -587,12 +589,14 @@ class Engine:
         fps_count, fps_time = 0, next_time
         while not self._stop.is_set():
             now = time.perf_counter()
-            dt = min(now - last, 0.25)
+            interval = now - last
+            dt = min(interval, 0.25)
             last = now
             try:
                 self.tick(dt)
             except Exception:  # noqa: BLE001 - keep the show running, but log every failure
                 log.exception("engine tick failed")
+            self.frame_times.record(interval * 1000.0, self.tick_ms)  # the FPS bubble's perf meter (item 66)
             fps_count += 1
             if now - fps_time >= 1.0:
                 self.fps = fps_count / (now - fps_time)

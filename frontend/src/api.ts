@@ -127,6 +127,7 @@ export interface IoStatus {
 }
 
 export interface EngineState {
+  received_at?: number // performance.now() when it arrived (useEngine): the clock of the header bubbles' rates
   frame: number
   fps: number
   tick_ms: number

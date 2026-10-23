@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type DeviceRef, type SerialDevice, type Settings } from '../api'
 import type { HintKind } from '../hints'
 import { useLeaveGuard } from '../leaveGuard'
+import type { IconName } from '../icons'
+import { Icon } from './Icon'
 
 /**
  * A panel: square, 1px hairline border, a header strip with an optional number ("01 / Macros").
@@ -16,9 +18,11 @@ export function Section({
   bodyClassName = 'p-3',
   tip,
   id,
+  icon,
 }: {
   title: string
   index?: string
+  icon?: IconName // in front of the title: an input or an output (item 67)
   children: ReactNode
   right?: ReactNode
   className?: string // e.g. "flex-1" to let the panel (and its content) stretch
@@ -29,9 +33,10 @@ export function Section({
   return (
     <section id={id} data-tip={tip} className={`@container flex min-w-0 flex-col border border-edge bg-panel ${className}`}>
       <div className="flex h-[26px] flex-none items-center justify-between gap-2 border-b border-edge px-2.5 text-[11px]">
-        <h2 className="lbl truncate font-medium">
-          {index && <span className="font-mono opacity-55">{index} / </span>}
-          {title}
+        <h2 className="lbl flex min-w-0 items-center font-medium">
+          {index && <span className="flex-none font-mono whitespace-pre opacity-55">{index} / </span>}
+          {icon && <Icon name={icon} label className="mr-1.5" />}
+          <span className="truncate">{title}</span>
         </h2>
         <div className="lbl flex items-center gap-2 text-dim">{right}</div>
       </div>

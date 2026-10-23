@@ -78,7 +78,7 @@ export function ArtnetInputSection({ index, input, engine, className = '' }: { i
   return (
     <Section
       index={index}
-      title="Art-Net input"
+      title="Art-Net input" icon="in"
       className={className}
       bodyClassName="p-3 gap-2"
       right={
@@ -182,7 +182,7 @@ export function DmxInputSection({ index, input, engine, className = '' }: { inde
   return (
     <Section
       index={index}
-      title="USB DMX input"
+      title="USB DMX input" icon="in"
       className={className}
       bodyClassName="p-3 gap-2"
       right={

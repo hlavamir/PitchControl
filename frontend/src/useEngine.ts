@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EngineState } from './api'
 import type { LogBatch } from './logView'
+import type { PerfBatch } from './bubbles'
 
 export const PREVIEW_SIZE = 256
 
@@ -19,6 +20,11 @@ export interface EngineConnection {
    * computer only: the server sends a device on the network nothing.
    */
   subscribeLog: (after: () => number, onBatch: (batch: LogBatch) => void) => () => void
+  /**
+   * The FPS bubble (item 66) asks for the engine's frame times: the last 10 s, then what is new every 0.25 s, until it
+   * unsubscribes (the returned function). Asked again after a reconnect. One subscriber at a time.
+   */
+  subscribePerf: (onBatch: (batch: PerfBatch) => void) => () => void
 }
 
 /**
@@ -31,6 +37,7 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
   const [connected, setConnected] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
   const logRef = useRef<{ after: () => number; onBatch: (batch: LogBatch) => void } | null>(null)
+  const perfRef = useRef<{ onBatch: (batch: PerfBatch) => void } | null>(null)
 
   useEffect(() => {
     let closed = false
@@ -45,12 +52,14 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
         setConnected(true)
         const log = logRef.current
         if (log) ws.send(JSON.stringify({ type: 'log_subscribe', after: log.after() })) // the view stays open over a reconnect
+        if (perfRef.current) ws.send(JSON.stringify({ type: 'perf_subscribe' }))
       }
       ws.onmessage = (ev) => {
         if (typeof ev.data !== 'string') return setPreview(new Uint8Array(ev.data))
         const msg = JSON.parse(ev.data)
         if (msg.type === 'log') logRef.current?.onBatch(msg) // the engine state has no "type"
-        else setState(msg)
+        else if (msg.type === 'perf') perfRef.current?.onBatch(msg)
+        else setState({ ...msg, received_at: performance.now() })
       }
       ws.onclose = () => {
         setConnected(false)
@@ -94,5 +103,19 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
     [send],
   )
 
-  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride, subscribeLog }
+  const subscribePerf = useCallback(
+    (onBatch: (batch: PerfBatch) => void) => {
+      const sub = { onBatch }
+      perfRef.current = sub
+      send({ type: 'perf_subscribe' }) // not open yet: onopen asks
+      return () => {
+        if (perfRef.current !== sub) return
+        perfRef.current = null
+        send({ type: 'perf_unsubscribe' })
+      }
+    },
+    [send],
+  )
+
+  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride, subscribeLog, subscribePerf }
 }

@@ -4,7 +4,8 @@ import { showLogPanel } from './logView'
 import { actsOnPage, menuTarget, showDrawnMenu, type MenuDef } from './appMenu'
 import { AppMenu } from './components/AppMenu'
 import { Modal } from './components/Modal'
-import { Button, StatusDot } from './components/forms'
+import { Button } from './components/forms'
+import { HeaderIndicators } from './components/HeaderBubbles'
 import { LeaveGuardContext, type Guard } from './leaveGuard'
 import { modalOpen } from './modal'
 import { HINT_KEYS, MOD, hintAt, rigFieldKeys, type HintKind } from './hints'
@@ -413,7 +414,6 @@ export default function App() {
   }, [enginePage, page, go])
 
   const s = engine.state
-  const out = s?.io.outputs
   // footer keys: for the hovered / keyboard-selected control, or the general ones
   const context = inputMode === 'keys' ? (footer?.hint ? { kind: footer.hint, tip: footer.tip } : null) : hover
   const form = FORM_PAGES.includes(page) || (page === 'Control Desk' && deskTab === 'routes')
@@ -456,42 +456,19 @@ export default function App() {
                 />
               </div>
             )}
-            <div className="flex flex-none items-center gap-4 px-2.5 whitespace-nowrap">
-              {/* fixed width: a changing FPS value never shifts the indicators */}
-              <span
-                data-hint="info"
-                data-tip={engine.connected ? 'Frames per second the engine computes and sends (target 40)' : 'The browser has no connection to the engine: is the app still running?'}
-                className={`inline-block w-[7.5rem] text-right font-mono text-[13px] tabular-nums ${engine.connected ? 'text-ink' : 'text-dim'}`}
-              >
-                {engine.connected ? `${(s?.fps ?? 0).toFixed(1).padStart(4, '\u2007')} FPS` : 'ENGINE OFFLINE'}
-              </span>
-              {overrideCount > 0 && (
-                // manual DMX overrides are saved across restarts: never let them go unnoticed
-                <button onClick={() => go('Control Desk')} className="lbl glow-on bg-ink px-2 text-[11px] leading-[18px] text-ground" data-tip="Manual DMX overrides are active: these channels ignore the fixtures. Click to open the Control Desk">
-                  {overrideCount} override{overrideCount === 1 ? '' : 's'}
-                </button>
-              )}
-              {/* each indicator opens its tab of Connections */}
-              <StatusDot ok={s?.io.audio ? s.io.audio.running : null} label="audio" error={s?.io.audio?.error} tip="Audio input: filled = running, hollow = off, crossed = error. Click: Connections → Audio" onClick={() => openTab('audio')} />
-              <StatusDot ok={s?.io.midi ? Boolean(s.io.midi.port) : null} label="midi" error={s?.io.midi?.error} tip="MIDI controller: filled = connected, hollow = off. Click: Connections → MIDI" onClick={() => openTab('midi')} />
-              {/* one dot per configured USB DMX interface */}
-              {out?.enttec?.length ? (
-                out.enttec.map((e, i) => (
-                  <StatusDot
-                    key={i}
-                    ok={e ? e.connected : null}
-                    label={out.enttec.length > 1 ? `dmx ${i + 1}` : 'dmx'}
-                    error={e?.error}
-                    tip={`USB DMX interface ${i + 1}: filled = connected, hollow = off, crossed = error. Click: Connections → DMX & Art-Net`}
-                    onClick={() => openTab('dmx')}
-                  />
-                ))
-              ) : (
-                <StatusDot ok={null} label="dmx" tip="No USB DMX interface configured. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
-              )}
-              <StatusDot ok={out?.artnet ? out.artnet.connected : null} label="art-net" error={out?.artnet?.error} tip="Art-Net output: filled = sending, hollow = off. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
-              <StatusDot ok={out?.pitchpls_v2 ? out.pitchpls_v2.connected : null} label="v2" error={out?.pitchpls_v2?.error} tip="PitchPlease v2 serial output: filled = connected, hollow = off. Click: Connections → Serial" onClick={() => openTab('serial')} />
-            </div>
+            <HeaderIndicators
+              engine={engine}
+              openTab={openTab}
+              openEngine={() => showPage('Settings')}
+              overrides={
+                overrideCount > 0 && (
+                  // manual DMX overrides are saved across restarts: never let them go unnoticed
+                  <button onClick={() => go('Control Desk')} className="lbl glow-on bg-ink px-2 text-[11px] leading-[18px] text-ground" data-tip="Manual DMX overrides are active: these channels ignore the fixtures. Click to open the Control Desk">
+                    {overrideCount} override{overrideCount === 1 ? '' : 's'}
+                  </button>
+                )
+              }
+            />
           </div>
           <nav className="flex h-9 items-stretch border-x border-b border-edge">
             {PAGES.map((p) => (
@@ -511,7 +488,7 @@ export default function App() {
             {fullscreen.supported && (
               <button
                 onClick={toggleFullscreen}
-                data-tip="Full screen hides the menu bar and the Dock, and covers the camera notch strip"
+                data-tip="Full screen covers the whole screen and the camera notch strip; on the Mac the menu bar and the Dock slide in when the pointer reaches the screen edge"
                 className={`lbl ml-auto flex items-center gap-2 border-l border-edge px-4 text-[12px] ${fullscreen.on ? 'text-ink' : 'text-dim'} hover:bg-panel-2`}
               >
                 <span className="font-mono text-[11px] opacity-60">F</span>
