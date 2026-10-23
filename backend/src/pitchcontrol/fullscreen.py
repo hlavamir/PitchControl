@@ -1,9 +1,13 @@
 """Full screen for the desktop app.
 
 macOS native full screen keeps windows below the camera notch of newer MacBooks and paints the
-strip beside it black. Instead, PitchControl hides the menu bar and Dock and stretches a borderless
+strip beside it black. Instead, PitchControl auto-hides the menu bar and Dock and stretches a borderless
 window over the whole screen, notch strip included; the UI keeps that 32 px strip free in the middle
 (top header row: logo left, indicators right). The green window button becomes a plain zoom.
+
+The menu bar and the Dock are *auto*-hidden, not hidden (item 69): the menu bar slides in over the window when the
+mouse reaches the top edge and the Dock at the bottom edge, as in any full-screen Mac app, so File, Edit, View ...
+stay reachable. The window keeps covering the whole screen (``screen.frame()``, not ``visibleFrame()``) either way.
 
 Other platforms use pywebview's own full screen (no notch there).
 """
@@ -17,8 +21,8 @@ import threading
 log = logging.getLogger(__name__)
 
 # AppKit constants (kept numeric so this module imports without AppKit on other platforms)
-_HIDE_DOCK = 1 << 1  # NSApplicationPresentationHideDock
-_HIDE_MENU_BAR = 1 << 3  # NSApplicationPresentationHideMenuBar
+_AUTO_HIDE_DOCK = 1 << 0  # NSApplicationPresentationAutoHideDock
+_AUTO_HIDE_MENU_BAR = 1 << 2  # NSApplicationPresentationAutoHideMenuBar
 _STYLE_BORDERLESS = 0  # NSWindowStyleMaskBorderless
 _FULLSCREEN_NONE = 1 << 9  # NSWindowCollectionBehaviorFullScreenNone: green button = zoom
 
@@ -73,7 +77,7 @@ class Fullscreen:
         app = AppKit.NSApplication.sharedApplication()
         if on:
             self._saved = (ns.frame(), ns.styleMask(), ns.hasShadow())
-            app.setPresentationOptions_(_HIDE_DOCK | _HIDE_MENU_BAR)
+            app.setPresentationOptions_(_AUTO_HIDE_DOCK | _AUTO_HIDE_MENU_BAR)
             ns.setStyleMask_(_STYLE_BORDERLESS)
             # the window shadow includes a 1 px outline, visible at the rounded screen corners
             ns.setHasShadow_(False)

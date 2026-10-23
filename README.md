@@ -131,7 +131,7 @@ Every DMX output channel as a slider: pick a universe (0–3) and a subpage of 6
 
 ![Settings page](screenshots/settings.png)
 
-- **Appearance:** ink colour (grey, amber, phosphor), UI scale (with "Fit window" for small screens) the key-hint footer and, in the desktop app, **Start in full screen** (F toggles full screen at any time). All of it is saved and restored next session.
+- **Appearance:** ink colour (grey, amber, phosphor), UI scale (with "Fit window" for small screens), the key-hint footer and, in the desktop app, **Start in full screen** (F toggles full screen at any time). All of it is saved and restored next session.
 - **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
 - **Engine:** the frame rate.
 - **Log** (under Network, in the right-hand column): the log of this run, read-only, as the log file has it: time, level, logger, message (a traceback under its line). **Errors are red, warnings amber, info in the normal text colour, debug dim.** The view follows the newest line: **Auto-scroll** is on by default, switch it off to stay where you are; scrolling up by hand pauses it (the switch shows that) and scrolling back to the end resumes. **Copy** puts the lines on the clipboard as text, for a bug report. The view keeps the last 2,000 lines of the run (the backend keeps the last 3,000 records: `logsetup.MemoryLogHandler`; `GET /api/log` gives them, new ones follow over the live websocket in batches while the panel is open). **Help → Show log** in the menu bar opens Settings at this panel. The panel is on this computer only: a phone or tablet on the network gets no panel and no stream (`/api/log` answers 403), because the log carries paths and device names. The log *file* (one per start, File → Open logs folder) is unchanged.
@@ -230,7 +230,7 @@ Everything works without a mouse — on the General, Dimmers and Control Desk pa
 | Esc | cancel a pending hue / saturation change |
 | 1 – 9 | switch page (1 General, 2 Dimmers, 3 Fixtures, 4 Rig, 5 Connections, 6 Fog, 7 Control Desk, 8 Settings, 9 Help) |
 | Q / E | previous / next subpage: the tabs of Connections, the channel subpages and Routes of the Control Desk (round at the ends) |
-| F | full screen on / off (desktop app; on a MacBook it also covers the camera-notch strip) |
+| F | full screen on / off (desktop app; on a MacBook it also covers the camera-notch strip; the menu bar and the Dock slide in when the mouse reaches the top or bottom edge) |
 | ⌘ / Ctrl + + − 0 | UI scale up / down (`=` works as `+`, no Shift needed), 0 = 100 % (⌘ on macOS, Ctrl on Windows) |
 | ⌘ / Ctrl + S | Save: what the page's Save button does, also while typing in a field |
 | Alt, F10 | Windows app: the menu bar (Alt + letter opens a menu; arrows, ⏎, Esc); on macOS ⌘1 – ⌘9 switch pages too |
