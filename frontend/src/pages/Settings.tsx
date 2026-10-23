@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type Settings as SettingsData } from '../api'
 import { Button, Row, Section } from '../components/forms'
 import { LogSection } from '../components/LogSection'
@@ -14,64 +14,7 @@ const INK_NAMES: [InkName, string][] = [
 ]
 
 /**
- * Horizontal segmented slider: click or drag anywhere. With the focus (⏎ on it when the keys have highlighted it,
- * or Tab) ← ↓ / → ↑ change it by ``step`` (Shift = ``fine``).
- */
-function HSlider({ value, min, max, onChange, step, fine, label, tip }: { value: number; min: number; max: number; onChange: (v: number) => void; step: number; fine: number; label: string; tip?: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const t = (value - min) / (max - min)
-  const set = (e: PointerEvent<HTMLDivElement>) => {
-    const r = ref.current!.getBoundingClientRect()
-    onChange(min + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (max - min))
-  }
-  const cells = 24
-  const level = t * cells
-  return (
-    <div
-      ref={ref}
-      role="slider"
-      tabIndex={0}
-      aria-label={label}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={Number(value.toFixed(2))}
-      data-hint="slider"
-      data-tip={tip}
-      className="flex h-[22px] cursor-ew-resize touch-none"
-      onKeyDown={(e) => {
-        const dir = e.key === 'ArrowUp' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowDown' || e.key === 'ArrowLeft' ? -1 : 0
-        if (!dir) return
-        e.preventDefault()
-        onChange(Math.min(max, Math.max(min, value + dir * (e.shiftKey ? fine : step))))
-      }}
-      onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId)
-        set(e)
-      }}
-      onPointerMove={(e) => e.buttons && set(e)}
-    >
-      {Array.from({ length: cells }, (_, i) => {
-        const fill = Math.max(0, Math.min(1, level - i))
-        const top = i === Math.ceil(level) - 1
-        return (
-          <div
-            key={i}
-            className="relative flex-1"
-            style={{
-              background: `rgb(var(--ink-rgb) / ${(0.06 + 0.94 * fill).toFixed(3)})`,
-              boxShadow:
-                'inset -1px 0 0 rgba(15,16,17,.6)' + (top && fill > 0.5 ? ', 0 0 calc(10px * var(--glow)) rgb(var(--ink-rgb) / calc(0.4 * var(--glow)))' : ''),
-              zIndex: top ? 1 : undefined,
-            }}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
-/**
- * Settings: appearance (ink colour, glow, brightness, key hints), the engine, the network, the app and the log of this
+ * Settings: appearance (ink colour, UI scale, key hints), the engine, the network, the app and the log of this
  * run (the keyboard reference, About and Support are on the Help page).
  * Changes apply immediately and are saved to settings.json, so they are restored next session.
  */
@@ -123,7 +66,7 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
         title="Appearance"
         right="saved · restored next session"
         bodyClassName="p-3.5 gap-[18px]"
-        tip="How the UI looks: ink colour, glow, brightness and size. Changes apply at once and are remembered"
+        tip="How the UI looks: ink colour and size. Changes apply at once and are remembered"
       >
         <div className="flex flex-col gap-2">
           <span className="lbl text-[11px] text-dim">Ink colour</span>
@@ -154,20 +97,6 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
             })}
           </div>
         </div>
-
-        {[
-          { id: 'glow', label: 'Glow', tip: 'Bloom under selected and active elements', value: ui.glow, min: 0, max: 1, note: 'Bloom under selected and active elements', key: 'glow' as const },
-          { id: 'brightness', label: 'UI brightness', tip: 'Dims the ink: less light on the DJ at the booth', value: ui.brightness, min: 0.4, max: 1, note: 'Dims the ink — less light on the DJ at the booth (40–100 %)', key: 'brightness' as const },
-        ].map(({ id, label, tip, value, min, max, note, key }) => (
-          <div key={id} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between">
-              <span className="lbl text-[12px]">{label}</span>
-              <span className="text-glow font-mono text-[16px]">{pct(value)}</span>
-            </div>
-            <HSlider value={value} min={min} max={max} onChange={(v) => change({ [key]: v })} step={0.05} fine={0.01} label={label} tip={tip} />
-            <span className="lbl text-[10px] text-dim">{note}</span>
-          </div>
-        ))}
 
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">

@@ -33,7 +33,7 @@ export function BandMeter({ bands, peaks, weights, rows = 12, height = 80, tip }
                   className="relative flex-1"
                   style={{
                     background: `rgb(var(--ink-rgb) / ${alpha.toFixed(3)})`,
-                    boxShadow: SEAM + (bright ? ', 0 0 calc(8px * var(--glow)) rgb(var(--ink-rgb) / calc(0.45 * var(--glow)))' : ''),
+                    boxShadow: SEAM + (bright ? ', 0 0 8px rgb(var(--ink-rgb) / 0.45)' : ''),
                     zIndex: bright ? 1 : undefined,
                     borderTop: fill === 0 && c === weightRow ? '1px dotted var(--color-dim)' : undefined,
                     transition: 'background-color 80ms linear',

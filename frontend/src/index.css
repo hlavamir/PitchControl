@@ -10,8 +10,8 @@
 
 /*
  * Monochrome theme: a very dark ground, one bright "ink" for everything that matters, colour only
- * where it carries information (hue/saturation scales, output colours). The ink, its brightness and
- * the glow strength come from Settings → Appearance (theme.ts sets --ink-rgb and --glow).
+ * where it carries information (hue/saturation scales, output colours). The ink comes from
+ * Settings → Appearance (theme.ts sets --ink-rgb).
  */
 @theme {
   --font-sans: 'Chakra Petch', ui-sans-serif, system-ui, sans-serif;
@@ -30,7 +30,6 @@
 
 :root {
   --ink-rgb: 216 217 212;
-  --glow: 1;
 }
 
 html,
@@ -59,11 +58,11 @@ body {
   z-index: 1;
   box-shadow:
     0 0 0 1px var(--color-ink),
-    0 0 calc(2px + 14px * var(--glow)) rgb(var(--ink-rgb) / calc(0.38 * var(--glow))),
-    0 0 calc(4px + 44px * var(--glow)) rgb(var(--ink-rgb) / calc(0.16 * var(--glow)));
+    0 0 16px rgb(var(--ink-rgb) / 0.38),
+    0 0 48px rgb(var(--ink-rgb) / 0.16);
 }
 .glow-on {
-  box-shadow: 0 0 calc(16px * var(--glow)) rgb(var(--ink-rgb) / calc(0.3 * var(--glow)));
+  box-shadow: 0 0 16px rgb(var(--ink-rgb) / 0.3);
 }
 /* the control the keys have highlighted on the Rig page's details; after .glow-on, so a switch that is on shows it too,
    and with an outline that no other shadow can replace */
@@ -74,25 +73,25 @@ body {
   outline-offset: 2px;
   box-shadow:
     0 0 0 1px var(--color-ink),
-    0 0 calc(2px + 14px * var(--glow)) rgb(var(--ink-rgb) / calc(0.38 * var(--glow))),
-    0 0 calc(4px + 44px * var(--glow)) rgb(var(--ink-rgb) / calc(0.16 * var(--glow)));
+    0 0 16px rgb(var(--ink-rgb) / 0.38),
+    0 0 48px rgb(var(--ink-rgb) / 0.16);
 }
 .glow-held {
   box-shadow:
-    0 0 calc(26px * var(--glow)) rgb(var(--ink-rgb) / calc(0.5 * var(--glow))),
-    0 0 calc(60px * var(--glow)) rgb(var(--ink-rgb) / calc(0.2 * var(--glow)));
+    0 0 26px rgb(var(--ink-rgb) / 0.5),
+    0 0 60px rgb(var(--ink-rgb) / 0.2);
 }
 .glow-hover:hover {
   outline: 1px solid var(--color-ink);
   outline-offset: -1px;
-  box-shadow: 0 0 calc(10px * var(--glow)) rgb(var(--ink-rgb) / calc(0.22 * var(--glow)));
+  box-shadow: 0 0 10px rgb(var(--ink-rgb) / 0.22);
 }
 .text-glow {
-  text-shadow: 0 0 calc(8px * var(--glow)) rgb(var(--ink-rgb) / calc(0.45 * var(--glow)));
+  text-shadow: 0 0 8px rgb(var(--ink-rgb) / 0.45);
 }
 .dot-on {
   background: var(--color-ink);
-  box-shadow: 0 0 calc(6px * var(--glow)) rgb(var(--ink-rgb) / calc(0.5 * var(--glow)));
+  box-shadow: 0 0 6px rgb(var(--ink-rgb) / 0.5);
 }
 
 /* empty grid slot (keeps the 8-column controller layout readable) */
@@ -143,7 +142,7 @@ textarea:focus,
 select:focus {
   outline: 1px solid var(--color-ink);
   outline-offset: -1px;
-  box-shadow: 0 0 calc(10px * var(--glow)) rgb(var(--ink-rgb) / calc(0.25 * var(--glow)));
+  box-shadow: 0 0 10px rgb(var(--ink-rgb) / 0.25);
 }
 option {
   background: var(--color-ground);

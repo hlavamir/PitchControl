@@ -226,7 +226,7 @@ export interface Settings {
   }
   masks: { line_falloff: number; transition_s: number }
   auto_colors: HSB[]
-  ui: { ink: 'grey' | 'amber' | 'phosphor'; glow: number; brightness: number; key_hints: boolean; start_fullscreen: boolean; scale: number }
+  ui: { ink: 'grey' | 'amber' | 'phosphor'; key_hints: boolean; start_fullscreen: boolean; scale: number }
   [key: string]: unknown
 }
 

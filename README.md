@@ -114,7 +114,7 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 
 ![Settings page](screenshots/settings.png)
 
-- **Appearance:** ink colour (grey, amber, phosphor), glow, UI brightness for a dark booth, UI scale (with "Fit window" for small screens) and the key-hint footer. All of it is saved and restored next session.
+- **Appearance:** ink colour (grey, amber, phosphor), UI scale (with "Fit window" for small screens) and the key-hint footer. All of it is saved and restored next session.
 - **Network:** lets a phone or an iPad on the same network open the UI in its browser (see [Other devices on the network](#other-devices-on-the-network)).
 - **Engine:** the frame rate.
 - **App** (desktop app only): open the UI in a browser, open the data folder, open the logs folder, start in full screen.
@@ -209,7 +209,7 @@ Builds between releases show how far past the last tag they are, e.g. `1.1.0+3 (
 
 ## Using the UI
 
-The UI is monochrome (Settings → Appearance: grey, amber or phosphor ink, glow strength, UI brightness, UI scale, key hints; saved per computer in `machine.json`).
+The UI is monochrome (Settings → Appearance: grey, amber or phosphor ink, UI scale, key hints; saved per computer in `machine.json`).
 
 The layout is made for a 1512 × 915 px window (14" MacBook at its default display setting). On smaller screens, down to 1280 × 720, use Settings → Appearance → UI scale → **Fit window**: it picks the largest scale at which every page fits without scrolling (about 70 % on 1280 × 720). Pixel sizes are CSS pixels, which macOS and Windows scale with the display setting. Colour only appears where it carries information: the hue/saturation scales and the output colours.
 

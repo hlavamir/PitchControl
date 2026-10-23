@@ -572,11 +572,18 @@ class UiSettings(Model):
     """Appearance of the web UI, chosen on the Settings page."""
 
     ink: Literal["grey", "amber", "phosphor"] = "grey"
-    glow: float = Field(default=1.0, ge=0.0, le=1.0)
-    brightness: float = Field(default=1.0, ge=0.4, le=1.0)  # dims the ink: less light at the DJ booth
     key_hints: bool = True
     start_fullscreen: bool = False  # desktop app: open in full screen
     scale: float = Field(default=1.0, ge=0.6, le=1.5)  # UI zoom; 1 = the 1512×915 design size
+
+    @model_validator(mode="before")
+    @classmethod
+    def _removed_settings(cls, data: Any) -> Any:
+        # up to 1.7.1 the UI had a glow strength and a brightness (ink dimmed to 40 %); both are gone (glow is always 100 %, the
+        # ink at full brightness). A file that still has them loads without a word and is written without them
+        if isinstance(data, dict) and ({"glow", "brightness"} & data.keys()):
+            data = {k: v for k, v in data.items() if k not in ("glow", "brightness")}
+        return data
 
 
 DEFAULT_PORT = 8420  # where the UI is served; also the default port for other devices on the network

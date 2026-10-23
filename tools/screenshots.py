@@ -121,7 +121,7 @@ def stage(data_src: Path | None, data: Path, machine: Path) -> None:
                 ],
                 "artnet": {"enabled": False, "targets": [{"universe": 1, "ip": "192.168.1.50"}]},
             },
-            "ui": {"ink": "amber", "glow": 1.0, "brightness": 1.0, "key_hints": True, "scale": 1.0},
+            "ui": {"ink": "amber", "key_hints": True, "scale": 1.0},
         },
     )
     write_json(machine / "state" / "overrides.json", {"universes": {"0": {"9": 180, "10": 255}}})

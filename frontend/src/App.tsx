@@ -41,7 +41,7 @@ const PAGE_TIPS: Record<Page, string> = {
   Inputs: 'Audio input and MIDI controller: devices, gain and live meters',
   Outputs: 'DMX output: Enttec USB interfaces, Art-Net, and the PitchPlease v2 serial strips',
   Fog: 'Fog machines: DMX channel, timer and manual trigger',
-  Settings: 'Look of the UI (ink, glow, brightness, scale), the engine frame rate, other devices on the network, the app window',
+  Settings: 'Look of the UI (ink, scale), the engine frame rate, other devices on the network, the app window',
   'Control Desk': 'Every DMX channel as a fader: override channels by hand, e.g. to test a light',
   Help: 'Every key of the UI, the version, Report a problem, the Discord and the project links, support',
 }

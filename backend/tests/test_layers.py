@@ -1,6 +1,7 @@
 """Shipped defaults (read-only) + the user's folder + this computer's folder."""
 
 import json
+import logging
 import shutil
 from pathlib import Path
 
@@ -110,6 +111,26 @@ def test_settings_are_sparse_and_split_per_computer(layered):
     again = ConfigStore(layered.root, defaults=layered.defaults, machine=layered.machine)
     again.load_all()
     assert again.settings.model_dump() == s.model_dump()
+
+
+@pytest.mark.parametrize("where", ["machine", "settings"])
+def test_the_removed_glow_and_ui_brightness_settings_load_without_a_warning_and_are_not_written_back(layered, caplog, where):
+    # item 64: a machine.json, or a settings.json from before 1.4 (everything in one file), that still has the two keys of
+    # Settings → Appearance
+    path = layered.machine_path if where == "machine" else layered.settings_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"ui": {"ink": "phosphor", "glow": 0.3, "brightness": 0.5, "scale": 0.9}}), encoding="utf-8")
+    with caplog.at_level(logging.DEBUG):
+        layered.load_settings()
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
+    ui = layered.settings.ui
+    assert (ui.ink, ui.scale) == ("phosphor", 0.9)
+    assert "glow" not in ui.model_dump() and "brightness" not in ui.model_dump() and not ui.model_extra
+    layered.save_settings()
+    for written in (layered.settings_path, layered.machine_path):
+        text = written.read_text(encoding="utf-8")
+        assert "glow" not in text and '"brightness"' not in text
+    assert read(layered.machine_path)["ui"] == {"ink": "phosphor", "scale": 0.9}
 
 
 def test_per_computer_values_move_out_of_settings_json(layered):

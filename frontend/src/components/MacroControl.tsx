@@ -168,14 +168,14 @@ export function MacroControl(props: Props) {
 
 export const SEGMENTS = 20
 const SEAM = 'inset 0 1px 0 rgba(15,16,17,.6)'
-const halo = 'calc(10px * var(--glow))'
+const halo = '10px'
 
 /** One segment: no gaps, a 1px darker seam; the ink fades in with the fill (0..1). */
 export function segmentStyle(fill: number, bright: boolean, pending: boolean) {
   if (pending) {
     return { background: 'rgb(var(--ink-rgb) / 0.14)', boxShadow: `${SEAM}, inset 0 0 0 1px rgb(var(--ink-rgb) / 0.7)` }
   }
-  const glow = bright && fill > 0.5 ? `, 0 0 ${halo} rgb(var(--ink-rgb) / calc(0.4 * var(--glow)))` : ''
+  const glow = bright && fill > 0.5 ? `, 0 0 ${halo} rgb(var(--ink-rgb) / 0.4)` : ''
   return {
     background: `rgb(var(--ink-rgb) / ${(0.06 + 0.94 * fill).toFixed(3)})`,
     boxShadow: SEAM + glow,

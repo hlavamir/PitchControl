@@ -29,7 +29,7 @@ export function PhoneApp({ onFullUi }: { onFullUi: () => void }) {
 
   useEffect(() => {
     api.get<MacroDef[]>('/api/macros/defs').then((list) => setDefs(Object.fromEntries(list.map((d) => [d.name, d]))))
-    // the ink, glow and brightness of Settings → Appearance; the UI scale is the laptop's and isn't used here
+    // the ink of Settings → Appearance; the UI scale is the laptop's and isn't used here
     api.get<SettingsData>('/api/settings').then((s) => applyTheme({ ...DEFAULT_UI, ...s.ui }))
     const onHash = () => setPage(pageFromHash())
     window.addEventListener('hashchange', onHash)
