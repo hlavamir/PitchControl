@@ -46,8 +46,16 @@ class FakeApp:
 class FakeView:
     """The window's content view (the web view once the page has loaded)."""
 
-    def __init__(self):
+    def __init__(self, web=True):
         self.areas = []
+        self.pywebview_window = object() if web else None  # pywebview's WebKitHost carries it; its placeholder view doesn't
+
+    @classmethod
+    def alloc(cls):
+        return cls(web=False)
+
+    def init(self):
+        return self
 
     def bounds(self):
         return Rect(0, 0, 1512, 982)
@@ -85,6 +93,10 @@ class FakeNative:
 
     def contentView(self):
         return self.view
+
+    def setContentView_(self, view):
+        self.view = view
+        self.calls.append("content" if view.pywebview_window is not None else "placeholder")
 
     def setStyleMask_(self, mask):
         self.style = mask
@@ -144,6 +156,7 @@ def mac_fullscreen(monkeypatch):
         NSApplication=types.SimpleNamespace(sharedApplication=lambda: app),
         NSScreen=types.SimpleNamespace(mainScreen=lambda: None),
         NSObject=FakeNSObject,
+        NSView=FakeView,
         NSTrackingArea=FakeTrackingArea,
         NSTrackingMouseEnteredAndExited=1,
         NSTrackingActiveAlways=0x80,
@@ -233,13 +246,13 @@ def test_the_first_mouse_entering_takes_the_mouse_if_the_window_isnt_ready(monke
     native.responder = None  # the web view isn't the first responder (pywebview swapped it in)
     owner.mouseEntered_(None)
     assert native.responder is native.view
-    fs.active = False
+    fs.active = False  # the normal window keeps its hover too
     native.key = False
-    owner.mouseEntered_(None)  # not in full screen: nothing
-    assert not native.key
+    owner.mouseEntered_(None)
+    assert native.key
 
 
-def test_the_watcher_follows_a_new_content_view_and_goes_with_full_screen(monkeypatch):
+def test_the_watcher_follows_a_new_content_view(monkeypatch):
     fs, app, native = mac_fullscreen(monkeypatch)
     fs.active = True
     fs._apply_mac(True)
@@ -247,8 +260,63 @@ def test_the_watcher_follows_a_new_content_view_and_goes_with_full_screen(monkey
     native.view = FakeView()  # pywebview put the web view in as the content view
     fs._retake()
     assert old.areas == [] and len(native.view.areas) == 1
+
+
+def test_every_entry_and_every_exit_does_the_same(monkeypatch, caplog):
+    """Item 72: after leaving full screen and entering it again the menu stopped reacting to the mouse. The web view is
+    put in the window again, the mouse taken and the tracking area installed after each style mask change, in both
+    directions, with the delayed checks each time."""
+    fs, app, native = mac_fullscreen(monkeypatch)
+    web = native.view
+    fs._saved = None
+    original = native.style
+    seen = []
+    with caplog.at_level(logging.INFO, logger="pitchcontrol.fullscreen"):
+        for step in (True, False, True, False, True):
+            native.key, native.mouse_moved, native.responder = False, False, "stale"  # the style mask change took them
+            before = len(native.calls)
+            fs.active = step
+            fs._apply_mac(step)
+            calls = native.calls[before:]
+            assert calls.count("placeholder") == 1 and calls.count("content") == 1  # the web view was put back
+            assert calls.index("placeholder") < calls.index("content") < calls.index("front")
+            assert calls.count("front") == 1 + len(fullscreen._RETAKE_AFTER)  # the mouse taken, and again later
+            assert native.key and native.mouse_moved and native.responder is web and native.view is web
+            assert len(web.areas) == 1  # one tracking area, new each time (never two, never none)
+            assert (native.style == fullscreen._STYLE_BORDERLESS) is step
+            seen.append(native.frame() == Rect(0, 0, 1512, 982))
+    assert seen == [True, False, True, False, True]
+    assert native.style == fullscreen._STYLE_BORDERLESS and original == 15
+    states = [r.message for r in caplog.records if r.message.startswith("full screen on:") or r.message.startswith("full screen off:")]
+    assert len(states) == 5 + 5 * (1 + len(fullscreen._RETAKE_AFTER))  # the entry / exit line and each check's state, in the log
+
+
+def test_the_delayed_checks_of_an_earlier_entry_stop_when_the_state_changes(monkeypatch):
+    fs, app, native = mac_fullscreen(monkeypatch)
+    pending = []
+    fs._later = lambda seconds, fn: pending.append(fn)
+    fs.active = True
+    fs._apply_mac(True)
+    first = list(pending)
+    pending.clear()
+    fs.active = False
     fs._apply_mac(False)
-    assert native.view.areas == []
+    before = native.calls.count("front")
+    for fn in first:  # the entry's checks, after the exit
+        fn()
+    assert native.calls.count("front") == before
+    for fn in pending:  # the exit's own
+        fn()
+    assert native.calls.count("front") == before + len(pending)
+
+
+def test_the_placeholder_view_is_left_alone_before_the_page_has_loaded(monkeypatch):
+    fs, app, native = mac_fullscreen(monkeypatch)
+    native.view = FakeView(web=False)  # pywebview's own, until the page has loaded
+    fs.active = True
+    fs._apply_mac(True)
+    assert "placeholder" not in native.calls and "content" not in native.calls
+    assert native.key and native.mouse_moved
 
 
 def test_a_watcher_that_fails_does_not_stop_full_screen(monkeypatch):

@@ -38,6 +38,7 @@ class Fullscreen:
         self._lock = threading.Lock()
         self.mac = sys.platform == "darwin"
         self._area: tuple | None = None  # (view, tracking area, owner) of _watch_mouse
+        self._generation = 0  # counts the entries and exits: a delayed check belongs to one
 
     # -- helpers
     def _on_main(self, fn) -> None:
@@ -83,6 +84,8 @@ class Fullscreen:
         if ns is None:
             return
         app = AppKit.NSApplication.sharedApplication()
+        self._generation += 1  # the delayed checks of an earlier entry or exit stop
+        generation = self._generation
         if on:
             self._saved = (ns.frame(), ns.styleMask(), ns.hasShadow())
             app.setPresentationOptions_(_HIDE_DOCK | _HIDE_MENU_BAR)
@@ -91,19 +94,21 @@ class Fullscreen:
             ns.setHasShadow_(False)
             screen = ns.screen() or AppKit.NSScreen.mainScreen()
             ns.setFrame_display_(screen.frame(), True)
-            self._take_the_mouse(ns, app)
             log.info("full screen on: window %s, screen %s, shadow %s", _size(ns.frame()), _size(screen.frame()), ns.hasShadow())
-            for seconds in _RETAKE_AFTER:
-                self._later(seconds, self._retake)
         else:
-            self._unwatch_mouse()
             frame, style, shadow = self._saved or (ns.frame(), ns.styleMask(), True)
             ns.setStyleMask_(style)
             ns.setHasShadow_(shadow)
             ns.setFrame_display_(frame, True)
             app.setPresentationOptions_(0)
-            ns.makeFirstResponder_(ns.contentView())
             log.info("full screen off: window %s", _size(ns.frame()))
+        # a style mask change can leave the web view in the window without mouse tracking, key state and focus, so every
+        # entry and every exit does the same: the web view is put in the window again, the mouse is taken, and that is
+        # repeated later (item 72: after leaving full screen and entering it again the menu stopped reacting to hover)
+        self._remount(ns)
+        self._take_the_mouse(ns, app, report=True)
+        for seconds in _RETAKE_AFTER:
+            self._later(seconds, lambda: self._retake(generation))
 
     def _later(self, seconds: float, fn) -> None:
         from PyObjCTools import AppHelper
@@ -123,15 +128,41 @@ class Fullscreen:
         ns.makeKeyAndOrderFront_(None)
         ns.makeFirstResponder_(ns.contentView())
         self._watch_mouse(ns, app)
-        if report and self.active:
-            log.info("full screen: key window %s, app active %s, accepts mouse moved %s", ns.isKeyWindow(), app.isActive(), ns.acceptsMouseMovedEvents())
+        if report:
+            log.info(
+                "full screen %s: key window %s, app active %s, accepts mouse moved %s, web view first responder %s",
+                "on" if self.active else "off",
+                ns.isKeyWindow(),
+                app.isActive(),
+                ns.acceptsMouseMovedEvents(),
+                ns.firstResponder() == ns.contentView(),
+            )
 
-    def _retake(self) -> None:
-        """The same again, later (main thread): nothing if full screen has ended meanwhile."""
+    def _remount(self, ns) -> None:
+        """Put the web view in the window again (the way pywebview does when the page has loaded, which is the state in
+        which hover worked after a start in full screen): swap another view in and the web view back, then no first
+        responder and the tracking area again. Not before the page has loaded: pywebview mounts it itself then."""
+        view = ns.contentView()
+        if getattr(view, "pywebview_window", None) is None:
+            return
+        try:
+            import AppKit
+
+            self._unwatch_mouse()
+            try:
+                ns.setContentView_(AppKit.NSView.alloc().init())
+            finally:
+                ns.setContentView_(view)
+            ns.makeFirstResponder_(None)
+        except Exception:  # noqa: BLE001
+            log.exception("full screen: can't put the web view in the window again")
+
+    def _retake(self, generation: int | None = None) -> None:
+        """The same again, later (main thread): nothing if full screen was entered or left meanwhile."""
         import AppKit
 
         ns = self.window.native
-        if ns is not None and self.active:
+        if ns is not None and (generation is None or generation == self._generation):
             self._take_the_mouse(ns, AppKit.NSApplication.sharedApplication(), report=True)
 
     def _on_loaded(self) -> None:
@@ -140,12 +171,12 @@ class Fullscreen:
             self._on_main(self._retake)
 
     def _mouse_entered(self) -> None:
-        """The mouse came into the window (main thread). Full screen was entered at start-up or the window isn't key or
-        the web view isn't the first responder: take the mouse again, and say so in the log."""
+        """The mouse came into the window (main thread). The window isn't key, doesn't take mouse-moved events or the
+        web view isn't the first responder: take the mouse again, and say so in the log."""
         import AppKit
 
         ns = self.window.native
-        if ns is None or not self.active:
+        if ns is None:
             return
         view = ns.contentView()
         if ns.isKeyWindow() and ns.acceptsMouseMovedEvents() and ns.firstResponder() == view:
