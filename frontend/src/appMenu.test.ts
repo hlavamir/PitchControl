@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AltTap, CLOSED, LOG_SECTION, actsOnPage, activate, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
+import { AltTap, CLOSED, LOG_SECTION, actsOnPage, activate, altLetter, drawnMenuMode, menuKey, menuTarget, nextItem, openByLetter, showDrawnMenu, type MenuDef, type MenuState } from './appMenu'
 
 const item = (id: string, label = id) => ({ id, label, kind: 'ui' as const, key: '' })
 const MENUS: MenuDef[] = [
@@ -12,15 +12,50 @@ const MENUS: MenuDef[] = [
 const all = (_id?: string) => true
 const press = (state: MenuState, ...keys: string[]) => keys.reduce<{ state: MenuState; run?: string }>((r, k) => menuKey(r.state, k, MENUS, all), { state })
 
-describe('showDrawnMenu: only in the Windows app window', () => {
+describe('drawnMenuMode: only in the app window', () => {
   const win = { local: true, platform: 'win32' }
-  it('the desktop window on Windows', () => expect(showDrawnMenu('?window=app', win)).toBe(true))
+  const mac = { local: true, platform: 'darwin' }
+  it('the desktop window on Windows: always', () => expect(drawnMenuMode('?window=app', win)).toBe('always'))
+  it('the desktop window on macOS: in full screen (item 72)', () => expect(drawnMenuMode('?window=app', mac)).toBe('fullscreen'))
   it('not in a browser, here or on the network', () => {
-    expect(showDrawnMenu('', win)).toBe(false) // a browser on this computer ("Open in browser")
-    expect(showDrawnMenu('?window=app', { local: false, platform: 'win32' })).toBe(false) // a phone, even with the parameter typed in
+    expect(drawnMenuMode('', win)).toBeNull() // a browser on this computer ("Open in browser")
+    expect(drawnMenuMode('', mac)).toBeNull()
+    expect(drawnMenuMode('?window=app', { local: false, platform: 'win32' })).toBeNull() // a phone, even with the parameter typed in
+    expect(drawnMenuMode('?window=app', { local: false, platform: 'darwin' })).toBeNull()
   })
-  it('not on macOS (the native menu bar)', () => expect(showDrawnMenu('?window=app', { local: true, platform: 'darwin' })).toBe(false))
-  it('not before the app info is known', () => expect(showDrawnMenu('?window=app', null)).toBe(false))
+  it('not on other systems, not before the app info is known', () => {
+    expect(drawnMenuMode('?window=app', { local: true, platform: 'linux' })).toBeNull()
+    expect(drawnMenuMode('?window=app', null)).toBeNull()
+  })
+})
+
+describe('showDrawnMenu: on the screen now', () => {
+  it('Windows: always', () => {
+    expect(showDrawnMenu('always', false)).toBe(true)
+    expect(showDrawnMenu('always', true)).toBe(true)
+  })
+  it('macOS: in full screen, not outside it (the native menu bar is back)', () => {
+    expect(showDrawnMenu('fullscreen', true)).toBe(true)
+    expect(showDrawnMenu('fullscreen', false)).toBe(false)
+  })
+  it('never where there is none', () => {
+    expect(showDrawnMenu(null, true)).toBe(false)
+    expect(showDrawnMenu(null, false)).toBe(false)
+  })
+})
+
+describe('altLetter: Alt+F on a Mac types ƒ, the physical key still says F', () => {
+  it('the letter itself on Windows', () => expect(altLetter({ key: 'f', code: 'KeyF' })).toBe('f'))
+  it('the physical key where Option changes the character', () => expect(altLetter({ key: 'ƒ', code: 'KeyF' })).toBe('F'))
+  it('nothing for other keys', () => {
+    expect(altLetter({ key: 'Alt', code: 'AltLeft' })).toBeNull()
+    expect(altLetter({ key: 'ArrowDown', code: 'ArrowDown' })).toBeNull()
+    expect(altLetter({ key: '1', code: 'Digit1' })).toBeNull()
+  })
+  it('opens the menu of that letter', () => {
+    expect(openByLetter(MENUS, altLetter({ key: 'ƒ', code: 'KeyF' })!, all)?.menu).toBe(0)
+    expect(openByLetter(MENUS, altLetter({ key: '´', code: 'KeyE' })!, all)?.menu).toBe(1)
+  })
 })
 
 describe('menuKey: Windows menu conventions', () => {

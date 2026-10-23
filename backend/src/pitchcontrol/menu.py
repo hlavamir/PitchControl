@@ -1,7 +1,8 @@
 """The desktop app's menu bar: one definition for both platforms (item 52).
 
 macOS shows it as the native menu bar (pywebview's ``menu=``, see ``native_menu``); Windows draws it in the UI's
-header row, from ``GET /api/menu`` (pywebview's native Windows strip is light, unstyled and shows no keys).
+header row, from ``GET /api/menu`` (pywebview's native Windows strip is light, unstyled and shows no keys). So does
+macOS in PitchControl's own full screen (item 72): the menu bar is hidden there (``fullscreen.py``), the header draws it.
 
 Every item has one action, whichever menu runs it:
 
@@ -10,7 +11,8 @@ Every item has one action, whichever menu runs it:
 - ``app``: Python does it (``MenuActions.run``): open a folder or a link, minimize, zoom, quit through the quit guard.
   The drawn menu asks through ``POST /api/menu/{id}`` (this computer only), the native menu calls it directly.
 - ``native``: the operating system's own command: Cut, Copy, Paste and Select All on macOS (``cut:`` … with ⌘X …,
-  which is what keeps ⌘C / ⌘V / ⌘A working in text fields), and Quit (⌘Q).
+  which is what keeps ⌘C / ⌘V / ⌘A working in text fields), and Quit (⌘Q). The drawn menu of macOS full screen asks
+  for the Edit ones through ``POST /api/menu/{id}`` too: ``MenuActions.editor`` sends the same selector to the window.
 
 pywebview's menu items take no keyboard shortcuts (its ``menu.py`` has a TODO), so ``arrange_cocoa_menu`` adds the
 macOS key equivalents itself and puts the menus in the usual order.
@@ -173,12 +175,52 @@ def _entry_json(item: Item | Submenu | None, platform: str) -> dict | None:
         return None
     if isinstance(item, Submenu):
         return {"submenu": item.label, "items": [_entry_json(i, platform) for i in item.items]}
-    return {"id": item.id, "label": item.label, "kind": item.kind, "key": item.win_key if platform == "win" else ""}
+    key = item.win_key if platform == "win" else mac_key_label(item.mac_key)
+    return {"id": item.id, "label": item.label, "kind": item.kind, "key": key}
+
+
+_MAC_SYMBOLS = (("ctrl", "⌃"), ("alt", "⌥"), ("shift", "⇧"), ("cmd", "⌘"))  # the order macOS writes them in
+
+# what the drawn menu of macOS full screen leaves out or adds (item 72): Zoom means nothing in a borderless window,
+# and Quit is the application menu's own item in the native bar (pywebview adds it), so it is not in MENUS
+DRAWN_MAC_SKIP = {"window.zoom"}
+MAC_QUIT = Item("file.quit", "Quit PitchControl", "app", mac_key="cmd+q", only="mac")
+
+
+def mac_key_label(spec: str) -> str:
+    """``"ctrl+cmd+f"`` → ``"⌃⌘F"``, ``"cmd+,"`` → ``"⌘,"``; empty for no key."""
+    if not spec:
+        return ""
+    *mods, key = spec.split("+")
+    return "".join(symbol for name, symbol in _MAC_SYMBOLS if name in mods) + key.upper()
 
 
 def menu_json(platform: str) -> list[dict]:
-    """``GET /api/menu``: the menus the UI draws (Windows)."""
-    return [{"title": title, "items": [_entry_json(i, platform) for i in items]} for title, items in menus_for(platform)]
+    """``GET /api/menu``: the menus the UI draws: Windows always, macOS in its own full screen (item 72), where the
+    application menu holds About, Settings and Quit."""
+    out = []
+    for title, items in menus_for(platform):
+        if platform == "mac":
+            items = [i for i in items if i is SEPARATOR or isinstance(i, Submenu) or i.id not in DRAWN_MAC_SKIP]
+            if title == "PitchControl":
+                items = [*items, SEPARATOR, MAC_QUIT]
+            items = _kept(items, platform)
+        if items:
+            out.append({"title": title, "items": [_entry_json(i, platform) for i in items]})
+    return out
+
+
+# the Edit items that go to the window's first responder on macOS (the same selectors as the native Edit menu)
+NATIVE_EDIT = {"edit.cut": "cut:", "edit.copy": "copy:", "edit.paste": "paste:", "edit.select_all": "selectAll:"}
+
+
+def send_edit_mac(selector_name: str) -> None:
+    """Send ``cut:`` / ``copy:`` / ``paste:`` / ``selectAll:`` down the responder chain, like the native Edit menu: the
+    web view's focused field acts on it (the drawn menu's click doesn't take the focus)."""
+    import AppKit
+    from PyObjCTools import AppHelper
+
+    AppHelper.callAfter(lambda: AppKit.NSApp.sendAction_to_from_(selector_name, None, None))
 
 
 def reveal(folder: str) -> None:
@@ -202,6 +244,7 @@ class MenuActions:
         url: str = "",
         opener: Callable[[str], object] = webbrowser.open,
         revealer: Callable[[str], None] = reveal,
+        editor: Callable[[str], None] | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.logs_dir = logs_dir
@@ -210,12 +253,17 @@ class MenuActions:
         self.opener = opener
         self.revealer = revealer
         self.zoomed = False  # Windows: maximized (kept from the window's events)
+        self.editor = editor  # macOS: sends Cut, Copy, Paste, Select All to the window (the drawn menu of full screen)
+        self.fullscreen = None  # the Fullscreen controller, once the window exists
 
     def run(self, item_id: str) -> None:
         """Run one item. Raises KeyError for an unknown id and ValueError for an item the page or the system runs."""
-        item = items_by_id()[item_id]
+        item = items_by_id()[item_id]  # file.quit is there as the Windows item; macOS' drawn menu reuses its id
         if item.kind == "ui":
             self.to_page(item_id)
+            return
+        if item.kind == "native" and self.editor is not None and item_id in NATIVE_EDIT:
+            self.editor(NATIVE_EDIT[item_id])
             return
         if item.kind != "app":
             raise ValueError(f"{item_id} is the system's own command")
@@ -238,6 +286,8 @@ class MenuActions:
             # guard's dialog waits for an answer and quitting stops the server this request may have come through
             threading.Thread(target=self.window.destroy, name="menu-quit", daemon=True).start()
         elif item_id == "window.minimize":
+            if self.fullscreen is not None and self.fullscreen.active:
+                self.fullscreen.set(False)  # macOS: a minimized borderless window with the Dock hidden can't be brought back
             self.window.minimize()
         elif item_id == "window.zoom":
             self._zoom_mac()

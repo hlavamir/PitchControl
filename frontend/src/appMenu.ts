@@ -24,10 +24,24 @@ export interface MenuDef {
 
 export const isSub = (entry: MenuEntry): entry is SubmenuDef => entry !== null && 'submenu' in entry
 
-/** Whether to draw the menu: in the Windows desktop app's own window only (``?window=app``, set by desktop.py), never
- * in a browser (here or on another device on the network) and never on macOS (the native menu bar). */
-export function showDrawnMenu(search: string, info: { local?: boolean; platform?: string } | null): boolean {
-  return new URLSearchParams(search).get('window') === 'app' && info?.local === true && info.platform === 'win32'
+/** When the app draws the menu itself: ``always`` in the Windows desktop window, ``fullscreen`` on macOS (item 72: in
+ * PitchControl's own full screen the native menu bar is hidden), ``null`` anywhere else. Only in the app's own window
+ * (``?window=app``, set by desktop.py), never in a browser (here or on another device on the network). */
+export type DrawnMenu = 'always' | 'fullscreen' | null
+
+export function drawnMenuMode(search: string, info: { local?: boolean; platform?: string } | null): DrawnMenu {
+  if (new URLSearchParams(search).get('window') !== 'app' || info?.local !== true) return null
+  return info.platform === 'win32' ? 'always' : info.platform === 'darwin' ? 'fullscreen' : null
+}
+
+/** Whether the menu is on the screen now. */
+export const showDrawnMenu = (mode: DrawnMenu, fullscreen: boolean): boolean => mode === 'always' || (mode === 'fullscreen' && fullscreen)
+
+/** The letter of an Alt+key (a menu's access letter): ``e.key``, or on macOS, where Option+F types ƒ, the physical key. */
+export function altLetter(e: { key: string; code: string }): string | null {
+  if (/^[a-z]$/i.test(e.key)) return e.key
+  const m = /^Key([A-Z])$/.exec(e.code)
+  return m ? m[1] : null
 }
 
 export interface MenuState {

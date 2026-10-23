@@ -27,7 +27,7 @@ import uvicorn
 from .config.models import DEFAULT_PORT
 from .engine.engine import Engine
 from .logsetup import setup_logging
-from .menu import MenuActions, native_menu, patch_cocoa
+from .menu import MenuActions, native_menu, patch_cocoa, send_edit_mac
 from .paths import APP_NAME, open_store, resolve_paths
 from .quitguard import confirm_quit, quit_reasons, with_live_edits
 from .server.app import create_app
@@ -156,12 +156,15 @@ def main() -> None:
     import webview  # imported late: only the window needs it
 
     # open maximized: fits any screen (the UI is laid out for a 14" MacBook and up). On Windows the UI draws the menu
-    # bar in its header (menu.py), only in this window: ?window=app (a browser, here or on the network, has no menu)
+    # bar in its header, on macOS in full screen only (menu.py), and only in this window: ?window=app (a browser, here
+    # or on the network, has no menu)
     mac = sys.platform == "darwin"
     window = webview.create_window(
-        APP_NAME, url if mac else f"{url}/?window=app", width=1440, height=900, min_size=(1000, 700), background_color="#0e0f12", maximized=True
+        APP_NAME, f"{url}/?window=app", width=1440, height=900, min_size=(1000, 700), background_color="#0e0f12", maximized=True
     )
     menu.window = window
+    if mac:
+        menu.editor = send_edit_mac
     menu.zoomed = True  # opened maximized
 
     def on_maximized() -> None:
@@ -194,6 +197,7 @@ def main() -> None:
 
     fullscreen = Fullscreen(window)
     desktop_hooks["fullscreen"] = fullscreen
+    menu.fullscreen = fullscreen
 
     def on_shown() -> None:
         fullscreen.setup()

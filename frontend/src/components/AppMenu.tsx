@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { modalOpen } from '../modal'
-import { AltTap, CLOSED, accessKey, activate, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
+import { AltTap, CLOSED, accessKey, activate, altLetter, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
+
+const MAC = navigator.userAgent.includes('Mac')
 
 /**
- * The Windows app's menu bar, in the header row next to the logo (item 52; macOS has the native menu bar). The items
+ * The app's drawn menu bar, in the header row next to the logo (item 52): always in the Windows app, on macOS only in
+ * PitchControl's own full screen, where the native menu bar is hidden (item 72; otherwise macOS has it). The items
  * never take the focus: a text field keeps its caret and selection, so Cut, Copy and Paste act on it. Keyboard: Alt
  * (or F10) gives the bar the keys, Alt+letter opens a menu, ← → ↓ ↑ move, ⏎ runs, Esc closes (appMenu.ts); an item with ▸
  * opens a submenu to its right (→ or ⏎).
@@ -44,8 +47,9 @@ export function AppMenu({
         e.stopPropagation()
         return choose(s.active ? CLOSED : activate())
       }
-      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.length === 1) {
-        const opened = openByLetter(ms, e.key, en) // Alt+F, Alt+E, Alt+V, Alt+W, Alt+H
+      const letter = e.altKey && !e.ctrlKey && !e.metaKey ? altLetter(e) : null
+      if (letter) {
+        const opened = openByLetter(ms, letter, en) // Alt+F, Alt+E, Alt+V, Alt+W, Alt+H (Option on a Mac)
         if (opened) {
           e.preventDefault()
           e.stopPropagation()
@@ -110,7 +114,7 @@ export function AppMenu({
   const openAt = (index: number): MenuState => ({ ...CLOSED, active: true, menu: index, open: true })
 
   return (
-    <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip="Menu bar: Alt or F10 gives it the keys, Alt + the underlined letter opens a menu">
+    <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip={`Menu bar: ${MAC ? 'Option' : 'Alt'} or F10 gives it the keys, ${MAC ? 'Option' : 'Alt'} + the underlined letter opens a menu`}>
       {menus.map((m, i) => {
         const lit = state.active && state.menu === i
         return (
@@ -137,7 +141,7 @@ export function AppMenu({
               ) : (
                 m.title
               )}
-              <span className="sr-only">{` (Alt+${accessKey(m.title).toUpperCase()})`}</span>
+              <span className="sr-only">{` (${MAC ? 'Option' : 'Alt'}+${accessKey(m.title).toUpperCase()})`}</span>
             </button>
             {lit && state.open && (
               <div role="menu" aria-label={m.title} className="absolute top-full left-0 z-50 min-w-[16rem] border border-ink bg-panel py-1 shadow-[0_0_30px_rgb(0_0_0/0.6)]">

@@ -141,7 +141,7 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
           <div className="flex items-center justify-between border-t border-seam pt-3.5">
             <span className="flex flex-col gap-1">
               <span className="lbl text-[12px]">Start in full screen</span>
-              <span className="lbl text-[10px] text-dim">F toggles full screen any time · covers the notch strip; on a Mac the menu bar and Dock slide in at the screen's edge</span>
+              <span className="lbl text-[10px] text-dim">F toggles full screen any time · covers the notch strip; on a Mac the menu bar and Dock are hidden and the menu is drawn next to the logo</span>
             </span>
             <button
               data-hint="toggle"

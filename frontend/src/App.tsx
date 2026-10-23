@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type MacroDef, type Settings as SettingsData } from './api'
 import { showLogPanel } from './logView'
-import { actsOnPage, menuTarget, showDrawnMenu, type MenuDef } from './appMenu'
+import { actsOnPage, drawnMenuMode, menuTarget, showDrawnMenu, type DrawnMenu, type MenuDef } from './appMenu'
 import { AppMenu } from './components/AppMenu'
 import { Modal } from './components/Modal'
 import { Button } from './components/forms'
@@ -125,8 +125,11 @@ export default function App() {
   // footer context: the control under the mouse, or the keyboard selection, whichever was used last
   const [hover, setHover] = useState<{ kind: HintKind; tip?: string } | null>(null)
   const [inputMode, setInputMode] = useState<'mouse' | 'keys'>('mouse')
-  // the menu bar the Windows app draws in the header (item 52; null: none, e.g. macOS, a browser, a phone)
+  // the menu bar the app draws in the header (item 52): in the Windows app always, on macOS in its own full screen
+  // (item 72), where the native menu bar is hidden; none in a browser or on a phone
   const [menus, setMenus] = useState<MenuDef[] | null>(null)
+  const [menuMode, setMenuMode] = useState<DrawnMenu>(null)
+  const [platform, setPlatform] = useState('')
   const uiRef = useRef(ui)
   uiRef.current = ui
   // the Control Desk's subpage: its Routes are a form, with the form keys in the footer
@@ -149,7 +152,10 @@ export default function App() {
         setLocal(showLogPanel(info))
         setVersion(info.version)
         setFullscreen({ supported: info.fullscreen_supported, on: info.fullscreen })
-        if (showDrawnMenu(location.search, info)) api.get<{ menus: MenuDef[] }>('/api/menu').then((r) => setMenus(r.menus))
+        setPlatform(info.platform)
+        const mode = drawnMenuMode(location.search, info)
+        setMenuMode(mode)
+        if (mode) api.get<{ menus: MenuDef[] }>('/api/menu').then((r) => setMenus(r.menus))
       })
       .catch(() => undefined)
     api.get<SettingsData>('/api/settings').then((s) => s.ui && setUi({ ...DEFAULT_UI, ...s.ui }))
@@ -286,14 +292,33 @@ export default function App() {
         const url = issueUrl({ version: info.version, system: info.system, client: clientOf(info), userAgent: navigator.userAgent })
         api.post('/api/open-url', { url }).catch(() => window.open(url, '_blank'))
       } else if (id.startsWith('edit.')) {
-        // Windows: the drawn menu's Edit acts on the focused text field (macOS: the native Edit menu)
+        // the drawn menu's Edit acts on the focused text field; on macOS (full screen) the system's own Cut, Copy,
+        // Paste, Select All do, sent by Python like the native Edit menu does (a paste from here would ask for the clipboard)
         if (!textField(document.activeElement)) return
-        if (id === 'edit.paste') document.execCommand('insertText', false, await navigator.clipboard.readText())
+        if (platform === 'darwin') api.post(`/api/menu/${id}`).catch(() => undefined)
+        else if (id === 'edit.paste') document.execCommand('insertText', false, await navigator.clipboard.readText())
         else document.execCommand(id === 'edit.cut' ? 'cut' : id === 'edit.copy' ? 'copy' : 'selectAll')
       } else api.post(`/api/menu/${id}`).catch(() => undefined) // Python's: the folders, the links, the window, Quit
     },
-    [go, save, toggleFullscreen, showPage],
+    [go, save, toggleFullscreen, showPage, platform],
   )
+  // the window changes size when full screen starts or ends, whoever did it (Start in full screen, the native ⌃⌘F, the
+  // menu): ask again, so the header's top row and the macOS drawn menu follow
+  useEffect(() => {
+    if (!fullscreen.supported) return
+    let timer: number | undefined
+    const onResize = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        api.get<{ fullscreen: boolean }>('/api/app-info').then((i) => setFullscreen((f) => (f.on === i.fullscreen ? f : { ...f, on: i.fullscreen }))).catch(() => undefined)
+      }, 250)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [fullscreen.supported])
   useEffect(() => {
     ;(window as { pitchMenu?: (id: string) => void }).pitchMenu = runMenu
   }, [runMenu])
@@ -445,7 +470,7 @@ export default function App() {
               <Glyph />
               <h1 className="lbl text-glow text-[15px] font-semibold tracking-[0.14em]">PitchControl!</h1>
             </div>
-            {menus && (
+            {menus && showDrawnMenu(menuMode, fullscreen.on) && (
               <div className="ml-1 flex h-full min-w-0 flex-1 items-stretch">
                 <AppMenu
                   menus={menus}
@@ -488,7 +513,7 @@ export default function App() {
             {fullscreen.supported && (
               <button
                 onClick={toggleFullscreen}
-                data-tip="Full screen covers the whole screen and the camera notch strip; on the Mac the menu bar and the Dock slide in when the pointer reaches the screen edge"
+                data-tip="Full screen covers the whole screen and the camera notch strip; on the Mac the menu bar and the Dock are hidden and the menu is drawn next to the logo"
                 className={`lbl ml-auto flex items-center gap-2 border-l border-edge px-4 text-[12px] ${fullscreen.on ? 'text-ink' : 'text-dim'} hover:bg-panel-2`}
               >
                 <span className="font-mono text-[11px] opacity-60">F</span>
