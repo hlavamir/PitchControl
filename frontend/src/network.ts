@@ -43,6 +43,23 @@ export function portProblem(text: string): string | null {
   return /^[0-9]+$/.test(text) && n >= PORT_MIN && n <= PORT_MAX ? null : `The port is a number from ${PORT_MIN} to ${PORT_MAX}`
 }
 
+/** The empty border round a QR code, in modules: the standard asks for four, and a scanner that is given less may not find the code. */
+export const QR_QUIET = 4
+
+/** The code as pixels, ``scale`` pixels a module, the quiet zone included (RGBA, row by row): modules in ``module``, the rest in ``ground``. */
+export function qrPixels(matrix: boolean[][], scale: number, module: [number, number, number], ground: [number, number, number]): { width: number; data: Uint8ClampedArray } {
+  const width = (matrix.length + 2 * QR_QUIET) * scale
+  const data = new Uint8ClampedArray(width * width * 4)
+  for (let y = 0; y < width; y++)
+    for (let x = 0; x < width; x++) {
+      const my = Math.floor(y / scale) - QR_QUIET
+      const mx = Math.floor(x / scale) - QR_QUIET
+      const [r, g, b] = matrix[my]?.[mx] ? module : ground
+      data.set([r, g, b, 255], (y * width + x) * 4)
+    }
+  return { width, data }
+}
+
 /** One SVG path for the dark modules of a QR code (a unit square each). */
 export function qrPath(matrix: boolean[][]): string {
   let d = ''

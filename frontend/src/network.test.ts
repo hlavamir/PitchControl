@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { isPrivate, pinProblem, portProblem, qrPath, sortAddresses, type NetworkAddress } from './network'
+import jsQR from 'jsqr'
+import { encode } from 'uqr'
+import { QR_QUIET, isPrivate, pinProblem, portProblem, qrPath, qrPixels, sortAddresses, type NetworkAddress } from './network'
 
 const addr = (ip: string): NetworkAddress => ({ name: ip, ip, url: `http://${ip}:8420`, listening: true })
 
@@ -32,5 +34,32 @@ describe('portProblem', () => {
 describe('qrPath', () => {
   it('draws a square per dark module', () => {
     expect(qrPath([[true, false], [false, true]])).toBe('M0 0h1v1h-1zM1 1h1v1h-1z')
+  })
+})
+
+describe('the QR code in the app colours, inverted', () => {
+  const INK: [number, number, number] = [233, 196, 106] // amber
+  const GROUND: [number, number, number] = [15, 16, 17]
+  const url = 'http://192.168.1.23:8420'
+  const matrix = encode(url, { ecc: 'M', border: 0 }).data
+
+  it('has a quiet zone of four modules', () => {
+    expect(QR_QUIET).toBeGreaterThanOrEqual(4)
+    const { width, data } = qrPixels(matrix, 4, INK, GROUND)
+    expect(width).toBe((matrix.length + 2 * QR_QUIET) * 4)
+    for (let i = 0; i < QR_QUIET * 4 * width; i++) expect([...data.slice(i * 4, i * 4 + 3)]).toEqual(GROUND) // the rows above the code
+  })
+
+  it('reads back as the address once it is inverted again (light modules on dark, as drawn)', () => {
+    const { width, data } = qrPixels(matrix, 6, INK, GROUND)
+    // what a scanner that can't read inverted codes would do first: swap light and dark
+    const inverted = new Uint8ClampedArray(data.length)
+    for (let i = 0; i < data.length; i += 4) {
+      const dark = data[i] + data[i + 1] + data[i + 2] < 255 // the ground is dark, the amber module light
+      inverted.set(dark ? [255, 255, 255, 255] : [0, 0, 0, 255], i)
+    }
+    expect(jsQR(inverted, width, width)?.data).toBe(url)
+    // and the code as drawn is read by a scanner that tries both polarities
+    expect(jsQR(data, width, width, { inversionAttempts: 'attemptBoth' })?.data).toBe(url)
   })
 })

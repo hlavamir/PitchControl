@@ -19,6 +19,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 - A link of a fixture type (its manual, …) can be opened in the browser from the Fixtures page; besides the project's pages, only the web addresses the user's own types carry.
 
 ### Changed
+- **The network QR code** (Settings → Network) is drawn in the app's colours, inverted: modules in the ink (amber by default; it follows the chosen ink) on the dark ground, with the standard four-module quiet zone instead of two. The current iPhone and Android camera apps read inverted codes; some older or third-party scanners don't (the fallback would be amber modules on a light border). A test renders the code, inverts it back and decodes it with jsQR (a new dev dependency).
 - The ten shipped fixture types are regenerated in the new shape (the same modes and values; each now carries its Open Fixture Library data and, for the three built from manuals, the hand-written OFL-format data). `tools/fixture_library.py` runs on the app's import and keeps the OFL originals at the pinned commit in `tools/fixture_sources/ofl/` (offline, and what the tests check the types against).
 
 ### Fixed
