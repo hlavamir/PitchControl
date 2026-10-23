@@ -83,10 +83,10 @@ export function LogSection({ index, engine }: { index: string; engine: EngineCon
       index={index}
       title="Log"
       right={`${lines.length} line${lines.length === 1 ? '' : 's'} · this run`}
-      tip="The log of this run: what the app and the engine report. Errors are red, warnings amber, debug lines dim. Attach it to a bug report with Copy, or the file (Settings → App → Open logs folder)"
-      className="wide:col-span-2"
+      tip="The log of this run: what the app and the engine report. Errors are red, warnings amber, debug lines dim. Attach it to a bug report with Copy, or the file (File → Open logs folder)"
+      className="min-h-0 flex-1" // takes what is left of its column, so the page fits the window
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
+      <div className="mb-2 flex flex-none items-center justify-between gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-[12px]" data-tip="Keep the view at the newest line. Scrolling up stops it, and so does switching it off; scroll back to the end or switch it on to follow again">
           <Toggle checked={follow.auto} onChange={() => setFollow(followAfterToggle)} label="Auto-scroll" />
           {!follow.auto && follow.paused && <span className="lbl text-[10px] text-dim">paused: you scrolled up</span>}
@@ -107,7 +107,7 @@ export function LogSection({ index, engine }: { index: string; engine: EngineCon
         role="log"
         aria-label="Log of this run"
         data-hint="info"
-        className="h-[340px] overflow-auto border border-edge bg-ground p-2 font-mono text-[12px] leading-[1.45] select-text"
+        className="max-h-[340px] min-h-[220px] flex-1 overflow-auto wide:max-h-none border border-edge bg-ground p-2 font-mono text-[12px] leading-[1.45] select-text"
       >
         {lines.length ? lines.map((r) => <Line key={r.seq} r={r} />) : <span className="text-dim">Nothing logged yet.</span>}
       </div>

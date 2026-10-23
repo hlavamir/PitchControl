@@ -14,7 +14,7 @@ const INK_NAMES: [InkName, string][] = [
 ]
 
 /**
- * Settings: appearance (ink colour, UI scale, key hints), the engine, the network, the app and the log of this
+ * Settings: appearance (ink colour, UI scale, key hints, start in full screen), the engine, the network and the log of this
  * run (the keyboard reference, About and Support are on the Help page).
  * Changes apply immediately and are saved to settings.json, so they are restored next session.
  */
@@ -59,7 +59,7 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
   useFieldNav({ root: pageRef })
 
   return (
-    <div ref={pageRef} className="grid gap-1.5 wide:grid-cols-2">
+    <div ref={pageRef} className="grid h-full gap-1.5 wide:grid-cols-2 wide:grid-rows-[minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-1.5">
       <Section
         index="01"
@@ -137,6 +137,22 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
             {ui.key_hints ? 'On' : 'Off'}
           </button>
         </div>
+        {desktop && (
+          <div className="flex items-center justify-between border-t border-seam pt-3.5">
+            <span className="flex flex-col gap-1">
+              <span className="lbl text-[12px]">Start in full screen</span>
+              <span className="lbl text-[10px] text-dim">F toggles full screen any time · covers the notch strip; on a Mac the menu bar and Dock slide in at the screen's edge</span>
+            </span>
+            <button
+              data-hint="toggle"
+              data-tip="Open the app in full screen next time; F toggles full screen at any time"
+              onClick={() => change({ start_fullscreen: !ui.start_fullscreen })}
+              className={`lbl h-[34px] px-4 text-[12px] ${ui.start_fullscreen ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge'}`}
+            >
+              {ui.start_fullscreen ? 'On' : 'Off'}
+            </button>
+          </div>
+        )}
       </Section>
       <Section
         index="02"
@@ -162,40 +178,10 @@ export function Settings({ ui, onChange, desktop, local, engine }: { ui: UiSetti
 
       <div className="flex min-w-0 flex-col gap-1.5">
       <NetworkSection index="03" desktop={desktop} />
-      {desktop && (
-        <Section index="04" title="App" right="desktop app" tip="Desktop app only: the app is a window around the same UI that a browser can show">
-          <div className="flex gap-1.5">
-            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Open this UI in the default browser, e.g. for a second screen" onClick={() => api.post('/api/open-browser')}>
-              Open in browser
-            </button>
-            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Show your data folder (your rigs, fixture types, scenes and settings) in Finder / Explorer" onClick={() => api.post('/api/open-data-folder')}>
-              Open data folder
-            </button>
-            <button className="lbl glow-hover h-8 border border-edge px-3 text-[11px]" data-tip="Show the log files (one per start) in Finder / Explorer: attach the latest one to a bug report (About → Report a problem)" onClick={() => api.post('/api/open-logs-folder')}>
-              Open logs folder
-            </button>
-          </div>
-          <div className="mt-3 flex items-center justify-between border-t border-seam pt-3">
-            <span className="flex flex-col gap-1">
-              <span className="lbl text-[12px]">Start in full screen</span>
-              <span className="lbl text-[10px] text-dim">F toggles full screen any time · covers the notch strip, hides menu bar and Dock</span>
-            </span>
-            <button
-              data-hint="toggle"
-              data-tip="Open the app in full screen next time; F toggles full screen at any time"
-              onClick={() => change({ start_fullscreen: !ui.start_fullscreen })}
-              className={`lbl h-[34px] px-4 text-[12px] ${ui.start_fullscreen ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge'}`}
-            >
-              {ui.start_fullscreen ? 'On' : 'Off'}
-            </button>
-          </div>
-          <span className="lbl mt-3 text-[10px] text-dim">The browser view can also be used on a second screen, or on a phone or iPad (Network)</span>
-        </Section>
-      )}
+      {local && <LogSection index="04" engine={engine} />}
 
       </div>
 
-      {local && <LogSection index="05" engine={engine} />}
     </div>
   )
 }

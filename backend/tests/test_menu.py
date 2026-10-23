@@ -32,7 +32,7 @@ def test_one_definition_for_both_platforms():
     assert labels("mac", "File") == ["Save", None, "Import Fixture", None, "Open data folder", "Open logs folder"]  # Quit ⌘Q is in the application menu
     assert labels("mac", "PitchControl") == ["About PitchControl", "Settings…"]
     assert labels("win", "Edit") == labels("mac", "Edit") == ["Cut", "Copy", "Paste", None, "Select All"]
-    assert labels("win", "View") == [*PAGES, None, "Full screen"]
+    assert labels("win", "View") == labels("mac", "View") == [*PAGES, None, "Full screen", "Open in browser"]
     assert labels("mac", "Window") == ["Minimize", "Zoom"]
     assert labels("win", "Window") == ["Minimize", "Maximize"]
     assert labels("win", "Help") == ["Documentation", "Keyboard shortcuts", None, "Show log", "Report a problem", "Join the Discord", None, "About PitchControl"]
@@ -144,7 +144,7 @@ class FakeWindow:
 
 def actions(window=None):
     opened, revealed = [], []
-    a = MenuActions("/data", "/logs", window=window, opener=opened.append, revealer=revealed.append)
+    a = MenuActions("/data", "/logs", window=window, url="http://127.0.0.1:8420", opener=opened.append, revealer=revealed.append)
     return a, opened, revealed
 
 
@@ -157,6 +157,8 @@ def test_app_actions():
     a.run("help.docs")
     a.run("help.discord")
     assert opened == [DOCS_URL, DISCORD_URL]
+    a.run("view.browser")  # the app's own UI in the default browser (item 68: no longer a button in Settings)
+    assert opened[-1] == "http://127.0.0.1:8420"
     a.run("window.minimize")
     a.zoomed = False
     a.run("window.maximize")

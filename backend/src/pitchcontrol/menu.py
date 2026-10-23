@@ -97,6 +97,7 @@ MENUS: list[tuple[str, list[Item | Submenu | None]]] = [
             *(Item(f"view.page.{n}", page, "ui", win_key=str(n), mac_key=f"cmd+{n}") for n, page in enumerate(PAGES, 1)),
             SEPARATOR,
             Item("view.fullscreen", "Full screen", "ui", win_key="F", mac_key="ctrl+cmd+f"),
+            Item("view.browser", "Open in browser", "app"),  # the UI in the default browser, e.g. on a second screen
         ],
     ),
     (
@@ -198,11 +199,13 @@ class MenuActions:
         data_dir: str,
         logs_dir: str,
         window=None,
+        url: str = "",
         opener: Callable[[str], object] = webbrowser.open,
         revealer: Callable[[str], None] = reveal,
     ) -> None:
         self.data_dir = data_dir
         self.logs_dir = logs_dir
+        self.url = url  # the address of this app's own UI (View → Open in browser)
         self.window = window
         self.opener = opener
         self.revealer = revealer
@@ -221,6 +224,9 @@ class MenuActions:
             self.revealer(self.data_dir)
         elif item_id == "file.logs_folder":
             self.revealer(self.logs_dir)
+        elif item_id == "view.browser":
+            if self.url:
+                self.opener(self.url)
         elif item_id == "help.docs":
             self.opener(DOCS_URL)
         elif item_id == "help.discord":

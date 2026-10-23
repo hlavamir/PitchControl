@@ -13,7 +13,7 @@ describe('issueUrl', () => {
     expect(body).toContain('**System:** Windows 11 (10.0.26300, AMD64)')
     expect(body).toContain('**Opened from:** desktop app')
     for (const heading of ['### What happened', '### What you expected', '### Steps']) expect(body).toContain(heading)
-    expect(body).toMatch(/attach the newest log file .*Settings → App → Open logs folder\. The newest file is the current run\.$/)
+    expect(body).toMatch(/attach the newest log file .*File → Open logs folder\. The newest file is the current run\.$/)
   })
 
   it('encodes what would break the query: + & # line breaks and non-ASCII', () => {
@@ -36,7 +36,7 @@ describe('issueUrl', () => {
     const body = issueBody({ ...info, client: 'network', userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)' })
     expect(body).toContain('**Opened from:** browser on another device on the network')
     expect(body).toContain('**Browser:** Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)')
-    expect(body).toContain('on the computer that runs PitchControl: Settings → App → Open logs folder')
+    expect(body).toContain('on the computer that runs PitchControl: File → Open logs folder')
     expect(issueBody({ ...info, userAgent: 'WebView2' })).not.toContain('**Browser:**') // the desktop app's own window
   })
 })

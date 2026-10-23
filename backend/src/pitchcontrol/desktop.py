@@ -109,7 +109,7 @@ def main() -> None:
         log.warning("--host %s is ignored: other devices are allowed in Settings → Network (the switch, a fixed port, an optional PIN)", args.host)
     port = free_port(args.port)
     url = f"http://127.0.0.1:{port}"
-    menu = MenuActions(str(paths.user), str(paths.logs))  # the menu bar's actions (menu.py); the window comes later
+    menu = MenuActions(str(paths.user), str(paths.logs), url=url)  # the menu bar's actions (menu.py); the window comes later
     desktop_hooks: dict = {"url": url, "data_dir": str(paths.user), "logs_dir": str(paths.logs), "menu": menu}
     app = create_app(engine, static_dir=bundled_frontend(res), desktop=desktop_hooks)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))

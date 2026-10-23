@@ -27,9 +27,9 @@ const CLIENT_LABEL: Record<Client, string> = {
 
 // the newest log is on the computer that runs PitchControl; from source the logs are in the Computer folder's logs/
 const LOG_HINT: Record<Client, string> = {
-  desktop: 'Settings → App → Open logs folder',
+  desktop: 'File → Open logs folder',
   browser: 'the logs folder inside the Computer folder shown in Help → About',
-  network: 'on the computer that runs PitchControl: Settings → App → Open logs folder',
+  network: 'on the computer that runs PitchControl: File → Open logs folder',
 }
 
 /** The issue text: what we know about the app, then the headings for the user to fill in, then the log request. */

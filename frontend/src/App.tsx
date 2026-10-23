@@ -522,7 +522,7 @@ export default function App() {
         </header>
 
         {notices.length > 0 && (
-          <div className="mx-1.5 mt-1.5 flex flex-none items-start gap-3 border border-ink px-3 py-2 text-[12px]" data-hint="info" data-tip="Found while loading your configuration; details are in the log (Settings → App → Open logs folder)">
+          <div className="mx-1.5 mt-1.5 flex flex-none items-start gap-3 border border-ink px-3 py-2 text-[12px]" data-hint="info" data-tip="Found while loading your configuration; details are in the log (File → Open logs folder)">
             <ul className="flex min-w-0 flex-1 flex-col gap-1 leading-snug">
               {notices.map((n) => (
                 <li key={n}>{n}</li>
