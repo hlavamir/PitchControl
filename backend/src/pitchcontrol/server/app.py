@@ -198,7 +198,7 @@ def create_app(
             "fullscreen": bool(fs and fs.active),
             "version": version_label(),
             "system": system_label(),  # for Settings → Report a problem
-            "platform": sys.platform,  # the computer that runs PitchControl: Windows draws its menu bar, macOS in full screen
+            "platform": sys.platform,  # the computer that runs PitchControl: the Windows app draws its menu bar
         }
 
     @app.post("/api/fullscreen", dependencies=local_only)
@@ -272,8 +272,7 @@ def create_app(
     # ------------------------------------------------------------------ menu bar (menu.py)
     @app.get("/api/menu", dependencies=local_only)
     def menu():
-        """The menus the app draws in its header: always on Windows, on macOS in its own full screen (item 72; outside it
-        macOS has the native menu bar)."""
+        """The menus the Windows app draws in its header (macOS has the native menu bar)."""
         return {"platform": platform_of(), "menus": menu_json(platform_of())}
 
     @app.post("/api/menu/{item_id}", dependencies=local_only)

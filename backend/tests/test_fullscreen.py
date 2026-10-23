@@ -1,7 +1,6 @@
-"""The macOS full screen (fullscreen.py, items 69, 71, 72): the menu bar and the Dock are hidden for good (the page
-draws the menu), the borderless window covers the whole screen and is the key window that takes mouse-moved events,
-which the web view's hover needs, also when the app starts in full screen. AppKit is not there on other platforms, so
-a stand-in is used."""
+"""Full screen (fullscreen.py, item 78): macOS uses the window's own native full screen, the one behind the green button
+and ⌃⌘F, and keeps its state from the window's notifications; other platforms use pywebview's. AppKit is not there on
+other platforms, so a stand-in is used."""
 
 from __future__ import annotations
 
@@ -9,14 +8,11 @@ import logging
 import sys
 import types
 
-import pitchcontrol.fullscreen as fullscreen
 from pitchcontrol.fullscreen import Fullscreen
 
-# NSApplicationPresentationOptions, from Apple's headers
-AUTO_HIDE_DOCK = 1 << 0
-HIDE_DOCK = 1 << 1
-AUTO_HIDE_MENU_BAR = 1 << 2
-HIDE_MENU_BAR = 1 << 3
+STYLE_FULLSCREEN = 1 << 14  # NSWindowStyleMaskFullScreen, from Apple's headers
+BEHAVIOR_MANAGED = 1 << 2
+BEHAVIOR_FULLSCREEN_PRIMARY = 1 << 7
 
 
 class Rect:
@@ -24,304 +20,123 @@ class Rect:
         self.origin = types.SimpleNamespace(x=x, y=y)
         self.size = types.SimpleNamespace(width=w, height=h)
 
-    def __eq__(self, other):
-        return (self.origin.x, self.origin.y, self.size.width, self.size.height) == (other.origin.x, other.origin.y, other.size.width, other.size.height)
-
-
-class FakeApp:
-    def __init__(self):
-        self.options = []
-        self.activated = 0
-
-    def setPresentationOptions_(self, options):
-        self.options.append(options)
-
-    def activateIgnoringOtherApps_(self, flag):
-        self.activated += 1
-
-    def isActive(self):
-        return True
-
-
-class FakeView:
-    """The window's content view (the web view once the page has loaded)."""
-
-    def __init__(self, web=True):
-        self.areas = []
-        self.pywebview_window = object() if web else None  # pywebview's WebKitHost carries it; its placeholder view doesn't
-
-    @classmethod
-    def alloc(cls):
-        return cls(web=False)
-
-    def init(self):
-        return self
-
-    def bounds(self):
-        return Rect(0, 0, 1512, 982)
-
-    def addTrackingArea_(self, area):
-        self.areas.append(area)
-
-    def removeTrackingArea_(self, area):
-        self.areas.remove(area)
-
 
 class FakeNative:
-    def __init__(self, screen):
-        self._screen = screen
-        self._frame = Rect(100, 100, 1200, 800)
-        self.style = 15
-        self.shadow = True
-        self.mouse_moved = False
-        self.key = False
-        self.view = FakeView()
-        self.responder = None
-        self.calls = []
+    """A window: toggleFullScreen_ flips the full screen bit, as AppKit does when the transition starts."""
 
-    def frame(self):
-        return self._frame
+    def __init__(self):
+        self.style = 15
+        self.behavior = None
+        self.toggles = 0
+        self._frame = Rect(100, 100, 1200, 800)
 
     def styleMask(self):
         return self.style
 
-    def hasShadow(self):
-        return self.shadow
-
-    def screen(self):
-        return self._screen
-
-    def contentView(self):
-        return self.view
-
-    def setContentView_(self, view):
-        self.view = view
-        self.calls.append("content" if view.pywebview_window is not None else "placeholder")
-
-    def setStyleMask_(self, mask):
-        self.style = mask
-
-    def setHasShadow_(self, on):
-        self.shadow = on
-
-    def setFrame_display_(self, rect, display):
-        self._frame = rect
-
-    def setAcceptsMouseMovedEvents_(self, on):
-        self.mouse_moved = on
-
-    def acceptsMouseMovedEvents(self):
-        return self.mouse_moved
-
-    def makeKeyAndOrderFront_(self, sender):
-        self.key = True
-        self.calls.append("front")
-
-    def isKeyWindow(self):
-        return self.key
-
-    def makeFirstResponder_(self, view):
-        self.responder = view
-        self.calls.append("responder")
-
-    def firstResponder(self):
-        return self.responder
+    def frame(self):
+        return self._frame
 
     def setCollectionBehavior_(self, behavior):
-        self.calls.append(("behavior", behavior))
+        self.behavior = behavior
+
+    def toggleFullScreen_(self, sender):
+        self.toggles += 1
+        self.style ^= STYLE_FULLSCREEN
 
 
-class FakeNSObject:
-    @classmethod
-    def alloc(cls):
-        return cls()
+class FakeCenter:
+    def __init__(self):
+        self.observers = {}
 
-    def init(self):
-        return self
+    def addObserverForName_object_queue_usingBlock_(self, name, obj, queue, block):
+        self.observers[name] = block
+        return object()
 
-
-class FakeTrackingArea:
-    @classmethod
-    def alloc(cls):
-        return cls()
-
-    def initWithRect_options_owner_userInfo_(self, rect, options, owner, info):
-        self.options, self.owner = options, owner
-        return self
+    def post(self, name):
+        self.observers[name](None)
 
 
 def mac_fullscreen(monkeypatch):
-    app = FakeApp()
-    appkit = types.SimpleNamespace(
-        NSApplication=types.SimpleNamespace(sharedApplication=lambda: app),
-        NSScreen=types.SimpleNamespace(mainScreen=lambda: None),
-        NSObject=FakeNSObject,
-        NSView=FakeView,
-        NSTrackingArea=FakeTrackingArea,
-        NSTrackingMouseEnteredAndExited=1,
-        NSTrackingActiveAlways=0x80,
-        NSTrackingInVisibleRect=0x200,
-    )
+    center = FakeCenter()
+    appkit = types.SimpleNamespace(NSNotificationCenter=types.SimpleNamespace(defaultCenter=lambda: center))
     monkeypatch.setitem(sys.modules, "AppKit", appkit)
-    monkeypatch.setattr(fullscreen, "_owner_class", None)
-    screen = types.SimpleNamespace(frame=lambda: Rect(0, 0, 1512, 982))  # a 14" MacBook with the notch: the whole panel
-    native = FakeNative(screen)
+    native = FakeNative()
     fs = Fullscreen(types.SimpleNamespace(native=native))
     fs.mac = True
-    fs._later = lambda seconds, fn: fn()  # the delayed checks run at once
     fs._on_main = lambda fn: fn()
-    return fs, app, native
+    return fs, native, center
 
 
-def test_the_option_values_are_the_hide_ones():
-    assert fullscreen._HIDE_DOCK == HIDE_DOCK == 2
-    assert fullscreen._HIDE_MENU_BAR == HIDE_MENU_BAR == 8
+ENTER, EXIT = "NSWindowDidEnterFullScreenNotification", "NSWindowDidExitFullScreenNotification"
 
 
-def test_full_screen_hides_the_menu_bar_and_the_dock_and_covers_the_screen(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    original = native.frame()
-    fs.active = True
-    fs._apply_mac(True)
-    # hidden for good (item 72): an auto-hiding menu bar waits for the mouse in the header's top row, where the bubbles'
-    # indicators are (item 71); the menus are the page's own drawn menu
-    assert app.options == [HIDE_DOCK | HIDE_MENU_BAR]
-    assert app.options[-1] & (AUTO_HIDE_DOCK | AUTO_HIDE_MENU_BAR) == 0
-    assert native.frame() == Rect(0, 0, 1512, 982)  # the whole screen, notch strip and menu bar area included
-    assert native.style == fullscreen._STYLE_BORDERLESS and native.shadow is False
-    fs._apply_mac(False)
-    assert app.options[-1] == 0  # back to the normal menu bar and Dock
-    assert native.frame() == original and native.style == 15 and native.shadow is True
-
-
-def test_the_borderless_window_is_key_and_takes_mouse_moved_events(monkeypatch, caplog):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    fs.active = True
-    with caplog.at_level(logging.INFO, logger="pitchcontrol.fullscreen"):
-        fs._apply_mac(True)
-    assert native.mouse_moved is True  # the web view's hover (bubbles, footer hints, the menu) needs mouse-moved events
-    assert native.key and app.activated >= 1  # ... in the key window of the active app
-    assert native.responder is native.view
-    # ... asked again later: at start-up this ran before the web view was the content view
-    assert native.calls.count("front") == 1 + len(fullscreen._RETAKE_AFTER)
-    assert any("key window True, app active True, accepts mouse moved True" in r.message for r in caplog.records)
-
-
-def test_it_is_asked_again_when_the_page_has_loaded(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    loaded = []
-
-    class Event:
-        def __iadd__(self, fn):
-            loaded.append(fn)
-            return self
-
-    fs.window = types.SimpleNamespace(native=native, events=types.SimpleNamespace(loaded=Event()))
+def test_the_green_button_becomes_full_screen(monkeypatch):
+    fs, native, _ = mac_fullscreen(monkeypatch)
     fs.setup()
-    assert loaded == [fs._on_loaded]
-    native.key = False
-    fs._on_loaded()  # not in full screen: nothing
-    assert not native.key
-    fs.active = True
-    fs._on_loaded()  # in full screen (a start in full screen: the page loads after it began)
-    assert native.key and native.mouse_moved
+    assert native.behavior == BEHAVIOR_MANAGED | BEHAVIOR_FULLSCREEN_PRIMARY
 
 
-def test_the_first_mouse_entering_takes_the_mouse_if_the_window_isnt_ready(monkeypatch, caplog):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    fs.active = True
-    fs._apply_mac(True)
-    assert len(native.view.areas) == 1  # one tracking area, however often it is asked again
-    area = native.view.areas[0]
-    assert area.options == 1 | 0x80 | 0x200  # entered / exited, active even when the window isn't key, the visible rect
-    owner = area.owner
-    before = native.calls.count("front")
-    owner.mouseEntered_(None)  # ready: key, mouse-moved, the view the first responder
-    assert native.calls.count("front") == before
-    native.key = False  # something took the key away
+def test_set_uses_the_windows_own_full_screen_and_nothing_else(monkeypatch):
+    fs, native, _ = mac_fullscreen(monkeypatch)
+    assert fs.set(True) is True
+    assert native.toggles == 1 and native.style & STYLE_FULLSCREEN
+    assert native.style & ~STYLE_FULLSCREEN == 15  # no style mask change of ours: the window stays as it is
+    assert fs.set(False) is False
+    assert native.toggles == 2 and not native.style & STYLE_FULLSCREEN
+
+
+def test_asking_for_the_state_it_is_in_does_nothing(monkeypatch):
+    fs, native, _ = mac_fullscreen(monkeypatch)
+    fs.set(False)
+    assert native.toggles == 0
+    fs.set(True)
+    fs.set(True)
+    assert native.toggles == 1
+
+
+def test_a_window_that_is_in_full_screen_already_is_not_toggled_out_again(monkeypatch):
+    """The green button was faster than the page: the window is in full screen, ``active`` not yet told."""
+    fs, native, _ = mac_fullscreen(monkeypatch)
+    native.style |= STYLE_FULLSCREEN
+    fs.set(True)
+    assert native.toggles == 0 and fs.active
+
+
+def test_the_state_follows_the_window_whoever_changes_it(monkeypatch, caplog):
+    fs, native, center = mac_fullscreen(monkeypatch)
+    fs.setup()
     with caplog.at_level(logging.INFO, logger="pitchcontrol.fullscreen"):
-        owner.mouseEntered_(None)
-    assert native.key and native.calls.count("front") == before + 1
-    assert any("the mouse entered a window that was not ready" in r.message for r in caplog.records)
-    native.responder = None  # the web view isn't the first responder (pywebview swapped it in)
-    owner.mouseEntered_(None)
-    assert native.responder is native.view
-    fs.active = False  # the normal window keeps its hover too
-    native.key = False
-    owner.mouseEntered_(None)
-    assert native.key
+        center.post(ENTER)  # the green button or ⌃⌘F
+        assert fs.active
+        center.post(EXIT)
+        assert not fs.active
+    assert "full screen on: window 1200x800 at (100,100)" in caplog.text
+    assert "full screen off" in caplog.text and "off: window" not in caplog.text  # leaving: the frame is the animation's
 
 
-def test_the_watcher_follows_a_new_content_view(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    fs.active = True
-    fs._apply_mac(True)
-    old = native.view
-    native.view = FakeView()  # pywebview put the web view in as the content view
-    fs._retake()
-    assert old.areas == [] and len(native.view.areas) == 1
+def test_toggle_after_the_window_changed_by_itself(monkeypatch):
+    fs, native, center = mac_fullscreen(monkeypatch)
+    fs.setup()
+    native.style |= STYLE_FULLSCREEN
+    center.post(ENTER)
+    assert fs.toggle() is False  # one press of F leaves it
+    assert native.toggles == 1 and not native.style & STYLE_FULLSCREEN
 
 
-def test_every_entry_and_every_exit_does_the_same(monkeypatch, caplog):
-    """Item 72: after leaving full screen and entering it again the menu stopped reacting to the mouse. The web view is
-    put in the window again, the mouse taken and the tracking area installed after each style mask change, in both
-    directions, with the delayed checks each time."""
-    fs, app, native = mac_fullscreen(monkeypatch)
-    web = native.view
-    fs._saved = None
-    original = native.style
-    seen = []
-    with caplog.at_level(logging.INFO, logger="pitchcontrol.fullscreen"):
-        for step in (True, False, True, False, True):
-            native.key, native.mouse_moved, native.responder = False, False, "stale"  # the style mask change took them
-            before = len(native.calls)
-            fs.active = step
-            fs._apply_mac(step)
-            calls = native.calls[before:]
-            assert calls.count("placeholder") == 1 and calls.count("content") == 1  # the web view was put back
-            assert calls.index("placeholder") < calls.index("content") < calls.index("front")
-            assert calls.count("front") == 1 + len(fullscreen._RETAKE_AFTER)  # the mouse taken, and again later
-            assert native.key and native.mouse_moved and native.responder is web and native.view is web
-            assert len(web.areas) == 1  # one tracking area, new each time (never two, never none)
-            assert (native.style == fullscreen._STYLE_BORDERLESS) is step
-            seen.append(native.frame() == Rect(0, 0, 1512, 982))
-    assert seen == [True, False, True, False, True]
-    assert native.style == fullscreen._STYLE_BORDERLESS and original == 15
-    states = [r.message for r in caplog.records if r.message.startswith("full screen on:") or r.message.startswith("full screen off:")]
-    assert len(states) == 5 + 5 * (1 + len(fullscreen._RETAKE_AFTER))  # the entry / exit line and each check's state, in the log
+def test_no_window_is_no_error(monkeypatch):
+    fs, _, _ = mac_fullscreen(monkeypatch)
+    fs.window = types.SimpleNamespace(native=None)
+    fs.setup()
+    fs.set(True)
 
 
-def test_the_delayed_checks_of_an_earlier_entry_stop_when_the_state_changes(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    pending = []
-    fs._later = lambda seconds, fn: pending.append(fn)
-    fs.active = True
-    fs._apply_mac(True)
-    first = list(pending)
-    pending.clear()
-    fs.active = False
-    fs._apply_mac(False)
-    before = native.calls.count("front")
-    for fn in first:  # the entry's checks, after the exit
-        fn()
-    assert native.calls.count("front") == before
-    for fn in pending:  # the exit's own
-        fn()
-    assert native.calls.count("front") == before + len(pending)
-
-
-def test_the_placeholder_view_is_left_alone_before_the_page_has_loaded(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    native.view = FakeView(web=False)  # pywebview's own, until the page has loaded
-    fs.active = True
-    fs._apply_mac(True)
-    assert "placeholder" not in native.calls and "content" not in native.calls
-    assert native.key and native.mouse_moved
-
-
-def test_a_watcher_that_fails_does_not_stop_full_screen(monkeypatch):
-    fs, app, native = mac_fullscreen(monkeypatch)
-    monkeypatch.setattr(sys.modules["AppKit"], "NSTrackingArea", None)
-    fs.active = True
-    fs._apply_mac(True)
-    assert native.key and native.frame() == Rect(0, 0, 1512, 982)
+def test_other_platforms_use_pywebviews_full_screen():
+    calls = []
+    window = types.SimpleNamespace(toggle_fullscreen=lambda: calls.append("toggle"), native=None)
+    fs = Fullscreen(window)
+    fs.mac = False
+    fs.setup()  # nothing to set up
+    assert fs.set(True) is True and fs.active
+    assert fs.set(True) is True  # already there
+    assert fs.toggle() is False
+    assert calls == ["toggle", "toggle"]

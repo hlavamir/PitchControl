@@ -1,26 +1,21 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { modalOpen } from '../modal'
-import { APP_MENU, AltTap, CLOSED, accessKey, activate, altLetter, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
-
-const MAC = navigator.userAgent.includes('Mac')
+import { AltTap, CLOSED, accessKey, activate, isSub, menuKey, openByLetter, type MenuDef, type MenuItemDef, type MenuState } from '../appMenu'
 
 /**
- * The app's drawn menu bar, in the header row next to the logo (item 52): always in the Windows app, on macOS only in
- * PitchControl's own full screen, where the native menu bar is hidden (item 72; otherwise macOS has it). The items
+ * The Windows app's menu bar, in the header row next to the logo (item 52; macOS has the native menu bar). The items
  * never take the focus: a text field keeps its caret and selection, so Cut, Copy and Paste act on it. Keyboard: Alt
  * (or F10) gives the bar the keys, Alt+letter opens a menu, ← → ↓ ↑ move, ⏎ runs, Esc closes (appMenu.ts); an item with ▸
  * opens a submenu to its right (→ or ⏎).
  */
 export function AppMenu({
   menus,
-  logo,
   run,
   enabled,
   checked,
   label,
 }: {
   menus: MenuDef[]
-  logo?: ReactNode // the wordmark, shown as the title of the application menu (macOS: About, Settings…, Quit)
   run: (id: string) => void
   enabled: (id: string) => boolean
   checked: (id: string) => boolean // a small mark: the current page, full screen on
@@ -49,9 +44,8 @@ export function AppMenu({
         e.stopPropagation()
         return choose(s.active ? CLOSED : activate())
       }
-      const letter = e.altKey && !e.ctrlKey && !e.metaKey ? altLetter(e) : null
-      if (letter) {
-        const opened = openByLetter(ms, letter, en) // Alt+F, Alt+E, Alt+V, Alt+W, Alt+H (Option on a Mac)
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.length === 1) {
+        const opened = openByLetter(ms, e.key, en) // Alt+F, Alt+E, Alt+V, Alt+W, Alt+H
         if (opened) {
           e.preventDefault()
           e.stopPropagation()
@@ -116,10 +110,9 @@ export function AppMenu({
   const openAt = (index: number): MenuState => ({ ...CLOSED, active: true, menu: index, open: true })
 
   return (
-    <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip={`Menu bar: ${MAC ? 'Option' : 'Alt'} or F10 gives it the keys, ${MAC ? 'Option' : 'Alt'} + the underlined letter opens a menu`}>
+    <div ref={root} role="menubar" className="flex h-full items-stretch" data-hint="info" data-tip="Menu bar: Alt or F10 gives it the keys, Alt + the underlined letter opens a menu">
       {menus.map((m, i) => {
         const lit = state.active && state.menu === i
-        const isLogo = Boolean(logo) && m.title === APP_MENU
         return (
           <div key={m.title} className="relative flex">
             <button
@@ -134,14 +127,9 @@ export function AppMenu({
                 setState(lit && state.open ? CLOSED : openAt(i))
               }}
               onMouseEnter={() => state.open && !lit && setState(openAt(i))}
-              data-tip={isLogo ? 'PitchControl menu: About, Settings, Quit' : undefined}
-              className={`lbl flex items-center text-[12px] ${isLogo ? 'gap-2.5 px-2.5' : 'px-2.5'} ${
-                lit ? `glow-on bg-ink text-ground ${isLogo ? '[&_.bg-ink]:bg-ground' : ''}` : 'text-ink hover:bg-panel-2'
-              }`}
+              className={`lbl flex items-center px-2.5 text-[12px] ${lit ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'}`}
             >
-              {isLogo ? (
-                logo
-              ) : state.keys && state.active ? (
+              {state.keys && state.active ? (
                 <>
                   <span className="underline underline-offset-[3px]">{m.title[0]}</span>
                   {m.title.slice(1)}
@@ -149,7 +137,7 @@ export function AppMenu({
               ) : (
                 m.title
               )}
-              <span className="sr-only">{` (${MAC ? 'Option' : 'Alt'}+${accessKey(m.title).toUpperCase()})`}</span>
+              <span className="sr-only">{` (Alt+${accessKey(m.title).toUpperCase()})`}</span>
             </button>
             {lit && state.open && (
               <div role="menu" aria-label={m.title} className="absolute top-full left-0 z-50 min-w-[16rem] border border-ink bg-panel py-1 shadow-[0_0_30px_rgb(0_0_0/0.6)]">
