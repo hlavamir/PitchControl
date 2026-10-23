@@ -322,10 +322,12 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
   })
 
   return (
-    // output on the left, input in the middle (Art-Net above, USB below), the live output on the right
+    // inputs on the left, outputs in the middle (Art-Net above, USB below), the live output on the right (item 70)
     <div className="grid gap-1.5 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.85fr)] wide:grid-rows-[minmax(0,auto)_minmax(0,1fr)]">
+      <ArtnetInputSection index="01" input={liveInput} engine={engine} className="wide:min-h-0" />
+
       <Section
-        index="01"
+        index="03"
         title="Art-Net output" icon="out"
         className="wide:min-h-0"
         bodyClassName="p-3 pt-3.5 overflow-y-auto"
@@ -376,14 +378,14 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
         </div>
       </Section>
 
-      <ArtnetInputSection index="02" input={liveInput} engine={engine} className="wide:min-h-0" />
-
       <Section index="05" title="Live output" icon="out" className="wide:row-span-2 wide:min-h-0" bodyClassName="p-3 overflow-y-auto" tip="What the fixtures send right now, after gamma: the DMX and serial data that leaves this app">
         <OutputMonitor state={engine.state} />
       </Section>
 
+      <DmxInputSection index="02" input={liveInput} engine={engine} className="wide:min-h-0" />
+
       <Section
-        index="03"
+        index="04"
         title="USB DMX output" icon="out"
         className="wide:min-h-0"
         bodyClassName="p-3 overflow-y-auto"
@@ -509,8 +511,6 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
           })}
         </div>
       </Section>
-
-      <DmxInputSection index="04" input={liveInput} engine={engine} className="wide:min-h-0" />
     </div>
   )
 }
