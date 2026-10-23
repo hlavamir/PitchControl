@@ -64,10 +64,10 @@ class Route(Model):
     artnet_universe: int = Field(default=0, ge=0, le=0x7FFF)  # the raw Art-Net port address (net, sub-net, universe)
     first_input: int = Field(default=1, ge=1, le=512)
     count: int = Field(default=1, ge=1, le=512)
-    universe: int = Field(default=0, ge=0)  # the output universe (as on the Rig and Outputs pages)
+    universe: int = Field(default=0, ge=0)  # the output universe (as on the Rig page and in Connections)
     first_output: int = Field(default=1, ge=1, le=512)
     # MIDI routes (item 59)
-    midi_device: str = ""  # a MIDI input port name, as the Inputs page lists it
+    midi_device: str = ""  # a MIDI input port name, as Connections → MIDI lists it
     midi_channel: int = Field(default=1, ge=1, le=16)
     channels: list[MidiChannel] = Field(default_factory=list)  # one per output channel, in order
 

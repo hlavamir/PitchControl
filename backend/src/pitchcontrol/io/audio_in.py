@@ -26,7 +26,7 @@ except OSError as exc:  # PortAudio missing
 
 
 # PortAudio is not safe to query while it is terminated and initialised again: reinit_portaudio and everything in this
-# process that asks for the devices take this lock (item 34: the Inputs page's list can fall back to this process
+# process that asks for the devices take this lock (item 34: the Audio tab's list can fall back to this process
 # every two seconds, while a Save or the watchdog restarts the audio input). Reentrant: a thread that holds it may ask again.
 _PORTAUDIO = threading.RLock()
 
@@ -98,7 +98,7 @@ def list_input_devices_fresh() -> list[dict]:
         _child_failure[0] = None
         return devices
     except Exception as exc:  # noqa: BLE001
-        if _child_failure[0] != str(exc):  # the Inputs page asks every two seconds: say it when it changes, not every time
+        if _child_failure[0] != str(exc):  # Connections asks every two seconds: say it when it changes, not every time
             _child_failure[0] = str(exc)
             log.warning("could not list the audio devices in a child process (%s): using this process's list", exc)
         return list_input_devices()
@@ -165,7 +165,7 @@ class AudioInput:
         self.device: str | None = None  # the device actually opened
         self.device_inputs = 0
         self.used_channels: list[int] = self.channels  # the requested channels the device has
-        self.level = 0.0  # peak input level of the last block (for the Inputs page meter)
+        self.level = 0.0  # peak input level of the last block (for the meter of Connections → Audio)
         self.last_callback: float | None = None  # time.monotonic() of the last block, or of the start before the first
         self.got_block = False  # the callback has run at least once since the start
 

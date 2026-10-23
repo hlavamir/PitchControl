@@ -437,7 +437,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                     <option>B</option>
                   </select>
                 </Row>
-                <Row label="Universe / address" hint="Where the fixture listens: DMX universe (as numbered on the Outputs page) and 1-based start channel">
+                <Row label="Universe / address" hint="Where the fixture listens: DMX universe (as numbered in Connections) and 1-based start channel">
                   <UniverseSelect value={num((f) => f.universe).value} onChange={(v) => edit((f) => (f.universe = v))} />
                   <NumberInput {...num((f) => f.address)} integer min={1} max={512} onChange={(v) => edit((f) => (f.address = v))} className="w-20" />
                 </Row>

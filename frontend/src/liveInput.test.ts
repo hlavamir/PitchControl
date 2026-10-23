@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lastSeen, liveInputSummary, portAddressParts, portProblem, sortUniverses, type ArtNetUniverse } from './liveInput'
+import { lastSeen, portAddressParts, portProblem, sortUniverses, type ArtNetUniverse } from './liveInput'
 
 const uni = (universe: number, age: number): ArtNetUniverse => ({ key: `artnet:${universe}`, universe, sender: '10.0.0.2', pps: 40, age, packets: 100 })
 
@@ -26,14 +26,5 @@ describe('portAddressParts', () => {
 describe('sortUniverses', () => {
   it('lists the ones still sending first, each group by number', () => {
     expect(sortUniverses([uni(5, 30), uni(2, 0.1), uni(1, 60), uni(0, 1)]).map((u) => u.universe)).toEqual([0, 2, 1, 5])
-  })
-})
-
-describe('liveInputSummary', () => {
-  it('names what is on and whether it works', () => {
-    expect(liveInputSummary(undefined)).toBe('off')
-    expect(liveInputSummary({ artnet: { enabled: false }, dmx: { enabled: false } })).toBe('off')
-    expect(liveInputSummary({ artnet: { enabled: true, listening: true, port: 6454 }, dmx: { enabled: true, connected: false } })).toBe('Art-Net 6454 · DMX: not connected')
-    expect(liveInputSummary({ artnet: { enabled: true, listening: false }, dmx: { enabled: false } })).toBe('Art-Net: port problem')
   })
 })

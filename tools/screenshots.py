@@ -1,4 +1,4 @@
-"""Retake the ten screenshots of the README and the website, the same way every time.
+"""Retake the screenshots of the README and the website, the same way every time.
 
     backend/.venv/bin/python tools/screenshots.py                 # into screenshots/
     backend/.venv/bin/python tools/screenshots.py --data ~/Documents/PitchControl --out /tmp/shots
@@ -56,18 +56,18 @@ VIEWPORT = {"width": 1512, "height": 915}
 RATE = 48000
 BPM = 128
 
-# key that opens the page -> file name
+# key that opens the page, the subpage tab to click (Connections, item 60) -> file name
 PAGES = [
-    ("1", "general"),
-    ("2", "dimmers"),
-    ("3", "fixtures"),
-    ("4", "rig"),
-    ("5", "inputs"),
-    ("6", "outputs"),
-    ("7", "fog"),
-    ("8", "settings"),
-    ("9", "control-desk"),
-    ("0", "help"),
+    ("1", None, "general"),
+    ("2", None, "dimmers"),
+    ("3", None, "fixtures"),
+    ("4", None, "rig"),
+    ("5", "MIDI", "connections-midi"),
+    ("5", "DMX & Art-Net", "connections-dmx"),
+    ("6", None, "fog"),
+    ("7", None, "control-desk"),
+    ("8", None, "settings"),
+    ("9", None, "help"),
 ]
 
 
@@ -219,10 +219,13 @@ def shoot(url: str, out: Path, settle: float, channel: str | None, folders: tupl
         page.goto(f"{url}/#General")
         page.wait_for_selector("text=PitchControl!")
         page.evaluate("document.fonts.ready")
-        for key, name in PAGES:
+        for key, tab, name in PAGES:
             page.keyboard.press(key)
+            if tab:
+                page.get_by_role("tab", name=tab, exact=True).click()
+                page.mouse.move(0, 0)  # no hovered tab
             page.wait_for_timeout(500)
-            if name == "outputs":
+            if name == "connections-dmx":
                 page.get_by_text("show channel values").first.click()  # the DMX numbers, as in the docs
             page.evaluate(NEUTRAL)
             page.wait_for_timeout(settle * 1000)

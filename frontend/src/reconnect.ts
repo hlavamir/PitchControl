@@ -7,7 +7,7 @@ const clock = (epochSeconds: number) => {
 }
 
 /**
- * The dim line on the Inputs page that stays after the audio input dropped and came back by itself, so that the
+ * The dim line in Connections that stays after the audio input dropped and came back by itself, so that the
  * operator sees afterwards that it happened during the show (item 30, Danny's texts). Times are this browser's local
  * time. The device is named only when it changed (no device saved: after a pulled interface the system default
  * moves to another one). Nothing while the input hasn't dropped or hasn't come back yet.

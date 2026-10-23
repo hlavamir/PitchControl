@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * How often the Inputs page reads the device lists (audio devices, MIDI ports, controller files) while it is open
+ * How often Connections reads the device lists (audio devices, MIDI ports, controller files) while it is open
  * (item 34). The audio list is read by a short-lived child process (item 32), which takes 0.29 s in the built Mac app
  * and about 0.4 s on Windows (measured from the dev environment: a child that imports PortAudio and lists the devices,
  * an app built with PyInstaller wasn't measured on Windows). That is a fraction of a core every two seconds, and only

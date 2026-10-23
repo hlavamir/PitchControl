@@ -1,7 +1,9 @@
 """The menu bar (item 52): one definition for macOS and Windows (``menu.py``) and its actions."""
 
+import re
 import sys
 import types
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,17 +51,27 @@ def test_no_stray_separators():
             assert all(not (a is SEPARATOR and b is SEPARATOR) for a, b in zip(items, items[1:])), title
 
 
+def test_the_pages_are_the_ones_of_the_page_row():
+    """View lists the pages of the UI's page row, in the order of their keys (frontend/src/pages.ts, item 60)."""
+    ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages.ts").read_text(encoding="utf-8")
+    listed = re.search(r"export const PAGES = \[(.*?)\] as const", ts).group(1)
+    assert PAGES == re.findall(r"'([^']+)'", listed)
+    assert "Connections" in PAGES and "Inputs" not in PAGES and "Outputs" not in PAGES
+
+
 def test_keys_shown_and_bound():
     win = {i["id"]: i["key"] for m in menu_json("win") for i in m["items"] if i and "id" in i}
     assert win["file.save"] == "Ctrl+S"
     assert win["view.page.1"] == "1" and win["view.page.9"] == "9"  # the app's own page keys
-    assert win["view.page.0"] == "0"  # Help
+    assert "view.page.0" not in win  # 0 has no page since item 60
+    assert [win[f"view.page.{n}"] for n in range(1, 10)] == [str(n) for n in range(1, 10)]
     assert win["view.fullscreen"] == "F"
     assert win["edit.copy"] == "Ctrl+C"
     mac = {i.id: i.mac_key for _, items in menus_for("mac") for i in walk(items)}
     assert mac["file.save"] == "cmd+s"
     assert mac["view.page.3"] == "cmd+3"  # ⌘3 next to the plain 3
-    assert mac["view.page.0"] == ""  # ⌘0 is the UI scale's 100 %
+    assert mac["view.page.9"] == "cmd+9"  # Help (item 60); ⌘0 stays the UI scale's 100 %
+    assert "view.page.0" not in mac
     assert mac["app.settings"] == "cmd+,"
     assert mac["view.fullscreen"] == "ctrl+cmd+f"
     assert mac["window.minimize"] == "cmd+m"

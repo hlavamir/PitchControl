@@ -83,12 +83,3 @@ export function portAddressParts(address: number): string {
 export function sortUniverses(list: ArtNetUniverse[]): ArtNetUniverse[] {
   return [...list].sort((a, b) => Number(a.age > QUIET_AFTER_S) - Number(b.age > QUIET_AFTER_S) || a.universe - b.universe)
 }
-
-/** What the section's header says. */
-export function liveInputSummary(s: LiveInputStatus | undefined): string {
-  if (!s) return 'off'
-  const parts: string[] = []
-  if (s.artnet.enabled) parts.push(s.artnet.listening ? `Art-Net ${s.artnet.port}` : 'Art-Net: port problem')
-  if (s.dmx.enabled) parts.push(s.dmx.connected ? 'DMX' : 'DMX: not connected')
-  return parts.join(' · ') || 'off'
-}

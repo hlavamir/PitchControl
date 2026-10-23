@@ -39,7 +39,19 @@ interface ChannelAsk {
 
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
 
-export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { engine: EngineConnection; midiPorts: string[]; onActiveChanged: (name: string | null) => void }) {
+export function MidiMappingSection({
+  index: sectionIndex,
+  className = '',
+  engine,
+  midiPorts,
+  onActiveChanged,
+}: {
+  index: string
+  className?: string
+  engine: EngineConnection
+  midiPorts: string[]
+  onActiveChanged: (name: string | null) => void
+}) {
   const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string>; labels: Record<string, string> } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [saved, setSaved] = useState<ControllerFile | null>(null)
@@ -171,7 +183,7 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
     if (!midi?.port_override && dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
     if (!midi?.port) {
       const note = midiNotice(midi)
-      if (note) return { why: note.text, fix: null } // the Inputs page's words for the same case
+      if (note) return { why: note.text, fix: null } // the MIDI tab's words for the same case
       const where = midi?.port_override ? `the MIDI port in Settings (section 02: "${midi.port_override}")` : 'the MIDI port on the Controller tab'
       return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that ${where} matches its name.`, fix: null }
     }
@@ -581,9 +593,9 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
 
   return (
     <Section
-      index="03"
+      index={sectionIndex}
       title="MIDI mapping"
-      className="wide:col-span-2"
+      className={className}
       bodyClassName="p-3 gap-2"
       right={
         <>
@@ -684,11 +696,12 @@ export function MidiMappingSection({ engine, midiPorts, onActiveChanged }: { eng
             ))}
           </div>
           {tab === 'controller' ? (
-            controllerTab()
+            <div className="wide:min-h-0 wide:flex-1 wide:overflow-y-auto">{controllerTab()}</div>
           ) : (
-            <div className="overflow-x-auto">
+            // the table scrolls inside the section: the page fits the window (item 60)
+            <div className="overflow-x-auto wide:min-h-0 wide:flex-1 wide:overflow-y-auto">
               <div className="min-w-[880px] border border-edge/60">
-                <div className="lbl grid grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] gap-x-2 border-b border-edge px-2 py-1 text-[10px] text-dim">
+                <div className="lbl sticky top-0 z-10 grid grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] gap-x-2 border-b border-edge bg-panel px-2 py-1 text-[10px] text-dim">
                   <span>Macro</span>
                   <span>Control</span>
                   <span>Channel</span>

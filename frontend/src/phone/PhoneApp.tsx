@@ -11,11 +11,13 @@ import { LaptopNote, PhoneSection } from './parts'
 const PHONE_PAGES = ['General', 'Dimmers'] as const
 type PhonePage = (typeof PHONE_PAGES)[number]
 // the laptop's other pages: a link to one of them (a bookmark, the hash) shows a note on the phone
-const LAPTOP_PAGES = ['Fixtures', 'Rig', 'Inputs', 'Outputs', 'Fog', 'Settings', 'Control Desk']
+const LAPTOP_PAGES = ['Fixtures', 'Rig', 'Connections', 'Fog', 'Control Desk', 'Settings']
 
 function pageFromHash(): string {
   const hash = decodeURIComponent(location.hash.slice(1))
-  return hash === 'Output' ? 'Outputs' : hash || 'General'
+  // a Connections tab (#Connections/midi) and the pages that became its tabs (item 60) are Connections
+  const page = hash.split('/')[0]
+  return ['Inputs', 'Outputs', 'Output'].includes(page) ? 'Connections' : page || 'General'
 }
 
 /**

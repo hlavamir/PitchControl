@@ -345,13 +345,16 @@ export function Button({
   )
 }
 
-export function StatusDot({ ok, label, error, tip }: { ok: boolean | null | undefined; label: string; error?: string | null; tip?: string }) {
-  // filled = OK, hollow = off, crossed = error; an error replaces the tip in the footer
+export function StatusDot({ ok, label, error, tip, onClick }: { ok: boolean | null | undefined; label: string; error?: string | null; tip?: string; onClick?: () => void }) {
+  // filled = OK, hollow = off, crossed = error; an error replaces the tip in the footer. With onClick it is a button (the
+  // header's indicators open their Connections tab)
+  const Tag = onClick ? 'button' : 'span'
   return (
-    <span
-      data-hint="info"
+    <Tag
+      data-hint={onClick ? 'button' : 'info'}
       data-tip={error ? `${label}: ${error}` : tip}
-      className={`lbl inline-flex flex-none items-center gap-1.5 text-[11px] whitespace-nowrap ${ok ? 'text-ink' : 'text-dim'}`}
+      onClick={onClick}
+      className={`lbl inline-flex flex-none items-center gap-1.5 text-[11px] whitespace-nowrap ${ok ? 'text-ink' : 'text-dim'} ${onClick ? 'hover:text-glow' : ''}`}
     >
       <span
         className={`relative inline-block size-[7px] ${ok ? 'dot-on' : 'border border-dim'} ${
@@ -359,7 +362,7 @@ export function StatusDot({ ok, label, error, tip }: { ok: boolean | null | unde
         }`}
       />
       {label}
-    </span>
+    </Tag>
   )
 }
 

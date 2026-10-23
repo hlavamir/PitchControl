@@ -12,25 +12,18 @@ import { Dimmers } from './pages/Dimmers'
 import { Fixtures } from './pages/Fixtures'
 import { Fog } from './pages/Fog'
 import { General } from './pages/General'
-import { Inputs } from './pages/Inputs'
-import { Output } from './pages/Output'
+import { Connections } from './pages/Connections'
 import { Rig } from './pages/Rig'
 import { ControlDesk } from './pages/ControlDesk'
 import { Help } from './pages/Help'
 import { Settings } from './pages/Settings'
+import { DESK_TABS, PAGES, keyOfPage, pageOfHash, pageOfKey, type ConnectionTab, type Page } from './pages'
+import { SHOW_TAB_EVENT, rememberTab, rememberedTab, showTab } from './subTabs'
 import { requestImport } from './fixtureImport'
 import { clientOf, issueUrl } from './reportProblem'
 import { DEFAULT_UI, applyScale, applyTheme, clampScale, type UiSettings } from './theme'
 import { useEngine } from './useEngine'
 import { SelectionContext, isTyping, isTypingTarget, type FooterSelection } from './useGridNav'
-
-// the keys 1 to 9, then 0 (Help)
-const PAGES = ['General', 'Dimmers', 'Fixtures', 'Rig', 'Inputs', 'Outputs', 'Fog', 'Settings', 'Control Desk', 'Help'] as const
-type Page = (typeof PAGES)[number]
-
-/** The page of a number key (0 = Help, the tenth), and the key of a page. */
-const pageOfKey = (n: number): Page => PAGES[(n + 9) % 10]
-const keyOfPage = (p: Page) => (PAGES.indexOf(p) + 1) % 10
 
 /** Footer tip of each page tab. */
 const PAGE_TIPS: Record<Page, string> = {
@@ -38,18 +31,18 @@ const PAGE_TIPS: Record<Page, string> = {
   Dimmers: 'The sixteen dimmer faders: the brightness of the fixtures assigned to each',
   Fixtures: 'Fixture types: pixels, channel layout, gamma and defaults of each kind of light',
   Rig: 'The rig: which lights exist, where they are, their DMX address and per-fixture settings',
-  Inputs: 'Audio input and MIDI controller: devices, gain and live meters',
-  Outputs: 'DMX output: Enttec USB interfaces, Art-Net, and the PitchPlease v2 serial strips',
+  Connections: 'What goes in and out: audio, MIDI, DMX and Art-Net, OSC, the PitchPlease v2 serial strips and the live output, a subpage each (Q / E)',
   Fog: 'Fog machines: DMX channel, timer and manual trigger',
   Settings: 'Look of the UI (ink, scale), the engine frame rate, other devices on the network, the app window',
   'Control Desk': 'Every DMX channel as a fader: override channels by hand, e.g. to test a light',
   Help: 'Every key of the UI, the version, Report a problem, the Discord and the project links, support',
 }
 
+/** The page of the URL hash; a Connections tab in it (``#Connections/midi``, an old ``#Inputs``) is opened too. */
 function initialPage(): Page {
-  let hash = decodeURIComponent(location.hash.slice(1))
-  if (hash === 'Output') hash = 'Outputs' // old bookmark
-  return (PAGES as readonly string[]).includes(hash) ? (hash as Page) : 'General'
+  const { page, tab } = pageOfHash(location.hash)
+  if (tab) rememberTab('Connections', tab)
+  return page
 }
 
 const KEYS: [string, string][] = [
@@ -59,24 +52,26 @@ const KEYS: [string, string][] = [
   ['SHIFT', 'fine'],
   ['⏎', 'press'],
   ['ESC', 'cancel'],
-  ['0–9', 'page'],
+  ['1–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
 
 /** The general keys on the Rig and Fixtures pages: the list moves like a file list, the details field by field (rigKeys.ts). */
-/** The general keys on the pages that are forms (Inputs, Outputs, Fog, Settings, Help): W S A D move over the controls, ⏎ edits. */
+/** The general keys on the pages that are forms (Connections, Fog, Settings, Help): W S A D move over the controls, ⏎ edits. */
 const FORM_KEYS: [string, string][] = [
   ['W S A D', 'control'],
   ['⏎', 'edit'],
   ['ESC', 'stop'],
-  ['0–9', 'page'],
+  ['1–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
 
 const LIST_PAGES: string[] = ['Fixtures', 'Rig']
-const FORM_PAGES: string[] = ['Inputs', 'Outputs', 'Fog', 'Settings', 'Help']
+const FORM_PAGES: string[] = ['Connections', 'Fog', 'Settings', 'Help']
+/** The pages with subpage tabs: Q / E step through them (items 60, 61). */
+const TAB_PAGES: string[] = ['Connections', 'Control Desk']
 
 const RIG_KEYS: [string, string][] = [
   ['W S ↑ ↓', 'fixture'],
@@ -84,7 +79,7 @@ const RIG_KEYS: [string, string][] = [
   ['SPACE', 'add / remove'],
   ['D →', 'details'],
   ['ESC A', 'list'],
-  ['0–9', 'page'],
+  ['1–9', 'page'],
   ['F', 'full screen'],
   [`${MOD} + −`, 'UI scale'],
 ]
@@ -133,6 +128,16 @@ export default function App() {
   const [menus, setMenus] = useState<MenuDef[] | null>(null)
   const uiRef = useRef(ui)
   uiRef.current = ui
+  // the Control Desk's subpage: its Routes are a form, with the form keys in the footer
+  const [deskTab, setDeskTab] = useState(() => rememberedTab('Control Desk', DESK_TABS, 'ch-0'))
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const { page: p, id } = (e as CustomEvent<{ page: string; id: string }>).detail
+      if (p === 'Control Desk') setDeskTab(id as (typeof DESK_TABS)[number])
+    }
+    window.addEventListener(SHOW_TAB_EVENT, onTab)
+    return () => window.removeEventListener(SHOW_TAB_EVENT, onTab)
+  }, [])
 
   useEffect(() => {
     api.get<MacroDef[]>('/api/macros/defs').then((list) => setDefs(Object.fromEntries(list.map((d) => [d.name, d]))))
@@ -263,7 +268,10 @@ export default function App() {
   const runMenu = useCallback(
     async (id: string) => {
       if (modalOpen() && actsOnPage(id)) return // the macOS menu bar can't be covered by the dialog's backdrop (item 63)
-      if (id.startsWith('view.page.')) go(pageOfKey(Number(id.slice('view.page.'.length))))
+      if (id.startsWith('view.page.')) {
+        const p = pageOfKey(Number(id.slice('view.page.'.length)))
+        if (p) go(p)
+      }
       else if (id === 'file.save') save()
       else if (id === 'file.import.ofl' || id === 'file.import.qlc') {
         // the Fixtures page has the dialog (it opens it when it is shown; this computer only, like the endpoints)
@@ -368,13 +376,14 @@ export default function App() {
     }
   }, [])
 
-  // 1–9 and 0 switch pages, F full screen (not while typing in a field)
+  // 1–9 switch pages, F full screen (not while typing in a field)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
-      if (/^[0-9]$/.test(e.key)) {
+      const p = /^[0-9]$/.test(e.key) ? pageOfKey(Number(e.key)) : null
+      if (p) {
         e.preventDefault()
-        go(pageOfKey(Number(e.key)))
+        go(p)
       }
       if (e.key.toLowerCase() === 'f' && fullscreen.supported) {
         e.preventDefault()
@@ -407,11 +416,17 @@ export default function App() {
   const out = s?.io.outputs
   // footer keys: for the hovered / keyboard-selected control, or the general ones
   const context = inputMode === 'keys' ? (footer?.hint ? { kind: footer.hint, tip: footer.tip } : null) : hover
+  const form = FORM_PAGES.includes(page) || (page === 'Control Desk' && deskTab === 'routes')
   const footerKeys = context
-    ? LIST_PAGES.includes(page) || FORM_PAGES.includes(page)
+    ? LIST_PAGES.includes(page) || form
       ? rigFieldKeys(context.kind, HINT_KEYS[context.kind])
       : HINT_KEYS[context.kind]
-    : [...(LIST_PAGES.includes(page) ? RIG_KEYS : FORM_PAGES.includes(page) ? FORM_KEYS : KEYS).filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(page === 'Control Desk' ? ([['Q E', 'subpage']] as [string, string][]) : [])]
+    : [...(LIST_PAGES.includes(page) ? RIG_KEYS : form ? FORM_KEYS : KEYS).filter(([cap]) => cap !== 'F' || fullscreen.supported), ...(TAB_PAGES.includes(page) ? ([['Q E', 'subpage']] as [string, string][]) : [])]
+  // a status indicator opens the Connections tab of its connection
+  const openTab = (tab: ConnectionTab) => {
+    showTab('Connections', tab)
+    go('Connections')
+  }
   const overrideCount = Object.values(s?.overrides ?? {}).reduce((n, chans) => n + Object.keys(chans).length, 0)
   // In full screen on a MacBook the camera notch covers the top 32 pt; below 100 % UI scale the top
   // row grows so that it still measures 38 pt on screen.
@@ -456,22 +471,30 @@ export default function App() {
                   {overrideCount} override{overrideCount === 1 ? '' : 's'}
                 </button>
               )}
-              <StatusDot ok={s?.io.audio ? s.io.audio.running : null} label="audio" error={s?.io.audio?.error} tip="Audio input: filled = running, hollow = off, crossed = error (see Inputs)" />
-              <StatusDot ok={s?.io.midi ? Boolean(s.io.midi.port) : null} label="midi" error={s?.io.midi?.error} tip="MIDI controller: filled = connected, hollow = off (see Inputs)" />
+              {/* each indicator opens its tab of Connections */}
+              <StatusDot ok={s?.io.audio ? s.io.audio.running : null} label="audio" error={s?.io.audio?.error} tip="Audio input: filled = running, hollow = off, crossed = error. Click: Connections → Audio" onClick={() => openTab('audio')} />
+              <StatusDot ok={s?.io.midi ? Boolean(s.io.midi.port) : null} label="midi" error={s?.io.midi?.error} tip="MIDI controller: filled = connected, hollow = off. Click: Connections → MIDI" onClick={() => openTab('midi')} />
               {/* one dot per configured USB DMX interface */}
               {out?.enttec?.length ? (
                 out.enttec.map((e, i) => (
-                  <StatusDot key={i} ok={e ? e.connected : null} label={out.enttec.length > 1 ? `dmx ${i + 1}` : 'dmx'} error={e?.error} tip={`USB DMX interface ${i + 1}: filled = connected, hollow = off, crossed = error (see Outputs)`} />
+                  <StatusDot
+                    key={i}
+                    ok={e ? e.connected : null}
+                    label={out.enttec.length > 1 ? `dmx ${i + 1}` : 'dmx'}
+                    error={e?.error}
+                    tip={`USB DMX interface ${i + 1}: filled = connected, hollow = off, crossed = error. Click: Connections → DMX & Art-Net`}
+                    onClick={() => openTab('dmx')}
+                  />
                 ))
               ) : (
-                <StatusDot ok={null} label="dmx" tip="No USB DMX interface configured (see Outputs)" />
+                <StatusDot ok={null} label="dmx" tip="No USB DMX interface configured. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
               )}
-              <StatusDot ok={out?.artnet ? out.artnet.connected : null} label="art-net" error={out?.artnet?.error} tip="Art-Net output: filled = sending, hollow = off (see Outputs)" />
-              <StatusDot ok={out?.pitchpls_v2 ? out.pitchpls_v2.connected : null} label="v2" error={out?.pitchpls_v2?.error} tip="PitchPlease v2 serial output: filled = connected, hollow = off (see Outputs)" />
+              <StatusDot ok={out?.artnet ? out.artnet.connected : null} label="art-net" error={out?.artnet?.error} tip="Art-Net output: filled = sending, hollow = off. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
+              <StatusDot ok={out?.pitchpls_v2 ? out.pitchpls_v2.connected : null} label="v2" error={out?.pitchpls_v2?.error} tip="PitchPlease v2 serial output: filled = connected, hollow = off. Click: Connections → Serial" onClick={() => openTab('serial')} />
             </div>
           </div>
           <nav className="flex h-9 items-stretch border-x border-b border-edge">
-            {PAGES.map((p, i) => (
+            {PAGES.map((p) => (
               <button
                 key={p}
                 onClick={() => go(p)}
@@ -481,7 +504,7 @@ export default function App() {
                   page === p ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
                 }`}
               >
-                <span className="font-mono text-[11px] opacity-60">{(i + 1) % 10}</span>
+                <span className="font-mono text-[11px] opacity-60">{keyOfPage(p)}</span>
                 {p}
               </button>
             ))}
@@ -517,8 +540,7 @@ export default function App() {
           {page === 'Dimmers' && <Dimmers engine={engine} defs={defs} />}
           {page === 'Fixtures' && <Fixtures defs={defs} />}
           {page === 'Rig' && <Rig engine={engine} defs={defs} />}
-          {page === 'Outputs' && <Output engine={engine} />}
-          {page === 'Inputs' && <Inputs engine={engine} />}
+          {page === 'Connections' && <Connections engine={engine} />}
           {page === 'Fog' && <Fog engine={engine} />}
           {page === 'Settings' && <Settings ui={ui} onChange={setUi} desktop={desktop} local={local} engine={engine} />}
           {page === 'Control Desk' && <ControlDesk engine={engine} />}

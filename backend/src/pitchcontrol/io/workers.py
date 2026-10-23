@@ -160,7 +160,7 @@ class SerialWorker(LatestFrameWorker):
     def open(self) -> None:
         path = resolve_port(self.ref)
         if not path:
-            raise ConnectionError("device not found (check the Output page)")
+            raise ConnectionError("device not found (check Connections)")
         self.port = serial.Serial(path, self.baudrate, timeout=0, write_timeout=1)
         self.connected = True
         self.last_error = None
@@ -205,7 +205,7 @@ class OpenDmxWorker(SerialWorker):
     def open(self) -> None:
         path = resolve_port(self.ref)
         if not path:
-            raise ConnectionError("device not found (check the Output page)")
+            raise ConnectionError("device not found (check Connections)")
         self.port = serial.Serial(
             path, DMX_BAUD, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_TWO,
             timeout=0, write_timeout=1,

@@ -14,8 +14,8 @@ const KEYMAP: [string, string][] = [
   ['SPACE', 'Rig page: add / remove the current fixture'],
   ['D  →', 'Fixtures and Rig: from the list into the details'],
   ['ESC', 'Cancel a pending change, stop editing, back to the list'],
-  ['1 – 9  0', 'Switch page (0 = Help; ⌘ 1 – 9 too in the macOS app)'],
-  ['Q  E', 'Previous / next subpage (Control Desk)'],
+  ['1 – 9', 'Switch page (⌘ 1 – 9 too in the macOS app)'],
+  ['Q  E', 'Previous / next subpage: the tabs of Connections, the channels and Routes of the Control Desk (round at the ends)'],
   ['F', 'Full screen on / off (desktop app)'],
   ['⌘ / CTRL  + −', 'UI scale up / down (= works as +); 0 = 100 %'],
   ['⌘ / CTRL  S', "Save: what the page's Save button does, also while typing"],
@@ -41,7 +41,7 @@ function LinkButton({ href, open, label, tip }: { href: string; open: (e: MouseE
 }
 
 /**
- * Help (page 0): every key of the UI, About (version, folders, Report a problem, Discord, the project's links) and
+ * Help (page 9): every key of the UI, About (version, folders, Report a problem, Discord, the project's links) and
  * Support. The menu bar's Help → Keyboard shortcuts and About PitchControl open it.
  */
 export function Help({ desktop, version }: { desktop?: boolean; version?: string }) {

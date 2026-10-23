@@ -60,7 +60,7 @@ class Engine:
         # while the other thread opens its stream. Reentrant: the audio watchdog calls ``restart_audio``.
         self._audio_restart = threading.RLock()
         # item 30: what the audio watchdog saw. ``_audio_lost`` is the wall-clock time the input was lost (None: missing
-        # since the start), ``_audio_back`` when it came back; both are kept for the Inputs page, in memory only.
+        # since the start), ``_audio_back`` when it came back; both are kept for Connections → Audio, in memory only.
         self._audio_problem: str | None = None  # "missing" | "dead" | "failed" while the saved device isn't running
         self._audio_lost: float | None = None
         self._audio_back: float | None = None
@@ -166,7 +166,7 @@ class Engine:
     def restart_audio(self, reinit: bool = False) -> None:
         """Reopen the audio input from the saved settings. ``reinit`` makes PortAudio list the devices again first
         (with the old stream closed, which is why it cuts the input for a moment). It also does that by itself when a
-        saved device isn't in this process's list: the Inputs page lists the devices as they are now (a child process),
+        saved device isn't in this process's list: Connections lists the devices as they are now (a child process),
         so a device plugged in after the start can be picked and saved before PortAudio here knows it."""
         with self._audio_restart:
             if self.audio is not None:

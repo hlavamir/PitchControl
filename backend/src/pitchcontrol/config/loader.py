@@ -363,7 +363,7 @@ class ConfigStore:
                 "The shipped Launch Control XL 3 mapping has a new layout. The knob that switched the control pages is gone "
                 "(use the Page General / Page Dimmers macros or switch on screen); the top knob row is unused and the middle "
                 "knob row is Dimmer 01-08. The buttons now act: the bottom button row saves scenes 1-7 (with shift it loads "
-                "them) and the Fog button fogs. See Inputs → MIDI mapping."
+                "them) and the Fog button fogs. See the MIDI mapping in Connections → MIDI."
             )
         if text != __version__:
             try:

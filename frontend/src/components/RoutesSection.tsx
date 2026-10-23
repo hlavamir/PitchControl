@@ -177,6 +177,7 @@ function MidiChannels({
  */
 export function RoutesSection({
   index,
+  className = '',
   routes,
   overlaps,
   universe,
@@ -185,6 +186,7 @@ export function RoutesSection({
   live,
 }: {
   index: string
+  className?: string
   routes: RouteState[]
   overlaps: RouteOverlap[]
   universe: number // the universe the Control Desk shows: new routes go there
@@ -224,9 +226,10 @@ export function RoutesSection({
     <Section
       index={index}
       title="Routes"
+      className={className}
       right={`${routes.filter((r) => r.enabled).length} of ${routes.length} on · ${covered} channel${covered === 1 ? '' : 's'} routed · saved across restarts`}
-      bodyClassName="p-3 gap-2"
-      tip="Live input (Art-Net and DMX over USB: set up on the Inputs page; or MIDI) copied onto output channels. Order of the layers, the later one wins: the app's output, then routes, then manual overrides"
+      bodyClassName="p-3 gap-2 overflow-y-auto"
+      tip="Live input (Art-Net and DMX over USB: set up in Connections → DMX & Art-Net; or MIDI) copied onto output channels. Order of the layers, the later one wins: the app's output, then routes, then manual overrides"
     >
       <p className="text-[11px] leading-snug text-dim">
         A route copies live input onto output channels: a block of an Art-Net universe or of the DMX input, up to a whole universe, or, for a MIDI route, one CC, note or fixed value for each channel. It sits over the fixtures and under the manual overrides: a channel you override keeps your value, and the route shows again when you release it. When the input stops, the last values stay; switch a route off or remove it to give the channels back to the fixtures.
@@ -278,7 +281,7 @@ export function RoutesSection({
                       integer
                       disabled={r.kind !== 'artnet'}
                       className="w-full"
-                      tip="The Art-Net universe to take, as its raw port address (net, sub-net and universe in one number), counted from 0, as on the Inputs page"
+                      tip="The Art-Net universe to take, as its raw port address (net, sub-net and universe in one number), counted from 0, as in Connections → DMX & Art-Net"
                       onChange={(v) => edit(r.id, { artnet_universe: v })}
                     />
                   )}
@@ -297,7 +300,7 @@ export function RoutesSection({
                     onChange={(v) => edit(r.id, { count: v })}
                   />
                   <span className="text-center text-dim">→</span>
-                  <select value={r.universe} data-tip="The output universe the channels go to (the universes of the Rig and Outputs pages)" onChange={(e) => edit(r.id, { universe: Number(e.target.value) })}>
+                  <select value={r.universe} data-tip="The output universe the channels go to (the universes of the Rig page and Connections)" onChange={(e) => edit(r.id, { universe: Number(e.target.value) })}>
                     {UNIVERSES.map((u) => (
                       <option key={u} value={u}>
                         {u}
@@ -348,7 +351,7 @@ export function RoutesSection({
           })}
         </div>
       )}
-      {routes.length === 0 && <p className="text-[13px] text-dim">No routes. Add one to send what comes in on the Inputs page, or from a MIDI device, to output channels.</p>}
+      {routes.length === 0 && <p className="text-[13px] text-dim">No routes. Add one to send what comes in (Connections → DMX & Art-Net), or from a MIDI device, to output channels.</p>}
       {overlaps.length > 0 && (
         <div className="border border-edge px-2.5 py-2 text-[12px] leading-snug" role="status" data-tip="Two routes write the same output channels; the one lower in the list wins there">
           <p>! Routes overlap:</p>

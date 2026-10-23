@@ -107,7 +107,7 @@ export function Fog({ engine }: { engine: EngineConnection }) {
             <NumberInput value={m.duration_s} min={0} className="w-20" onChange={(v) => update((ms) => (ms[i].duration_s = v))} />
             <span className="text-dim">s</span>
           </Row>
-          <Row label="DMX channel" plain hint="Where the machine listens: DMX universe (as on the Outputs page) and channel 1–512">
+          <Row label="DMX channel" plain hint="Where the machine listens: DMX universe (as in Connections) and channel 1–512">
             <span className="text-dim">universe</span>
             <UniverseSelect value={m.universe} onChange={(v) => update((ms) => (ms[i].universe = v))} />
             <span className="text-dim">channel</span>

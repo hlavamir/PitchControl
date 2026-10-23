@@ -22,7 +22,7 @@ export function LaptopNote({ className = '' }: { className?: string }) {
   const fullUi = useContext(FullUiContext)
   return (
     <div className={`flex flex-col gap-2 border border-edge px-3 py-3 text-[12px] leading-snug text-dim ${className}`}>
-      <span>Fixtures, Rig, Inputs, Outputs, Fog, Settings and the Control Desk stay on the laptop.</span>
+      <span>Fixtures, Rig, Connections, Fog, the Control Desk and Settings stay on the laptop.</span>
       <button className="lbl h-11 self-start border border-edge px-4 text-[12px] text-ink [touch-action:manipulation]" onClick={fullUi}>
         Full UI on this phone
       </button>

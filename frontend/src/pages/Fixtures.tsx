@@ -682,7 +682,7 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
         )}
         {t && t.transport === 'pitchpls_v2' && (
           <p className="text-[12px] text-dim">
-            v2 serial: {t.modes[0].pixels} pixels × 3 bytes, sent on the PitchPlease v2 output (Outputs page).
+            v2 serial: {t.modes[0].pixels} pixels × 3 bytes, sent on the PitchPlease v2 output (Connections → Serial).
           </p>
         )}
       </Section>

@@ -141,7 +141,7 @@ class MidiInput:
         self.port = None
         self.port_name: str | None = None
         self.error: str | None = None
-        self.error_kind: str | None = None  # "not_found" (no port matches) or "open_failed": the Inputs page words the advice
+        self.error_kind: str | None = None  # "not_found" (no port matches) or "open_failed": Connections → MIDI words the advice
         self.port_wanted: str | None = None  # the match string that found nothing, or the port that wouldn't open
         self.by_control: dict[tuple[str, int], list[MidiMapping]] = {}
         self.shift_controls: set[tuple[str, int, int]] = set()  # (kind, number, channel) of the shift buttons held down
@@ -157,7 +157,7 @@ class MidiInput:
         self.learned: dict | None = None  # what that Learn captured: {id, kind, number, channel, shift}
         self._learn_shifts: set[tuple[str, int, int]] = set()  # the draft's shift buttons: a message from one is no learnable control
         self._learn_for_shift = False  # the Shift row is learning: it takes a shift button
-        self.recent: deque[dict] = deque(maxlen=20)  # MIDI monitor for the Inputs page
+        self.recent: deque[dict] = deque(maxlen=20)  # MIDI monitor for Connections → MIDI
         self.received = 0
         self._ignored_channels: set[int] = set()
         if controller:

@@ -2,16 +2,18 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { api } from '../api'
 import { Button, Section, Toggle, UNIVERSES } from '../components/forms'
 import { RoutesSection } from '../components/RoutesSection'
+import { SubTabs, useSubTab, type SubTab } from '../components/SubTabs'
+import { DESK_TABS, type DeskTab } from '../pages'
 import { routeLabel, routedChannels, routedCount, type RouteState } from '../routes'
 import type { EngineConnection } from '../useEngine'
-import { isTyping, useGridNav, type NavItem } from '../useGridNav'
+import { useFieldNav } from '../useFieldNav'
+import { useGridNav, type NavItem } from '../useGridNav'
 
 const PER_PAGE = 64 // 4 rows × 16
-const SUBPAGES = 512 / PER_PAGE
 const POLL_MS = 100 // live output values
 
-// universe and subpage stay as they were when coming back to the page
-const memory = { universe: 0, subpage: 0 }
+// the universe stays as it was when coming back to the page (the subpage is remembered with the tabs, subTabs.ts)
+const memory = { universe: 0 }
 
 interface Strip {
   channel: number // 1–512
@@ -130,29 +132,15 @@ function ChannelStrip({
 /**
  * Control Desk: every DMX output channel as a slider, 64 per subpage. A channel with its override
  * switched on sends the slider value instead of what the fixtures compute. Overrides are saved and
- * restored on start; the header shows how many are active. Below the grid, Routes copy live input (Art-Net, DMX over USB)
- * onto output channels (item 58): the app's output, then routes, then manual overrides; the later layer wins.
+ * restored on start; the header shows how many are active. The last subpage, Routes, copies live input (Art-Net, DMX over
+ * USB, MIDI) onto output channels (items 58, 59, 61): the app's output, then routes, then manual overrides; the later layer wins.
  */
 export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const [universe, setUniverseState] = useState(memory.universe)
-  const [subpage, setSubpageState] = useState(memory.subpage)
+  const [tab, setTab] = useSubTab<DeskTab>('Control Desk', DESK_TABS, 'ch-0')
   const [live, setLive] = useState<number[]>(() => Array(512).fill(0))
   const [confirmReset, setConfirmReset] = useState(false)
   const setUniverse = (u: number) => setUniverseState((memory.universe = u))
-  const setSubpage = (p: number) => setSubpageState((memory.subpage = p))
-
-  // Q / E: previous / next subpage (the keyboard selection keeps its slot)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
-      const key = e.key.toLowerCase()
-      if (key !== 'q' && key !== 'e') return
-      e.preventDefault()
-      setSubpageState((p) => (memory.subpage = Math.min(SUBPAGES - 1, Math.max(0, p + (key === 'e' ? 1 : -1)))))
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   // live output values of the shown universe
   useEffect(() => {
@@ -177,45 +165,39 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
   const routed = useMemo(() => routedChannels(routes, universe), [routes, universe])
   const routedTotal = routedCount(routes)
 
-  // which fixture uses each channel of this universe
-  const fixtureAt = useMemo(() => {
-    const map: Record<number, string> = {}
-    for (const fx of engine.state?.fixtures ?? []) {
-      if (fx.transport !== 'dmx' || fx.universe !== universe) continue
-      fx.output.forEach((_, i) => (map[fx.address + i] = `${fx.name} · ${i + 1}`))
-    }
-    return map
-  }, [engine.state?.fixtures, universe])
-
-  const first = subpage * PER_PAGE + 1
-  const strips: Strip[] = Array.from({ length: PER_PAGE }, (_, i) => {
-    const channel = first + i
-    return { channel, live: live[channel - 1] ?? 0, override: overrides[String(channel)], fixture: fixtureAt[channel], route: routed.get(channel) }
-  })
-
-  const setValue = (channel: number, v: number) => engine.setOverride(universe, channel, v)
-  const release = (channel: number) => engine.setOverride(universe, channel, null)
-
-  // keys: W/S/A/D move, ↑/↓ change (switches the override on), ⏎ switches the override on / off
-  const navItem = (st: Strip): NavItem => ({
-    id: `ch-${st.channel}`,
-    label: `Ch ${st.channel}${st.fixture ? ` (${st.fixture})` : ''}`,
-    value: `${st.override ?? st.live}${st.override !== undefined ? ' OVR' : st.route ? ' ROUTE' : ''}`,
-    hint: 'channel',
-    tip: `Channel ${st.channel}: ${st.route ? `routed from ${routeLabel(st.route)}; ` : ''}${st.fixture ?? 'not used by a fixture'}`,
-    adjust: (dir, fine) => setValue(st.channel, Math.min(255, Math.max(0, (st.override ?? st.live) + dir * (fine ? 1 : 5)))),
-    press: (down) => down && (st.override !== undefined ? release(st.channel) : setValue(st.channel, st.live)),
-  })
-  const rows = [0, 1, 2, 3].map((r) => strips.slice(r * 16, r * 16 + 16).map(navItem))
-  const { selectedId, select } = useGridNav('Control Desk', rows)
-
   const overridesOnSubpage = (p: number) => Object.keys(overrides).filter((c) => Math.floor((Number(c) - 1) / PER_PAGE) === p).length
   const routedOnSubpage = (p: number) => [...routed.keys()].filter((c) => Math.floor((c - 1) / PER_PAGE) === p).length
+  const tabs: SubTab<DeskTab>[] = DESK_TABS.map((id, p) => {
+    if (id === 'routes') {
+      const on = routes.filter((r) => r.enabled).length
+      return {
+        id,
+        label: 'Routes',
+        gap: true,
+        tip: `Live input (Art-Net, DMX over USB, MIDI) copied onto output channels; Q / E step through the subpages. ${on} of ${routes.length} route(s) on`,
+        marks: (active) => on > 0 && <span className={`size-[5px] ${active ? 'bg-ground' : 'bg-route'}`} />,
+      }
+    }
+    const n = overridesOnSubpage(p)
+    const rn = routedOnSubpage(p)
+    return {
+      id,
+      label: `${p * PER_PAGE + 1}–${(p + 1) * PER_PAGE}`,
+      mono: true,
+      tip: `Channels ${p * PER_PAGE + 1}–${(p + 1) * PER_PAGE} of 512; Q / E step through the subpages${n ? `. ${n} override(s) here` : ''}${rn ? `. ${rn} routed channel(s) here` : ''}`,
+      marks: (active) => (
+        <>
+          {n > 0 && <span className={`size-[5px] ${active ? 'bg-ground' : 'dot-on'}`} />}
+          {rn > 0 && <span className={`size-[5px] ${active ? 'bg-ground' : 'bg-route'}`} />}
+        </>
+      ),
+    }
+  })
 
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="flex flex-none flex-wrap items-center gap-1.5">
-        <label className="lbl flex items-center gap-2 text-[11px] text-dim" data-tip="DMX universe shown, numbered as on the Rig and Outputs pages; each has 512 channels">
+        <label className="lbl flex items-center gap-2 text-[11px] text-dim" data-tip="DMX universe shown, numbered as on the Rig page and in Connections; each has 512 channels. New routes go to it">
           Universe
           <select value={universe} onChange={(e) => setUniverse(Number(e.target.value))}>
             {UNIVERSES.map((u) => (
@@ -225,26 +207,7 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
             ))}
           </select>
         </label>
-        <div className="ml-2 flex border border-edge">
-          {Array.from({ length: SUBPAGES }, (_, p) => {
-            const n = overridesOnSubpage(p)
-            const rn = routedOnSubpage(p)
-            return (
-              <button
-                key={p}
-                onClick={() => setSubpage(p)}
-                className={`lbl relative flex h-8 items-center gap-1.5 border-r border-edge px-3 font-mono text-[11px] last:border-r-0 ${
-                  p === subpage ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'
-                }`}
-                data-tip={`Channels ${p * PER_PAGE + 1}–${(p + 1) * PER_PAGE} of 512; Q / E step through the subpages${n ? `. ${n} override(s) here` : ''}${rn ? `. ${rn} routed channel(s) here` : ''}`}
-              >
-                {p * PER_PAGE + 1}–{(p + 1) * PER_PAGE}
-                {n > 0 && <span className={`size-[5px] ${p === subpage ? 'bg-ground' : 'dot-on'}`} />}
-                {rn > 0 && <span className={`size-[5px] ${p === subpage ? 'bg-ground' : 'bg-route'}`} />}
-              </button>
-            )
-          })}
-        </div>
+        <SubTabs tabs={tabs} value={tab} onChange={setTab} />
         <div className="ml-auto flex items-center gap-1.5">
           {confirmReset ? (
             <>
@@ -278,31 +241,98 @@ export function ControlDesk({ engine }: { engine: EngineConnection }) {
         </div>
       </div>
 
-      <Section
-        index="01"
-        title={`Universe ${universe} · channels ${first}–${first + PER_PAGE - 1}`}
-        right="drag a channel to override it · the switch releases it · Q / E subpage"
-        className="min-h-[28rem] flex-1"
-        bodyClassName="p-0"
-        tip="Every DMX channel of the universe, live. Override a channel by hand, e.g. to test a light; overrides win over routes and fixtures and are saved. Channels in the blue colour are decided by a route (live input)"
-      >
-        <div className="grid min-h-[36rem] flex-1 grid-cols-8 gap-px bg-edge wide:min-h-0 wide:grid-cols-16 wide:grid-rows-4">
-          {strips.map((st) => (
-            <ChannelStrip
-              key={st.channel}
-              strip={st}
-              selected={selectedId === `ch-${st.channel}`}
-              onSelect={() => select(`ch-${st.channel}`)}
-              setValue={(v) => setValue(st.channel, v)}
-              release={() => release(st.channel)}
-            />
-          ))}
-        </div>
-      </Section>
+      {tab === 'routes' ? (
+        <RoutesView engine={engine} universe={universe} live={live} />
+      ) : (
+        <Channels engine={engine} universe={universe} subpage={DESK_TABS.indexOf(tab)} live={live} overrides={overrides} routed={routed} />
+      )}
+    </div>
+  )
+}
 
+/** The 64 faders of a subpage, at the full height of the page; the keys move like on a hardware desk (useGridNav). */
+function Channels({
+  engine,
+  universe,
+  subpage,
+  live,
+  overrides,
+  routed,
+}: {
+  engine: EngineConnection
+  universe: number
+  subpage: number
+  live: number[]
+  overrides: Record<string, number>
+  routed: Map<number, RouteState>
+}) {
+  // which fixture uses each channel of this universe
+  const fixtureAt = useMemo(() => {
+    const map: Record<number, string> = {}
+    for (const fx of engine.state?.fixtures ?? []) {
+      if (fx.transport !== 'dmx' || fx.universe !== universe) continue
+      fx.output.forEach((_, i) => (map[fx.address + i] = `${fx.name} · ${i + 1}`))
+    }
+    return map
+  }, [engine.state?.fixtures, universe])
+
+  const first = subpage * PER_PAGE + 1
+  const strips: Strip[] = Array.from({ length: PER_PAGE }, (_, i) => {
+    const channel = first + i
+    return { channel, live: live[channel - 1] ?? 0, override: overrides[String(channel)], fixture: fixtureAt[channel], route: routed.get(channel) }
+  })
+
+  const setValue = (channel: number, v: number) => engine.setOverride(universe, channel, v)
+  const release = (channel: number) => engine.setOverride(universe, channel, null)
+
+  // keys: W/S/A/D move, ↑/↓ change (switches the override on), ⏎ switches the override on / off
+  const navItem = (st: Strip): NavItem => ({
+    id: `ch-${st.channel}`,
+    label: `Ch ${st.channel}${st.fixture ? ` (${st.fixture})` : ''}`,
+    value: `${st.override ?? st.live}${st.override !== undefined ? ' OVR' : st.route ? ' ROUTE' : ''}`,
+    hint: 'channel',
+    tip: `Channel ${st.channel}: ${st.route ? `routed from ${routeLabel(st.route)}; ` : ''}${st.fixture ?? 'not used by a fixture'}`,
+    adjust: (dir, fine) => setValue(st.channel, Math.min(255, Math.max(0, (st.override ?? st.live) + dir * (fine ? 1 : 5)))),
+    press: (down) => down && (st.override !== undefined ? release(st.channel) : setValue(st.channel, st.live)),
+  })
+  const rows = [0, 1, 2, 3].map((r) => strips.slice(r * 16, r * 16 + 16).map(navItem))
+  const { selectedId, select } = useGridNav('Control Desk', rows)
+
+  return (
+    <Section
+      index="01"
+      title={`Universe ${universe} · channels ${first}–${first + PER_PAGE - 1}`}
+      right="drag a channel to override it · the switch releases it · Q / E subpage"
+      className="min-h-[28rem] flex-1"
+      bodyClassName="p-0"
+      tip="Every DMX channel of the universe, live. Override a channel by hand, e.g. to test a light; overrides win over routes and fixtures and are saved. Channels in the blue colour are decided by a route (live input)"
+    >
+      <div className="grid min-h-[36rem] flex-1 grid-cols-8 gap-px bg-edge wide:min-h-0 wide:grid-cols-16 wide:grid-rows-4">
+        {strips.map((st) => (
+          <ChannelStrip
+            key={st.channel}
+            strip={st}
+            selected={selectedId === `ch-${st.channel}`}
+            onSelect={() => select(`ch-${st.channel}`)}
+            setValue={(v) => setValue(st.channel, v)}
+            release={() => release(st.channel)}
+          />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/** The Routes subpage (items 58, 59): the keys move over its controls like on a form page (useFieldNav). */
+function RoutesView({ engine, universe, live }: { engine: EngineConnection; universe: number; live: number[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useFieldNav({ root: ref })
+  return (
+    <div ref={ref} className="flex min-h-0 flex-1 flex-col">
       <RoutesSection
-        index="02"
-        routes={routes}
+        index="01"
+        className="min-h-0 flex-1"
+        routes={engine.state?.routes ?? []}
         overlaps={engine.state?.route_overlaps ?? []}
         universe={universe}
         midi={engine.state?.io?.midi_routes}

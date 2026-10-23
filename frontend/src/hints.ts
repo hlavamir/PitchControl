@@ -26,6 +26,7 @@ export type HintKind =
   | 'list-multi'
   | 'slider'
   | 'tab'
+  | 'subtab'
   | 'button'
   | 'select'
   | 'text'
@@ -72,7 +73,9 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
   'nav-toggle': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'on / off'], ['ESC', 'list']],
   'nav-press': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'press'], ['ESC', 'list']],
   slider: [['CLICK / DRAG', 'set'], ['↑ ↓', 'change'], ['SHIFT', 'fine'], ...MOVE],
-  tab: [['0 – 9', 'page'], ['F', 'full screen'], [`${MOD} + −`, 'UI scale'], [`${MOD} 0`, 'UI scale 100 %']],
+  tab: [['1 – 9', 'page'], ['F', 'full screen'], [`${MOD} + −`, 'UI scale'], [`${MOD} 0`, 'UI scale 100 %']],
+  // the subpage tabs of Connections and the Control Desk (items 60, 61)
+  subtab: [['CLICK', 'open'], ['Q E', 'previous / next subpage']],
 }
 
 /**

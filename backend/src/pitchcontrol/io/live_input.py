@@ -111,7 +111,7 @@ class _Source:
 
 
 class InputStore:
-    """The latest values of every source that has sent anything, and what the Inputs page shows of them."""
+    """The latest values of every source that has sent anything, and what Connections → DMX & Art-Net shows of them."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
@@ -406,7 +406,7 @@ class DmxProReceiver:
     def _open(self) -> None:
         path = resolve_port(self.ref)
         if not path:
-            raise ConnectionError("device not found (check the Inputs page)")
+            raise ConnectionError("device not found (check Connections → DMX & Art-Net)")
         self.port = serial.Serial(path, 57600, timeout=0.1, write_timeout=1)
         self.port.write(pro_message(PRO_LABEL_RECEIVE_MODE, b"\x00"))
         self.port.reset_input_buffer()

@@ -1,7 +1,7 @@
 import type { IoStatus } from './api'
 
 /**
- * Why the MIDI input isn't running, in words, for the Inputs page and the mapping editor's Learn notice (the same
+ * Why the MIDI input isn't running, in words, for Connections → MIDI and the mapping editor's Learn notice (the same
  * words for the same case). A port that isn't there is a warning: the shipped settings name a controller that most
  * users don't own, and nothing is broken. A port that is there but can't be opened is an error.
  */
