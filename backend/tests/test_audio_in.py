@@ -1,5 +1,6 @@
 """AudioInput on devices with fewer inputs than the configured channels (item 25)."""
 
+import json
 import threading
 import time
 
@@ -71,9 +72,14 @@ class FakeSd:
 
 @pytest.fixture(autouse=True)
 def _forget_child_failures():
-    audio_in._child_failure[0] = None  # the fallback warning is logged once per change: every test starts afresh
+    def forget():
+        audio_in._child_failure[0] = None  # the fallback warning is logged once per change: every test starts afresh
+        audio_in._last_listing[0] = None  # and the child's last answer (item 32) is not reused by the next test
+        audio_in._child_logged_s[0] = None
+
+    forget()
     yield
-    audio_in._child_failure[0] = None
+    forget()
 
 
 MIC = {"name": "MacBook Pro Microphone", "max_input_channels": 1, "default_samplerate": 48000.0}
@@ -332,6 +338,136 @@ def test_fresh_list_falls_back_when_the_child_fails(monkeypatch):
 
     monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: Failed())
     assert [d["label"] for d in audio_in.list_input_devices_fresh()] == ["MacBook Pro Microphone (Core Audio)"]
+
+
+class _Child:
+    """A fake ``subprocess.run`` for the child: counts its runs, takes ``seconds`` and answers with ``devices``."""
+
+    def __init__(self, devices=(), seconds=0.0, fail=None):
+        self.runs = 0
+        self.seconds = seconds
+        self.devices = list(devices)
+        self.fail = fail
+
+    def __call__(self, cmd, **kwargs):
+        import subprocess
+
+        self.runs += 1
+        time.sleep(self.seconds)
+        if self.fail == "timeout":
+            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+        class Done:
+            returncode = 0
+            stdout = json.dumps(self.devices).encode()
+            stderr = b""
+
+        return Done()
+
+
+STEREO_LISTED = {"index": 3, "name": "Stereo Interface", "hostapi": "WASAPI", "label": "Stereo Interface (WASAPI)",
+                 "channels": 2, "default_samplerate": 48000.0}
+
+
+def test_the_child_has_ten_seconds_on_a_slow_windows_computer():
+    assert audio_in.LIST_TIMEOUT_S == 10.0  # 2 s timed out four times on the owner's laptop (item 32)
+
+
+def test_two_callers_at_once_share_one_child(monkeypatch):
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC]))
+    child = _Child([STEREO_LISTED], seconds=0.3)
+    monkeypatch.setattr(audio_in.subprocess, "run", child)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(audio_in.list_input_devices_fresh())) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert child.runs == 1
+    assert results == [[STEREO_LISTED]] * 3
+
+
+def test_an_answer_younger_than_1_5_seconds_is_reused_and_an_older_one_is_not(monkeypatch):
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC]))
+    child = _Child([STEREO_LISTED])
+    monkeypatch.setattr(audio_in.subprocess, "run", child)
+    clock = [100.0]
+    monkeypatch.setattr(audio_in.time, "monotonic", lambda: clock[0])
+    audio_in.list_input_devices_fresh()
+    clock[0] += 1.4
+    audio_in.list_input_devices_fresh()
+    assert child.runs == 1
+    clock[0] += 0.2  # 1.6 s after the answer
+    audio_in.list_input_devices_fresh()
+    assert child.runs == 2
+
+
+def test_a_caller_cannot_change_the_cached_list(monkeypatch):
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC]))
+    monkeypatch.setattr(audio_in.subprocess, "run", _Child([STEREO_LISTED]))
+    audio_in.list_input_devices_fresh()[0]["label"] = "changed"
+    assert audio_in.list_input_devices_fresh()[0]["label"] == "Stereo Interface (WASAPI)"
+
+
+def test_a_timeout_falls_back_once_for_everyone_who_waited_and_says_the_limit(monkeypatch, caplog):
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC]))
+    child = _Child(seconds=0.2, fail="timeout")
+    monkeypatch.setattr(audio_in.subprocess, "run", child)
+    results = []
+    with caplog.at_level("WARNING"):
+        threads = [threading.Thread(target=lambda: results.append(audio_in.list_input_devices_fresh())) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+    assert child.runs == 1  # the waiting callers don't start a child of their own after the failure
+    assert [[d["label"] for d in r] for r in results] == [["MacBook Pro Microphone (Core Audio)"]] * 3
+    assert caplog.text.count("could not list the audio devices in a child process") == 1
+    assert "timed out after 10 seconds, the limit" in caplog.text and "using this process's list" in caplog.text
+
+
+def test_the_child_s_time_is_logged_the_first_time_and_when_it_gets_much_slower(monkeypatch, caplog):
+    monkeypatch.setattr(audio_in, "sd", FakeSd([MIC]))
+    child = _Child([STEREO_LISTED])
+    clock = [0.0]
+
+    def run(cmd, **kwargs):
+        res = child(cmd, **kwargs)
+        clock[0] += took[0]
+        return res
+
+    monkeypatch.setattr(audio_in.subprocess, "run", run)
+    monkeypatch.setattr(audio_in.time, "monotonic", lambda: clock[0])
+    took = [1.0]
+
+    def listing():
+        clock[0] += 10  # past LIST_MAX_AGE_S: every call runs the child
+        audio_in.list_input_devices_fresh()
+
+    with caplog.at_level("INFO", logger=audio_in.log.name):
+        listing()
+        assert "audio device list from a child process: 1.0 s" in caplog.text
+        took[0] = 1.8  # not twice as slow
+        listing()
+        assert caplog.text.count("audio device list from a child process") == 1
+        took[0] = 2.5  # more than twice the 1.0 s
+        listing()
+        assert caplog.text.count("audio device list from a child process") == 2 and "2.5 s" in caplog.text
+        took[0] = 3.2  # past 3 s
+        listing()
+        assert caplog.text.count("audio device list from a child process") == 3 and "3.2 s" in caplog.text
+        took[0] = 3.4  # slow, but not news
+        listing()
+        assert caplog.text.count("audio device list from a child process") == 3
+
+
+def test_the_child_does_not_import_numpy():
+    import subprocess
+    import sys
+
+    code = "import sys, pitchcontrol.io.audio_in; print('numpy' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30)
+    assert out.stdout.strip() == "False", out.stderr
 
 
 def test_match_device_is_one_rule_for_both_lists():
@@ -658,10 +794,13 @@ def test_the_fallback_warning_is_logged_once_per_change_not_every_two_seconds(mo
     monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: result["run"]())
     with caplog.at_level("WARNING"):
         audio_in.list_input_devices_fresh()
+        audio_in._last_listing[0] = None
         audio_in.list_input_devices_fresh()
         assert caplog.text.count("could not list the audio devices in a child process") == 1
+        audio_in._last_listing[0] = None  # (the failure just seen is no older than LIST_MAX_AGE_S, which skips the child)
         result["run"] = Fine  # the child works again ...
         assert audio_in.list_input_devices_fresh() == []
+        audio_in._last_listing[0] = None
         result["run"] = Failed  # ... and fails again: that is news again
         audio_in.list_input_devices_fresh()
     assert caplog.text.count("could not list the audio devices in a child process") == 2

@@ -9,9 +9,10 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-import numpy as np
+if TYPE_CHECKING:  # not imported at run time: the child that lists the devices (item 32) needs no numpy (about 35 ms of its start)
+    import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -68,40 +69,81 @@ def match_device(name: str | None, devices: list[dict]) -> dict | None:
 
 
 LIST_FLAG = "--list-audio-devices"
-LIST_TIMEOUT_S = 2.0  # the child needs about 0.3 s (measured on the Mac, item 32); a stuck driver must not hang the app
+# The child needs about 0.3 s on the Mac (item 32), but on the owner's Windows laptop 2 s was not enough, four times in a
+# log: the frozen exe has to start, and PortAudio then enumerates every WDM-KS and Bluetooth hands-free device, which can
+# take several seconds. The callers (the Audio tab's endpoint, the audio watchdog) are not the light engine's thread, so a
+# longer wait costs nothing; the limit is only there so that a stuck driver cannot hang them for good.
+LIST_TIMEOUT_S = 10.0
+LIST_MAX_AGE_S = 1.5  # an answer this young is the answer: no new child (the Audio tab asks every 2 s, the watchdog too)
+SLOW_CHILD_S = 3.0  # a listing this slow is worth a line in the log, whatever the one before took
 
 
 _child_failure: list[str | None] = [None]  # why the last listing by the child failed, until one works again
+# Item 32: one child at a time. A caller that finds a listing running waits for it (the lock) and then reads its answer
+# from ``_last_listing`` instead of starting another child, which on a slow computer would queue one after the other.
+_LIST_LOCK = threading.Lock()
+_last_listing: list[tuple[float, list[dict] | None] | None] = [None]  # (time.monotonic() when it ended, devices; None = it failed)
+_child_logged_s: list[float | None] = [None]  # the child's time at the last "audio device list from a child process" line
+
+
+def _log_child_time(seconds: float) -> None:
+    """One INFO line with how long the child took: the first time it works in a run, and again when it got much slower
+    (twice the last time logged, or past ``SLOW_CHILD_S``), so that a Windows log says what the child really needs."""
+    last = _child_logged_s[0]
+    if last is None or seconds > 2 * last or (seconds > SLOW_CHILD_S and last <= SLOW_CHILD_S):
+        _child_logged_s[0] = seconds
+        log.info("audio device list from a child process: %.1f s", seconds)
 
 
 def list_input_devices_fresh() -> list[dict]:
     """The input devices as they are right now, without touching the stream that is running: a short-lived child process
     has its own PortAudio, which enumerates the devices afresh when it starts, and opens no stream (the running stream
     would be closed by a re-init in this process). The ``index`` of each entry is the child's: match by label
-    (``match_device``). Falls back to the list of this process, with a warning, if the child fails or takes too long."""
+    (``match_device``). Falls back to the list of this process, with a warning, if the child fails or takes longer than
+    ``LIST_TIMEOUT_S``. One child runs at a time; a caller that arrives meanwhile, or within ``LIST_MAX_AGE_S`` of the
+    end of the last one, gets that one's answer."""
     if sd is None:
         return []
+    with _LIST_LOCK:
+        last = _last_listing[0]
+        if last is not None and time.monotonic() - last[0] < LIST_MAX_AGE_S:
+            devices = last[1]
+        else:
+            devices = _run_list_child()
+            _last_listing[0] = (time.monotonic(), devices)
+    if devices is None:
+        return list_input_devices()
+    return [dict(d) for d in devices]
+
+
+def _run_list_child() -> list[dict] | None:
+    """Start the child and read its list; None, with the warning (once per change), if that didn't work."""
     if getattr(sys, "frozen", False):
         cmd = [sys.executable, LIST_FLAG]  # the app binary itself, handled in packaging/app_entry.py before the app starts
     else:
         cmd = [sys.executable, "-m", "pitchcontrol.io.audio_in", LIST_FLAG]
+    started = time.monotonic()
     try:
-        res = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=LIST_TIMEOUT_S,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=LIST_TIMEOUT_S,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"timed out after {LIST_TIMEOUT_S:g} seconds, the limit") from None
         if res.returncode != 0:
             raise RuntimeError(f"exit code {res.returncode}: {res.stderr.decode(errors='replace').strip()[-200:]}")
         devices = json.loads(res.stdout.decode())
-        _child_failure[0] = None
-        return devices
     except Exception as exc:  # noqa: BLE001
         if _child_failure[0] != str(exc):  # Connections asks every two seconds: say it when it changes, not every time
             _child_failure[0] = str(exc)
             log.warning("could not list the audio devices in a child process (%s): using this process's list", exc)
-        return list_input_devices()
+        return None
+    _child_failure[0] = None
+    _log_child_time(time.monotonic() - started)
+    return devices
 
 
 def list_devices_main() -> None:
@@ -236,7 +278,7 @@ class AudioInput:
         self.last_callback = time.monotonic()  # the age of this is what says the stream is dead (see ``dead``)
         self.got_block = True
         mono = indata[:, [c - 1 for c in self.used_channels]].sum(axis=1)
-        self.level = float(np.abs(mono).max()) if len(mono) else 0.0
+        self.level = float(abs(mono).max()) if len(mono) else 0.0
         self.on_samples(mono)
 
     def stop(self) -> None:
