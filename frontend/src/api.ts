@@ -127,6 +127,16 @@ export interface IoStatus {
   learn_seconds?: number // how long Learn waits
 }
 
+/** One engine frame of the audio bands, pushed at the frame rate while a band display is open (item 81). */
+export interface AudioFrame {
+  type: 'audio'
+  frame: number
+  bands: number[] // the live, normalised value of each band, 0–1
+  peaks: number[] // 1 while the band peaks
+  max: number[] // each band's own decaying maximum
+  min: number[] // each band's own floor
+}
+
 export interface EngineState {
   received_at?: number // performance.now() when it arrived (useEngine): the clock of the header bubbles' rates
   frame: number
@@ -140,8 +150,6 @@ export interface EngineState {
   peaks_total: number
   trigger: number
   bands: number[] // normalised (what drives the lights)
-  band_levels?: number[] // the same bands before the division by the shared maximum (item 75)
-  band_norm?: number // the shared, slowly decaying maximum the bands are divided by, in the scale of band_levels
   band_peaks: number[]
   peaks_map: number[]
   preset: string

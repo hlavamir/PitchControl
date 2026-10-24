@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { EngineState } from './api'
+import type { AudioFrame, EngineState } from './api'
 import type { LogBatch } from './logView'
 import type { PerfBatch } from './bubbles'
 
@@ -25,6 +25,12 @@ export interface EngineConnection {
    * unsubscribes (the returned function). Asked again after a reconnect. One subscriber at a time.
    */
   subscribePerf: (onBatch: (batch: PerfBatch) => void) => () => void
+  /**
+   * The band displays (item 81) ask for the audio bands once per engine frame, until they unsubscribe (the returned
+   * function). Several displays may be mounted at once: the server is asked while at least one listens, and asked again
+   * after a reconnect. The frames go to the listeners only, not into ``state``: 40 renders a second of the whole app.
+   */
+  subscribeAudio: (onFrame: (frame: AudioFrame) => void) => () => void
 }
 
 /**
@@ -38,6 +44,7 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
   const socketRef = useRef<WebSocket | null>(null)
   const logRef = useRef<{ after: () => number; onBatch: (batch: LogBatch) => void } | null>(null)
   const perfRef = useRef<{ onBatch: (batch: PerfBatch) => void } | null>(null)
+  const audioRef = useRef<Set<(frame: AudioFrame) => void>>(new Set())
 
   useEffect(() => {
     let closed = false
@@ -53,12 +60,14 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
         const log = logRef.current
         if (log) ws.send(JSON.stringify({ type: 'log_subscribe', after: log.after() })) // the view stays open over a reconnect
         if (perfRef.current) ws.send(JSON.stringify({ type: 'perf_subscribe' }))
+        if (audioRef.current.size) ws.send(JSON.stringify({ type: 'audio_subscribe' }))
       }
       ws.onmessage = (ev) => {
         if (typeof ev.data !== 'string') return setPreview(new Uint8Array(ev.data))
         const msg = JSON.parse(ev.data)
         if (msg.type === 'log') logRef.current?.onBatch(msg) // the engine state has no "type"
         else if (msg.type === 'perf') perfRef.current?.onBatch(msg)
+        else if (msg.type === 'audio') audioRef.current.forEach((listener) => listener(msg))
         else setState({ ...msg, received_at: performance.now() })
       }
       ws.onclose = () => {
@@ -117,5 +126,18 @@ export function useEngine({ preview: withPreview = true }: { preview?: boolean }
     [send],
   )
 
-  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride, subscribeLog, subscribePerf }
+  const subscribeAudio = useCallback(
+    (onFrame: (frame: AudioFrame) => void) => {
+      const listeners = audioRef.current
+      listeners.add(onFrame)
+      if (listeners.size === 1) send({ type: 'audio_subscribe' }) // not open yet: onopen asks
+      return () => {
+        if (!listeners.delete(onFrame) || listeners.size > 0) return
+        send({ type: 'audio_unsubscribe' })
+      }
+    },
+    [send],
+  )
+
+  return { state, preview, connected, setMacro, toggleMacro, setDeferred, cancelPending, setOverride, subscribeLog, subscribePerf, subscribeAudio }
 }

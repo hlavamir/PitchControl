@@ -40,6 +40,32 @@ def test_engine_reacts_to_kick(store):
     assert engine.peaks_total >= 1
 
 
+def test_audio_frame_is_what_the_band_displays_draw(store):  # item 81
+    engine = Engine(store, enable_hardware=False)
+    for _ in range(5):
+        engine.tick(1 / 40)
+    a = engine.audio_frame()
+    n = len(engine.state()["bands"])
+    assert a["type"] == "audio" and a["frame"] == engine.frame
+    assert all(len(a[k]) == n for k in ("bands", "peaks", "max", "min"))
+    assert all(lo <= hi for lo, hi in zip(a["min"], a["max"]))
+
+
+def test_audio_subscription_streams_frames_until_unsubscribed(store, monkeypatch):  # item 81
+    monkeypatch.setattr(store.settings, "fps", 100)
+    engine = Engine(store, enable_hardware=False)  # not started: the test ticks
+    with TestClient(create_app(engine)).websocket_connect("/ws?preview=0") as ws:
+        ws.send_json({"type": "audio_subscribe"})
+        frames = []
+        while len(frames) < 2:
+            engine.tick(1 / 40)
+            body = json.loads(ws.receive()["text"])
+            if body.get("type") == "audio":
+                frames.append(body["frame"])
+        assert frames[1] > frames[0]
+        ws.send_json({"type": "audio_unsubscribe"})
+
+
 def test_scene_save_and_load(store):
     engine = Engine(store, enable_hardware=False)
     engine.macros.set("Hue A", 0.3)
@@ -64,7 +90,7 @@ def test_api_and_websocket(store):
     with client.websocket_connect("/ws") as ws:
         state = ws.receive_json()
         assert "fixtures" in state and "bands" in state
-        assert len(state["band_levels"]) == len(state["bands"]) and state["band_norm"] >= 0.25  # item 75
+        assert "band_levels" not in state and "band_norm" not in state and "band_peaks" in state
         preview = ws.receive_bytes()
         assert len(preview) == 256 * 256
         ws.send_json({"type": "macro", "name": "Strobo", "value": 0.25})

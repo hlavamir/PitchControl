@@ -6,6 +6,12 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **The audio bands as in the vvvv patch** (item 81). Every band display (General → Audio, Connections → Audio, the audio bubble) draws three layers per band: at the back, faint, the band's **own** decaying maximum (it jumps up with each new high and sinks by 0.998 per frame); in front, the live value; and at the bottom, brightest, the band's own minimum, its floor. 1.8.3's even block of the shared normalisation value is gone. The displays are redrawn with every engine frame (40 fps) and without easing: they get their own websocket feed (`audio_subscribe`, `{"type": "audio", "bands", "peaks", "max", "min"}`) while one is on screen, instead of the state at 15 Hz with an 80 ms tween. The state loses `band_levels` and `band_norm`.
+
+### Fixed
+- **The pointer hand over everything clickable** (item 79): page and subpage tabs, buttons, switches, dropdowns, checkboxes and links show the hand in the apps and the browser (Tailwind's base styles had left them on the arrow); disabled controls, the faders and the drawn Windows menu keep their own cursors.
+
 ## 1.8.3 — 2026-10-24
 
 ### Added

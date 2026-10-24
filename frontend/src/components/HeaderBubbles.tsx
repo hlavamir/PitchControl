@@ -4,7 +4,7 @@ import { IoTracker, PERF_WINDOW_MS, addPerf, midiRow, perfColumns, perfScale, pe
 import type { ConnectionTab } from '../pages'
 import { currentInk } from '../theme'
 import type { EngineConnection } from '../useEngine'
-import { BandMeter } from './BandMeter'
+import { LiveBandMeter } from './LiveBandMeter'
 import { StatusDot } from './forms'
 import type { IconName } from '../icons'
 import { Icon } from './Icon'
@@ -206,7 +206,7 @@ function AudioBubble({ engine }: { engine: EngineConnection }) {
           <div className="dot-on h-1.5" style={{ width: `${Math.min(1, a?.level ?? 0) * 100}%` }} />
         </div>
       </div>
-      <BandMeter bands={s?.band_levels ?? s?.bands ?? []} norm={s?.band_norm} peaks={s?.band_peaks} height={64} />
+      <LiveBandMeter engine={engine} height={64} />
       <div className="lbl flex justify-between text-[10px] text-dim">
         <span>low</span>
         <span>{s?.bands.length ?? 0} bands</span>

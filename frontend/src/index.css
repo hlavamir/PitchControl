@@ -174,3 +174,21 @@ option {
   border-left: 6px solid transparent;
   background-clip: padding-box;
 }
+
+/* clickable controls get the pointer hand (item 79): Tailwind's preflight leaves buttons on the arrow. In the base layer, so the
+   utilities (cursor-ns-resize on the faders, cursor-default on the drawn menu) still win; the unlayered not-allowed rule of the
+   disabled fields above beats it. The drawn app menu (role="menuitem") is left out on purpose: native menus keep the arrow */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='tab'],
+  [role='switch'],
+  select:not(:disabled),
+  a[href],
+  summary,
+  label:has(> input[type='checkbox']:not(:disabled)),
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled) {
+    cursor: pointer;
+  }
+}

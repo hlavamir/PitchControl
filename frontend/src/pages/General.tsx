@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, rgbCss, type MacroDef } from '../api'
 import { BandMeter, SegmentBar } from '../components/BandMeter'
+import { LiveBandMeter } from '../components/LiveBandMeter'
 import { MacroControl, colorTrackFor } from '../components/MacroControl'
 import { MacroSlider } from '../components/MacroSlider'
 import { Preview } from '../components/Preview'
@@ -267,7 +268,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
           }
         >
           <div className="min-h-16 flex-1">
-            <BandMeter bands={state?.band_levels ?? state?.bands ?? []} norm={state?.band_norm} peaks={state?.band_peaks} height="100%" tip="Level of each frequency band, low to high: the bright column is the live value, the dim column behind it the slowly decaying maximum the bands are divided by; a glowing band is peaking" />
+            <LiveBandMeter engine={engine} height="100%" tip="Level of each frequency band, low to high, as in the vvvv patch: the medium column is the live value, the faint one behind it the band's own decaying maximum, the bright core its own minimum; a glowing band is peaking" />
           </div>
           <div className="lbl flex justify-between font-mono text-[10px] text-dim">
             <span>35 Hz</span>

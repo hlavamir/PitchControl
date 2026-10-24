@@ -642,6 +642,21 @@ class Engine:
         img = curved(mixed_mask(masks, peaks, self.preview_u, self.preview_v, params, symmetry), curve)
         return (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8).tobytes()
 
+    def audio_frame(self) -> dict:
+        """What the band displays draw (item 81, as the vvvv patch's audio visualizer): per band the live normalised value,
+        its own decaying maximum and its own minimum, and whether it peaks. Sent at the engine frame rate while a display is
+        open (``audio_subscribe``), apart from the state, which only goes out at ``preview_fps``."""
+        with self.lock:
+            f = self.features
+            return {
+                "type": "audio",
+                "frame": self.frame,
+                "bands": np.round(f.values, 3).tolist(),
+                "peaks": f.peak.astype(int).tolist(),
+                "max": np.round(f.peak_max, 3).tolist(),
+                "min": np.round(f.peak_min, 3).tolist(),
+            }
+
     def state(self) -> dict:
         with self.lock:
             midi = self.midi  # read once
@@ -677,10 +692,6 @@ class Engine:
                 "trigger": round(self.features.trigger_fraction, 4),
                 "bands": np.round(self.features.values, 3).tolist(),
                 "band_peaks": self.features.peak.astype(int).tolist(),
-                # the band displays (item 75): the live levels before the division, and the shared maximum they were
-                # divided by, in the same 0..1 scale, so a display can draw the one behind the other
-                "band_levels": np.round(self.features.levels, 3).tolist(),
-                "band_norm": round(self.features.norm_max, 3),
                 "peaks_map": np.round(self.peaks.blue, 3).tolist(),
                 "preset": PRESET_NAMES[self.masks.current],
                 "colors": {"A": rgb_a, "B": rgb_b},

@@ -1023,6 +1023,7 @@ def create_app(
         sender = asyncio.create_task(_push_state(socket, engine, preview=socket.query_params.get("preview") != "0"))
         log_task: asyncio.Task | None = None
         perf_task: asyncio.Task | None = None
+        audio_task: asyncio.Task | None = None
         try:
             while True:
                 msg = await socket.receive_json()
@@ -1055,11 +1056,17 @@ def create_app(
                 elif msg.get("type") == "perf_unsubscribe" and perf_task is not None:
                     perf_task.cancel()
                     perf_task = None
+                elif msg.get("type") == "audio_subscribe":  # a band display is open: the bands follow every frame (item 81)
+                    if audio_task is None:
+                        audio_task = asyncio.create_task(_push_audio(socket, engine))
+                elif msg.get("type") == "audio_unsubscribe" and audio_task is not None:
+                    audio_task.cancel()
+                    audio_task = None
         except WebSocketDisconnect:
             pass
         finally:
             sender.cancel()
-            for task in (log_task, perf_task):
+            for task in (log_task, perf_task, audio_task):
                 if task is not None:
                     task.cancel()
 
@@ -1115,6 +1122,23 @@ async def _push_perf(socket: WebSocket, engine: Engine) -> None:
         pass
     except Exception:  # noqa: BLE001
         log.exception("websocket perf push failed")
+
+
+async def _push_audio(socket: WebSocket, engine: Engine) -> None:
+    """The band displays' feed (item 81): ``engine.audio_frame()`` once per engine frame, at the target frame rate and only
+    when the engine has moved on, so the columns redraw as often as the lights do (as in the vvvv patch)."""
+    try:
+        last = -1
+        while True:
+            if engine.frame != last:
+                frame = engine.audio_frame()
+                last = frame["frame"]
+                await socket.send_json(frame)
+            await asyncio.sleep(1.0 / max(engine.store.settings.fps, 1.0))
+    except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+        pass
+    except Exception:  # noqa: BLE001
+        log.exception("websocket audio push failed")
 
 
 async def _push_state(socket: WebSocket, engine: Engine, preview: bool = True) -> None:
