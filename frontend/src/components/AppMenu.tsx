@@ -99,7 +99,7 @@ export function AppMenu({
         setState(CLOSED)
         run(item.id)
       }}
-      className={`flex h-7 cursor-default items-center gap-2.5 pr-3 pl-2 text-[12px] ${!enabled(item.id) ? 'text-dim opacity-50' : lit ? 'glow-on bg-ink text-ground' : 'text-ink'}`}
+      className={`flex h-7 items-center gap-2.5 pr-3 pl-2 text-[12px] ${!enabled(item.id) ? 'text-dim opacity-50' : `cursor-pointer ${lit ? 'glow-on bg-ink text-ground' : 'text-ink'}`}`}
     >
       <span className="flex w-2 flex-none justify-center">{checked(item.id) && <span className={`size-[6px] ${lit && enabled(item.id) ? 'bg-ground' : 'dot-on'}`} />}</span>
       <span className="lbl flex-1 whitespace-nowrap">{label(item.id, item.label)}</span>
@@ -156,7 +156,7 @@ export function AppMenu({
                         aria-expanded={state.item === j && state.subOpen}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => setState((s) => ({ ...s, item: j, subOpen: !(s.item === j && s.subOpen), sub: null }))}
-                        className={`flex h-7 cursor-default items-center gap-2.5 pr-3 pl-2 text-[12px] ${state.item === j ? 'glow-on bg-ink text-ground' : 'text-ink'}`}
+                        className={`flex h-7 cursor-pointer items-center gap-2.5 pr-3 pl-2 text-[12px] ${state.item === j ? 'glow-on bg-ink text-ground' : 'text-ink'}`}
                       >
                         <span className="w-2 flex-none" />
                         <span className="lbl flex-1 whitespace-nowrap">{item.submenu}</span>
