@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 
+import serial
 from serial.tools import list_ports
 
 from ..config.models import DeviceRef
@@ -23,6 +25,8 @@ def guess_dmx_type(*texts: str | None) -> str | None:
     text = " ".join(t for t in texts if t).lower()
     if not text:
         return None
+    if "open dmx" in text:  # "ENTTEC Open DMX USB" would match the Pro word "enttec" below
+        return "open"
     if any(w in text for w in _PRO_WORDS):
         return "pro"
     if any(w in text for w in _OPEN_WORDS):
@@ -41,13 +45,62 @@ def device_info(ref: DeviceRef) -> dict | None:
     return None
 
 
+# Windows gives neither interface a product string (both are "USB Serial Port"), so the strings can't
+# tell them apart there. The Pro answers its "get widget serial number" request, the Open DMX does not.
+_PROBE_BAUD = 57600
+_PROBE_REQUEST = bytes([0x7E, 0x0A, 0x00, 0x00, 0xE7])  # label 10, no data; the Pro replies 7E 0A 04 00 <4 bytes> E7
+_PROBE_WAIT = 0.3  # seconds to wait for the reply (the FTDI latency timer defaults to 16 ms)
+_probed: dict[str, str] = {}  # serial number (else port) -> "pro" | "open", so a restart of the outputs doesn't probe again
+
+
+def clear_probe_cache() -> None:
+    _probed.clear()
+
+
+def _probe_dmx_type(port: str) -> str:
+    """"pro" if the device on this port answers the Enttec Pro's serial number request, else "open".
+    Raises serial.SerialException / OSError when the port can't be opened."""
+    ser = serial.Serial(port, _PROBE_BAUD, timeout=0.05, write_timeout=_PROBE_WAIT)
+    try:
+        ser.reset_input_buffer()
+        ser.write(_PROBE_REQUEST)
+        reply = b""
+        deadline = time.monotonic() + _PROBE_WAIT
+        while time.monotonic() < deadline:
+            reply += ser.read(64)
+            if len(reply) >= 5 and reply[:2] == b"\x7e\x0a" and reply[-1:] == b"\xe7":
+                return "pro"
+        return "open"
+    finally:
+        ser.close()
+
+
 def detect_dmx_type(ref: DeviceRef) -> str:
-    """The type of a configured USB DMX interface: from the connected device, else from what was
-    stored when it was chosen; the Enttec Pro protocol when nothing tells."""
+    """The type of a configured USB DMX interface: from the connected device's USB strings, else by
+    asking it (kept for the run); when it can't be asked, from what was stored when it was chosen;
+    the Enttec Pro protocol when nothing tells."""
     info = device_info(ref)
     if info is not None and info.get("dmx_type"):
+        log.info("DMX interface type %s, from the USB strings", info["dmx_type"])
         return info["dmx_type"]
-    return guess_dmx_type(ref.description) or "pro"
+    stored = guess_dmx_type(ref.description)
+    if info is None:  # not plugged in: nothing to ask
+        kind = stored or "pro"
+        log.info("DMX interface type %s, from the stored description" if stored else "DMX interface type %s, assumed (not connected)", kind)
+        return kind
+    key = ref.serial_number or info["port"]
+    if key in _probed:
+        return _probed[key]
+    port = resolve_port(ref) or info["port"]
+    try:
+        kind = _probe_dmx_type(port)
+    except (serial.SerialException, OSError) as e:
+        kind = stored or "pro"
+        log.warning("DMX interface type: probe failed: %s, assuming %s", e, kind)
+        return kind
+    log.info("DMX interface type %s, probe: %s", kind, "answered (Pro)" if kind == "pro" else "no answer (Open)")
+    _probed[key] = kind
+    return kind
 
 
 def list_serial_devices() -> list[dict]:

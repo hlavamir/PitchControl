@@ -6,11 +6,15 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Check for updates** in Help → About (item 82), next to Releases: when pressed, PitchControl asks GitHub for the newest release and says whether yours is the latest, or shows the new version with its date, release notes and a **Download** button that opens the zip for this computer (macOS arm64, Windows x64) in the browser. Nothing is checked at start, and the app downloads and installs nothing itself; without internet it says it couldn't reach GitHub. `GET /api/update-check`.
+
 ### Changed
 - **The audio bands as in the vvvv patch** (item 81). Every band display (General → Audio, Connections → Audio, the audio bubble) draws three layers per band: at the back, faint, the band's **own** decaying maximum (it jumps up with each new high and sinks by 0.998 per frame); in front, the live value; and at the bottom, brightest, the band's own minimum, its floor. 1.8.3's even block of the shared normalisation value is gone. The displays are redrawn with every engine frame (40 fps) and without easing: they get their own websocket feed (`audio_subscribe`, `{"type": "audio", "bands", "peaks", "max", "min"}`) while one is on screen, instead of the state at 15 Hz with an 80 ms tween. The state loses `band_levels` and `band_norm`.
 
 ### Fixed
-- **The pointer hand over everything clickable** (item 79): page and subpage tabs, buttons, switches, dropdowns, checkboxes and links show the hand in the apps and the browser (Tailwind's base styles had left them on the arrow); disabled controls, the faders and the drawn Windows menu keep their own cursors.
+- **The pointer hand over everything clickable** (item 79): page and subpage tabs, buttons, switches, dropdowns, checkboxes and links show the hand in the apps and the browser (Tailwind's base styles had left them on the arrow); the titles of the drawn Windows menu (File, Edit, …) too; disabled controls, the faders and the items of an open menu keep their own cursors.
+- **Windows: Detect automatically finds the Enttec Open DMX USB** (item 83). Windows reports no product name for FTDI interfaces, so the app took an Open DMX USB for a Pro and sent it Pro packets (no light until the type was set to Open by hand). When the USB names don't decide, the app now asks the interface once when the outputs start (the Pro's "get serial number" request): a Pro answers, an Open can't. The log says how the type was found. Also: a device calling itself "ENTTEC Open DMX USB" is an Open, not a Pro.
 
 ## 1.8.3 — 2026-10-24
 

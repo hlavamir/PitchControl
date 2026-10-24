@@ -176,8 +176,9 @@ option {
 }
 
 /* clickable controls get the pointer hand (item 79): Tailwind's preflight leaves buttons on the arrow. In the base layer, so the
-   utilities (cursor-ns-resize on the faders, cursor-default on the drawn menu) still win; the unlayered not-allowed rule of the
-   disabled fields above beats it. The drawn app menu (role="menuitem") is left out on purpose: native menus keep the arrow */
+   utilities (cursor-ns-resize on the faders, cursor-default on the drawn menu's items) still win; the unlayered not-allowed rule
+   of the disabled fields above beats it. The drawn menu's titles (File, Edit, …) are buttons and get the hand (Miro, 2026-10-24);
+   the items of an open menu keep the arrow */
 @layer base {
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),

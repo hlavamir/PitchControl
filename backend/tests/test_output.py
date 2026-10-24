@@ -268,6 +268,106 @@ def test_guess_dmx_type_from_the_usb_strings():
     assert guess_dmx_type(None, "FTDI", "USB-RS485") == "open"
     assert guess_dmx_type("Midihub MH-3Z6HN83") is None
     assert guess_dmx_type(None, None) is None
+    assert guess_dmx_type("ENTTEC Open DMX USB") == "open"      # "open dmx" counts before the Pro word "enttec"
+    assert guess_dmx_type("Open DMX USB", "ENTTEC") == "open"
+    assert guess_dmx_type("ENTTEC") == "pro"
+    assert guess_dmx_type("USB Serial Port (COM3)", "FTDI") is None  # Windows: no product string, the probe decides
+
+
+class FakeProbePort:
+    """A stand-in for serial.Serial that answers the probe with `reply` (or fails to open)."""
+
+    opened: list = []
+
+    def __init__(self, reply=b"", error=None):
+        self.reply, self.error, self.written, self.closed = reply, error, b"", False
+
+    def factory(self, port, baud, **kw):
+        if self.error:
+            raise self.error
+        FakeProbePort.opened.append((port, baud))
+        return self
+
+    def reset_input_buffer(self):
+        pass
+
+    def write(self, data):
+        self.written += data
+
+    def read(self, n):
+        out, self.reply = self.reply[:n], self.reply[n:]
+        return out
+
+    def close(self):
+        self.closed = True
+
+
+def _windows_device(monkeypatch, fake):
+    """A connected interface whose strings don't tell the type, and the fake in place of the port."""
+    import serial
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import devices
+
+    FakeProbePort.opened = []
+    devices.clear_probe_cache()
+    dev = {"port": "COM3", "serial_number": "A1", "description": "USB Serial Port (COM3)", "dmx_type": None}
+    monkeypatch.setattr(devices, "list_serial_devices", lambda: [dev])
+    monkeypatch.setattr(devices, "resolve_port", lambda ref: "COM3")
+    monkeypatch.setattr(devices.serial, "Serial", fake.factory)
+    return devices, DeviceRef(serial_number="A1", port="COM3"), serial
+
+
+def test_probe_pro_answers(monkeypatch):
+    fake = FakeProbePort(bytes([0x7E, 0x0A, 0x04, 0x00, 1, 2, 3, 4, 0xE7]))
+    devices, ref, _ = _windows_device(monkeypatch, fake)
+    assert devices.detect_dmx_type(ref) == "pro"
+    assert fake.written == bytes([0x7E, 0x0A, 0x00, 0x00, 0xE7])
+    assert FakeProbePort.opened == [("COM3", 57600)] and fake.closed
+
+
+def test_probe_silence_is_open(monkeypatch):
+    fake = FakeProbePort(b"")
+    devices, ref, _ = _windows_device(monkeypatch, fake)
+    assert devices.detect_dmx_type(ref) == "open"
+    assert fake.closed
+
+
+def test_probe_garbage_is_open(monkeypatch):
+    fake = FakeProbePort(bytes([0x00, 0xFF, 0x12, 0x34, 0x56]))
+    devices, ref, _ = _windows_device(monkeypatch, fake)
+    assert devices.detect_dmx_type(ref) == "open"
+
+
+def test_probe_open_fails_falls_back(monkeypatch, caplog):
+    import serial
+
+    devices, ref, _ = _windows_device(monkeypatch, FakeProbePort())
+    monkeypatch.setattr(devices.serial, "Serial", FakeProbePort(error=serial.SerialException("busy")).factory)
+    with caplog.at_level("WARNING"):
+        assert devices.detect_dmx_type(ref) == "pro"            # nothing stored: the Enttec Pro protocol
+        ref.description = "FT232R USB UART"
+        assert devices.detect_dmx_type(ref) == "open"           # the stored description
+    assert "probe failed: busy" in caplog.text
+    assert not devices._probed                                  # a failure is not remembered
+
+
+def test_probe_result_is_cached_per_run(monkeypatch):
+    fake = FakeProbePort(b"")
+    devices, ref, _ = _windows_device(monkeypatch, fake)
+    assert devices.detect_dmx_type(ref) == "open"
+    assert devices.detect_dmx_type(ref) == "open"
+    assert len(FakeProbePort.opened) == 1                       # the second call didn't touch the port
+    devices.clear_probe_cache()
+    devices.detect_dmx_type(ref)
+    assert len(FakeProbePort.opened) == 2
+
+
+def test_strings_decide_without_probing(monkeypatch):
+    fake = FakeProbePort(b"")
+    devices, ref, _ = _windows_device(monkeypatch, fake)
+    devices.list_serial_devices()[0]["dmx_type"] = "open"
+    assert devices.detect_dmx_type(ref) == "open"
+    assert FakeProbePort.opened == []
 
 
 def test_auto_type_uses_the_detected_device(monkeypatch):

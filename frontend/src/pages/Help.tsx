@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
 import { Section } from '../components/forms'
 import { clientOf, issueUrl } from '../reportProblem'
+import { updateText, type UpdateCheck } from '../updateCheck'
 import { useFieldNav } from '../useFieldNav'
 
 const KEYMAP: [string, string][] = [
@@ -55,6 +56,16 @@ export function Help({ desktop, version }: { desktop?: boolean; version?: string
     if (!desktop || folders.local === false) return // a browser follows the link itself (a phone opens it on the phone)
     e.preventDefault()
     api.post('/api/open-url', { url }).catch(() => window.open(url, '_blank'))
+  }
+
+  // Check for updates (item 82): asked only when pressed; nothing is downloaded by the app, Download opens the zip in the browser
+  const [update, setUpdate] = useState<UpdateCheck | 'checking' | null>(null)
+  const checkUpdates = () => {
+    setUpdate('checking')
+    api
+      .get<UpdateCheck>('/api/update-check')
+      .then(setUpdate)
+      .catch((e: Error) => setUpdate({ status: 'offline', current: '', latest: null, published: null, notes: null, url: null, page: null, error: e.message }))
   }
 
   // Report a problem: a new GitHub issue with the version and this computer's system filled in (reportProblem.ts)
@@ -124,8 +135,39 @@ export function Help({ desktop, version }: { desktop?: boolean; version?: string
                 label="Releases"
                 tip="Open the list of releases (downloads for macOS and Windows) on GitHub"
               />
+              <button
+                type="button"
+                onClick={checkUpdates}
+                disabled={update === 'checking'}
+                data-hint="button"
+                data-tip="Ask GitHub whether a newer release exists. Only when you press this: nothing is downloaded or installed by the app"
+                className="lbl glow-hover inline-flex h-8 flex-none items-center border border-edge bg-panel px-3 text-[11px] font-medium text-ink"
+              >
+                {update === 'checking' ? 'Checking…' : 'Check for updates ›'}
+              </button>
             </span>
           </span>
+          {update && update !== 'checking' && (
+            <span className="flex gap-2">
+              <span className="w-20 flex-none" />
+              <span className="flex min-w-0 flex-col gap-1.5" role="status">
+                <span className={update.status === 'offline' ? 'lbl text-[11px] leading-snug text-dim' : 'lbl text-[11px] leading-snug'}>{updateText(update)}</span>
+                {update.status === 'newer' && (
+                  <>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {update.url && <LinkButton href={update.url} open={openLink} label="Download" tip="Download this version for this computer in the browser (the zip of this release from GitHub)" />}
+                      {update.page && (
+                        <a href={update.page} target="_blank" rel="noreferrer" onClick={(e) => openLink(e, update.page!)} data-hint="button" data-tip="Open the release page on GitHub in the browser" className="lbl text-[11px] text-dim underline">
+                          Release notes
+                        </a>
+                      )}
+                    </span>
+                    {update.notes && <pre className="max-h-20 overflow-y-auto whitespace-pre-wrap border border-seam p-1.5 font-mono text-[10px] leading-snug text-dim">{update.notes}</pre>}
+                  </>
+                )}
+              </span>
+            </span>
+          )}
         </div>
       </Section>
       <Section

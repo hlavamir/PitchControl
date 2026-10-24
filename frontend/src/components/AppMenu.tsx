@@ -127,7 +127,7 @@ export function AppMenu({
                 setState(lit && state.open ? CLOSED : openAt(i))
               }}
               onMouseEnter={() => state.open && !lit && setState(openAt(i))}
-              className={`lbl flex cursor-default items-center px-2.5 text-[12px] ${lit ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'}`}
+              className={`lbl flex items-center px-2.5 text-[12px] ${lit ? 'glow-on bg-ink text-ground' : 'text-ink hover:bg-panel-2'}`}
             >
               {state.keys && state.active ? (
                 <>

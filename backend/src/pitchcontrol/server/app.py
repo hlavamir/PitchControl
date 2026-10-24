@@ -36,6 +36,7 @@ from ..menu import menu_json, platform_of, reveal as reveal_folder
 from ..ofl import online, qlcplus_files
 from ..ofl.importer import ImportProblem, Redirect, import_fixture
 from ..ofl.qlcplus import import_qxf
+from ..updates import check_cached
 from ..version import system_label, version_label
 from .network import Network, NetworkGate
 
@@ -200,6 +201,11 @@ def create_app(
             "system": system_label(),  # for Settings → Report a problem
             "platform": sys.platform,  # the computer that runs PitchControl: the Windows app draws its menu bar
         }
+
+    @app.get("/api/update-check")
+    async def update_check():
+        """Help → About → Check for updates (item 82): the newest release on GitHub against this version; asked only when the button is pressed."""
+        return await asyncio.to_thread(check_cached)
 
     @app.post("/api/fullscreen", dependencies=local_only)
     def fullscreen(body: dict | None = None):
