@@ -24,6 +24,7 @@ from ..io.midi_in import MidiInput, list_midi_inputs_checked
 from ..io.midi_routes import MidiRouteHub
 from ..io.outputs import OutputManager
 from ..quitguard import UnsavedReports
+from ..timer_resolution import raise_resolution, restore_resolution
 from .audio_analysis import AudioFeatures, SpectrumAnalyzer, trigger_weights
 from .colors import GroupColors, hsv_to_rgb
 from .fixtures import Fixture, GroupBrightness
@@ -577,6 +578,7 @@ class Engine:
 
     # ------------------------------------------------------------------ thread
     def start(self) -> None:
+        raise_resolution()  # Windows: 1 ms timers for the frame pacing and the writers (item 35)
         self.start_io()
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="engine", daemon=True)
@@ -600,6 +602,7 @@ class Engine:
         self.midi_routes.stop()
         self.live.stop()
         self.outputs.stop()
+        restore_resolution()
 
     def _run(self) -> None:
         period = 1.0 / max(self.store.settings.fps, 1.0)

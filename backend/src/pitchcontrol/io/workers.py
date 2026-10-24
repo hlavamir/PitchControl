@@ -87,7 +87,7 @@ class LatestFrameWorker:
     min_interval = 0.0  # seconds: the least time between the starts of two writes (0: as fast as frames come), item 35
 
     def __init__(self) -> None:
-        self._last_start = float("-inf")  # when the last write started (monotonic)
+        self._last_start = float("-inf")  # when the last write started (perf_counter: monotonic() ticks in 15.6 ms steps on Windows with Python 3.12, item 35)
         self._frame: object | None = None
         self._event = threading.Event()
         self._stop = threading.Event()
@@ -121,9 +121,11 @@ class LatestFrameWorker:
             self._event.wait(timeout=0.5)
             if self.min_interval > 0:
                 # a minimum gap between starts, kept before the frame is read so the one written is the newest (item 35)
-                remaining = self._last_start + self.min_interval - time.monotonic()
-                if remaining > 0 and self._stop.wait(remaining):
-                    break
+                remaining = self._last_start + self.min_interval - time.perf_counter()
+                if remaining > 0:
+                    time.sleep(remaining)  # not Event.wait: on Windows it waits in 15.6 ms timer steps; the remainder is at most ~33 ms, so stopping stays responsive (item 35)
+                    if self._stop.is_set():
+                        break
             self._event.clear()
             timing = self.timing
             if timing is not None:
@@ -134,10 +136,10 @@ class LatestFrameWorker:
             try:
                 if not self.connected:
                     self.open()
-                start = self._last_start = time.monotonic()
+                start = self._last_start = time.perf_counter()
                 self.write(frame)
                 if timing is not None:
-                    timing.frame(start, time.monotonic())
+                    timing.frame(start, time.perf_counter())
                 self.frames_sent += 1
             except Exception as exc:  # noqa: BLE001 - hardware errors must never kill the thread
                 if self.connected or self.last_error != str(exc):
@@ -194,7 +196,9 @@ class SerialWorker(LatestFrameWorker):
 
 
 DMX_BAUD = 250000
-OPEN_DMX_MAX_FPS = 30  # a 512-slot frame is 22.6 ms on the wire and with the break and the driver it takes ~31 ms on Windows: a shorter gap starts the break while the FTDI chip still sends the end of the last frame, and the receivers see a corrupted frame (item 35)
+OPEN_DMX_MAX_FPS = 30  # a 512-slot frame is 22.6 ms on the wire, plus the break and the driver's calls: at 40 fps the next break came while the FTDI chip still sent the end of the last frame (the "31 ms a write" logged on Windows was rounded to its 15.6 ms clock steps, item 35)
+DMX_BYTE_S = 11 / DMX_BAUD  # one slot on the wire: start bit, 8 data bits, 2 stop bits at 250 kbaud (44 us)
+WIRE_MARGIN_S = 0.002  # on top of the bytes' time: the USB latency and the FTDI chip's first byte (item 35)
 DMX_BREAK_BAUD = 90000  # one 0x00 byte (start + 8 zero bits, 9 x 11.1 us) is a 100 us break, the 2 stop bits a 22 us mark
 
 
@@ -209,7 +213,10 @@ class OpenDmxWorker(SerialWorker):
     one 0x00 byte at 90000 baud. Left as it is, a break set by the "break" method can stay on
     until the interface is unplugged and holds all output."""
 
-    min_interval = 1 / OPEN_DMX_MAX_FPS
+    # an engine at 30 fps hands over a frame every 33.3 ms with some jitter: a gap of exactly 1/30 s would make a frame
+    # that comes 1 ms early wait and the next one be dropped. The wire guard in write(), not this gap, keeps the break
+    # off the end of the previous frame (item 35)
+    min_interval = 1 / OPEN_DMX_MAX_FPS - 0.0015
 
     BREAK_S = 0.002  # the break line method: at least 88 us; USB moves in 1 ms steps, up to 1 s is allowed
     MARK_S = 0.002
@@ -217,6 +224,7 @@ class OpenDmxWorker(SerialWorker):
     def __init__(self, ref: DeviceRef, name: str, break_method: str = "baud") -> None:
         super().__init__(ref, DMX_BAUD, name)
         self.break_method = break_method
+        self._wire_free_at = 0.0  # perf_counter time by which the last frame's bytes have left the FTDI chip (item 35)
 
     def open(self) -> None:
         path = resolve_port(self.ref)
@@ -233,6 +241,7 @@ class OpenDmxWorker(SerialWorker):
         self.port.rts = False
         self.port.dtr = False
         time.sleep(0.02)
+        self._wire_free_at = 0.0
         self.connected = True
         self.last_error = None
         log.info("%s: opened %s as Open DMX (%d baud, 8N2, RTS / DTR low, break by %s)", self.name, path, DMX_BAUD, self.break_method)
@@ -243,15 +252,25 @@ class OpenDmxWorker(SerialWorker):
     def write(self, frame: object) -> None:
         assert self.port is not None and isinstance(frame, (bytes, bytearray))
         port = self.port
+        # flush() returns when the driver has handed the bytes to the chip, which still holds up to 256 of them (~11 ms): a break
+        # now would cut into the end of the last frame, so wait until its bytes can have left (item 35)
+        wait = self._wire_free_at - time.perf_counter()
+        if wait > 0:
+            time.sleep(wait)
         port.flush()  # the previous frame has left (the driver sends nothing without a drain)
         if self.break_method == "baud":
             port.baudrate = DMX_BREAK_BAUD
             port.write(b"\x00")  # start + 8 zero bits at 90000 baud: a 100 us break, then 2 stop bits
             port.flush()
+            # the same as for the frame: flush() returns before the chip has sent the byte, and switching back now would
+            # send it at 250 kbaud, a 36 us break that receivers don't take for one (item 35)
+            time.sleep(WIRE_MARGIN_S)
             port.baudrate = DMX_BAUD
         else:
             port.break_condition = True
             time.sleep(self.BREAK_S)
             port.break_condition = False
             time.sleep(self.MARK_S)
-        port.write(b"\x00" + bytes(frame[:512]))
+        data = b"\x00" + bytes(frame[:512])
+        self._wire_free_at = time.perf_counter() + len(data) * DMX_BYTE_S + WIRE_MARGIN_S
+        port.write(data)

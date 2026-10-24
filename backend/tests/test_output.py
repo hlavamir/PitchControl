@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from pitchcontrol.config.models import FixtureInstance
 from pitchcontrol.engine.fixtures import Fixture
@@ -170,7 +171,7 @@ def _open_dmx(monkeypatch, method):
     monkeypatch.setattr(workers.serial, "Serial", _FakePort)
     monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
     monkeypatch.setattr(workers.time, "sleep", lambda s: (sleeps.append(s), clock.__setitem__("t", clock["t"] + s)))
-    monkeypatch.setattr(workers.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(workers.time, "perf_counter", lambda: clock["t"])
     w = workers.OpenDmxWorker(DeviceRef(), "opendmx1", method)
     w.open()
     w.sleeps, w.clock = sleeps, clock
@@ -662,7 +663,7 @@ def test_worker_without_min_interval_writes_every_frame_at_once():
             self.frames.append(frame)
 
     assert workers.LatestFrameWorker.min_interval == 0.0
-    assert workers.SerialWorker.min_interval == 0.0 and workers.OpenDmxWorker.min_interval == 1 / 30
+    assert workers.SerialWorker.min_interval == 0.0 and workers.OpenDmxWorker.min_interval == 1 / 30 - 0.0015
     w = Fake()
     w.start()
     try:
@@ -672,3 +673,132 @@ def test_worker_without_min_interval_writes_every_frame_at_once():
     finally:
         w.stop()
     assert w.frames == [0, 1, 2]
+
+
+def test_open_dmx_min_interval_is_a_little_under_a_30_fps_frame():
+    from pitchcontrol.io import workers
+
+    assert workers.OpenDmxWorker.min_interval == pytest.approx(1 / 30 - 0.0015)
+    assert 0.0317 < workers.OpenDmxWorker.min_interval < 0.0319
+
+
+@pytest.mark.parametrize("method", ["baud", "break"])
+def test_open_dmx_wire_guard_waits_until_the_last_frames_bytes_have_left(monkeypatch, method):
+    from pitchcontrol.io import workers
+
+    w, port = _open_dmx(monkeypatch, method)
+    on_wire = 513 * workers.DMX_BYTE_S + workers.WIRE_MARGIN_S   # start code + 512 slots, plus the margin
+    w.sleeps.clear()
+    w.write(bytes([7] * 512))
+    assert workers.DMX_BYTE_S == pytest.approx(44e-6) and on_wire == pytest.approx(0.0246, abs=1e-4)
+    assert w._wire_free_at == pytest.approx(w.clock["t"] + on_wire)   # noted right before the bytes go to the port
+    free_at = w._wire_free_at
+    assert w.sleeps == ([w.BREAK_S, w.MARK_S] if method == "break" else [workers.WIRE_MARGIN_S])   # nothing to wait for on the first frame
+    port.events.clear()
+    w.sleeps.clear()
+    w.clock["t"] = free_at - 0.010            # the next frame comes 10 ms before the wire is free
+    w.write(bytes([8] * 512))
+    assert w.sleeps[0] == pytest.approx(0.010)   # slept before the flush and the break
+    assert port.events[0] == ("flush",)
+    assert w.clock["t"] >= free_at
+    w.sleeps.clear()
+    w.clock["t"] = w._wire_free_at + 0.001   # a frame after the wire is free: no guard sleep
+    w.write(bytes([9] * 512))
+    assert w.sleeps == ([w.BREAK_S, w.MARK_S] if method == "break" else [workers.WIRE_MARGIN_S])
+
+
+def test_open_dmx_wire_guard_resets_on_open(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "baud")
+    w.write(bytes(512))
+    assert w._wire_free_at > 0
+    w.open()
+    assert w._wire_free_at == 0.0
+
+
+def test_worker_wait_for_the_min_interval_is_a_precise_sleep(monkeypatch):
+    from pitchcontrol.io import workers
+
+    sleeps: list[float] = []
+    clock = {"t": 100.0}
+
+    def fake_sleep(s):
+        if s != 1.0:
+            sleeps.append(s)
+        clock["t"] += s
+        w._stop.set()                          # stop during the wait: it must be seen right after the sleep
+
+    class Fake(workers.LatestFrameWorker):
+        name = "fake"
+        min_interval = 0.03
+
+        def write(self, frame):
+            pass
+
+    monkeypatch.setattr(workers.time, "perf_counter", lambda: clock["t"])
+    monkeypatch.setattr(workers.time, "sleep", fake_sleep)
+    w = Fake()
+    w._last_start = clock["t"] - 0.01         # the last write started 10 ms ago
+    w._frame = 1
+    w._event.set()
+    w._run()
+    assert sleeps == [pytest.approx(0.02)]
+    assert w.frames_sent == 0
+
+
+def test_timer_resolution_is_a_no_op_off_windows(monkeypatch):
+    from pitchcontrol import timer_resolution as tr
+
+    calls = []
+    monkeypatch.setattr(tr.sys, "platform", "darwin")
+    monkeypatch.setattr(tr, "_winmm", lambda: calls.append("winmm"))
+    tr.raise_resolution()
+    tr.restore_resolution()
+    assert calls == []
+
+
+class _FakeWinmm:
+    def __init__(self, fail=False):
+        self.calls = []
+        self.fail = fail
+
+    def timeBeginPeriod(self, ms):
+        self.calls.append(("begin", ms))
+        if self.fail:
+            raise OSError("no winmm")
+
+    def timeEndPeriod(self, ms):
+        self.calls.append(("end", ms))
+
+
+def test_timer_resolution_on_windows_begins_and_ends_once(monkeypatch, caplog):
+    import logging
+
+    from pitchcontrol import timer_resolution as tr
+
+    winmm = _FakeWinmm()
+    monkeypatch.setattr(tr.sys, "platform", "win32")
+    monkeypatch.setattr(tr, "_winmm", lambda: winmm)
+    monkeypatch.setattr(tr, "_raised", False)
+    with caplog.at_level(logging.INFO, logger="pitchcontrol.timer_resolution"):
+        tr.raise_resolution()
+        tr.raise_resolution()
+        tr.restore_resolution()
+        tr.restore_resolution()
+    assert winmm.calls == [("begin", 1), ("end", 1)]
+    assert [r.getMessage() for r in caplog.records] == ["Windows timer resolution set to 1 ms (precise frame timing)"]
+
+
+def test_timer_resolution_failure_only_logs(monkeypatch, caplog):
+    import logging
+
+    from pitchcontrol import timer_resolution as tr
+
+    winmm = _FakeWinmm(fail=True)
+    monkeypatch.setattr(tr.sys, "platform", "win32")
+    monkeypatch.setattr(tr, "_winmm", lambda: winmm)
+    monkeypatch.setattr(tr, "_raised", False)
+    with caplog.at_level(logging.WARNING, logger="pitchcontrol.timer_resolution"):
+        tr.raise_resolution()
+        tr.restore_resolution()                # nothing was raised: no end call
+    assert winmm.calls == [("begin", 1)]
+    assert "could not set the Windows timer resolution" in caplog.text
