@@ -460,6 +460,14 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                           {custom && <span className="ml-1 text-glow">·</span>}
                         </button>
                       </div>
+                      {kind === 'open' && settings!.fps > (st?.max_fps ?? 30) && (
+                        <p
+                          className="text-[12px] text-dim"
+                          data-tip="A bare FTDI interface needs about 31 ms for a frame and its break; started sooner, the break cuts into the end of the last frame and the lights flash. So this interface sends at most 30 frames per second, while the Pro, Art-Net and the rest keep the app's frame rate"
+                        >
+                          Sends at most {st?.max_fps ?? 30} fps (the app runs at {settings!.fps}): an Open DMX can't keep up with more.
+                        </p>
+                      )}
                       {advanced[i] && (
                         <div className="flex flex-col gap-1.5 border-t border-seam pt-1.5 text-[12px]">
                           <div className="flex items-center gap-2">

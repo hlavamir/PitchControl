@@ -24,9 +24,10 @@ class FrameTimingLog:
     worker dropped; one summary line every TIMING_SUMMARY_S and one line per late frame. Only the writer's
     thread calls frame(); dropped is counted by LatestFrameWorker.submit."""
 
-    def __init__(self, name: str, target_period: Callable[[], float]) -> None:
+    def __init__(self, name: str, engine_period: Callable[[], float], min_period: float = 0.0) -> None:
         self.name = name
-        self.target_period = target_period  # the engine's frame time in seconds, read live
+        self.engine_period = engine_period  # the engine's frame time in seconds, read live
+        self.min_period = min_period  # the writer's own floor (an Open DMX sends at most 30 fps, item 35)
         self.dropped = 0  # frames replaced before the writer took them, since the last summary
         self._origin: float | None = None  # the first frame's start: the times in the lines are seconds after it
         self._prev_start: float | None = None
@@ -36,6 +37,10 @@ class FrameTimingLog:
         self._largest_gap = 0.0
         self._late = 0
         self._dropped_at_last_frame = 0
+
+    def target_period(self) -> float:
+        """What a frame should take: the engine's frame time, or the writer's floor when that is longer."""
+        return max(self.engine_period(), self.min_period)
 
     def reset(self) -> None:
         """After an error or a reconnect: the next gap would only measure the outage."""
@@ -62,9 +67,12 @@ class FrameTimingLog:
         self._dropped_at_last_frame = self.dropped
         elapsed = end - self._window_start
         if elapsed >= TIMING_SUMMARY_S:
+            target = f"{1 / self.target_period():.1f}"
+            if self.engine_period() < self.min_period:
+                target += f", clamped from {1 / self.engine_period():.1f}"  # the dropped frames are the ones the clamp skipped (item 35)
             log.info(
-                "%s: timing, last %.1f s: %.1f fps (target %.1f), longest write %.1f ms, largest gap %.1f ms, late frames %d, dropped %d",
-                self.name, elapsed, self._frames / elapsed, 1 / self.target_period(), self._longest_write * 1000,
+                "%s: timing, last %.1f s: %.1f fps (target %s), longest write %.1f ms, largest gap %.1f ms, late frames %d, dropped %d",
+                self.name, elapsed, self._frames / elapsed, target, self._longest_write * 1000,
                 self._largest_gap * 1000, self._late, self.dropped,
             )
             self._window_start, self._frames = end, 0
@@ -76,8 +84,10 @@ class LatestFrameWorker:
     """Keeps only the newest submitted frame and writes it from its own thread."""
 
     name = "output"
+    min_interval = 0.0  # seconds: the least time between the starts of two writes (0: as fast as frames come), item 35
 
     def __init__(self) -> None:
+        self._last_start = float("-inf")  # when the last write started (monotonic)
         self._frame: object | None = None
         self._event = threading.Event()
         self._stop = threading.Event()
@@ -109,6 +119,11 @@ class LatestFrameWorker:
     def _run(self) -> None:
         while not self._stop.is_set():
             self._event.wait(timeout=0.5)
+            if self.min_interval > 0:
+                # a minimum gap between starts, kept before the frame is read so the one written is the newest (item 35)
+                remaining = self._last_start + self.min_interval - time.monotonic()
+                if remaining > 0 and self._stop.wait(remaining):
+                    break
             self._event.clear()
             timing = self.timing
             if timing is not None:
@@ -119,11 +134,9 @@ class LatestFrameWorker:
             try:
                 if not self.connected:
                     self.open()
-                if timing is None:
-                    self.write(frame)
-                else:
-                    start = time.monotonic()
-                    self.write(frame)
+                start = self._last_start = time.monotonic()
+                self.write(frame)
+                if timing is not None:
                     timing.frame(start, time.monotonic())
                 self.frames_sent += 1
             except Exception as exc:  # noqa: BLE001 - hardware errors must never kill the thread
@@ -181,6 +194,7 @@ class SerialWorker(LatestFrameWorker):
 
 
 DMX_BAUD = 250000
+OPEN_DMX_MAX_FPS = 30  # a 512-slot frame is 22.6 ms on the wire and with the break and the driver it takes ~31 ms on Windows: a shorter gap starts the break while the FTDI chip still sends the end of the last frame, and the receivers see a corrupted frame (item 35)
 DMX_BREAK_BAUD = 90000  # one 0x00 byte (start + 8 zero bits, 9 x 11.1 us) is a 100 us break, the 2 stop bits a 22 us mark
 
 
@@ -194,6 +208,8 @@ class OpenDmxWorker(SerialWorker):
     transmits and the fixture sees nothing), and a drain (tcdrain) between the steps. The break is
     one 0x00 byte at 90000 baud. Left as it is, a break set by the "break" method can stay on
     until the interface is unplugged and holds all output."""
+
+    min_interval = 1 / OPEN_DMX_MAX_FPS
 
     BREAK_S = 0.002  # the break line method: at least 88 us; USB moves in 1 ms steps, up to 1 s is allowed
     MARK_S = 0.002
@@ -220,6 +236,9 @@ class OpenDmxWorker(SerialWorker):
         self.connected = True
         self.last_error = None
         log.info("%s: opened %s as Open DMX (%d baud, 8N2, RTS / DTR low, break by %s)", self.name, path, DMX_BAUD, self.break_method)
+
+    def status(self) -> dict:
+        return {**super().status(), "max_fps": OPEN_DMX_MAX_FPS}
 
     def write(self, frame: object) -> None:
         assert self.port is not None and isinstance(frame, (bytes, bytearray))

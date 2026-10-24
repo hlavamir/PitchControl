@@ -113,6 +113,7 @@ export interface IoStatus {
   // devices it was on; null before any drop (item 30)
   reconnect?: { lost: number | null; back: number | null; lost_device?: string | null; back_device?: string | null } | null
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
+  max_fps?: number // an Open DMX: the most frames per second it is sent, whatever the engine runs at (item 35)
   port?: string | null
   port_override?: string | null // the MIDI port set in Settings, which wins over the controller file's
   wanted?: string // the MIDI port name looked for, as saved (the Settings port, else the controller file's)

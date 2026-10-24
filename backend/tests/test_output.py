@@ -492,6 +492,7 @@ def test_open_dmx_writer_logs_timing_through_the_thread(monkeypatch, caplog):
     monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
     monkeypatch.setattr(workers, "TIMING_SUMMARY_S", 0.15)
     w = workers.OpenDmxWorker(DeviceRef(), "opendmx1")
+    w.min_interval = 0.0                                           # the clamp has its own tests (item 35)
     w.timing = workers.FrameTimingLog("opendmx1", lambda: 0.001)   # target 1 ms: frames 20 ms apart are late
     w.start()
     try:
@@ -556,8 +557,118 @@ def test_log_timing_setting_reaches_only_the_open_dmx_worker(monkeypatch):
         {"enabled": True, "universe": 0, "type": "open", "log_timing": True, "device": {"serial_number": "A"}},
         {"enabled": True, "universe": 1, "type": "open", "device": {"serial_number": "B"}},
     ]})
-    m = out.OutputManager(s, frame_period=lambda: 0.02)
+    m = out.OutputManager(s, frame_period=lambda: 0.05)
     m.start()
     on, off = m.enttec
-    assert on.timing is not None and on.timing.target_period() == 0.02
+    assert on.timing is not None and on.timing.target_period() == 0.05
     assert off.timing is None
+
+
+def test_open_dmx_timing_target_is_clamped_to_30_fps(monkeypatch, caplog):
+    """An Open sends at most 30 fps: the timing log's target and 'late' follow (item 35)."""
+    import logging
+
+    from pitchcontrol.config.models import OutputSettings
+    from pitchcontrol.io import outputs as out
+
+    class Rec:
+        def __init__(self, *a, **k):
+            self.timing = None
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(out, "SerialWorker", Rec)
+    monkeypatch.setattr(out, "OpenDmxWorker", Rec)
+    s = OutputSettings.model_validate({"enttec": [
+        {"enabled": True, "type": "open", "log_timing": True, "device": {"serial_number": "A"}},
+    ]})
+    caplog.set_level(logging.INFO)
+    period = {"s": 1 / 40}
+    m = out.OutputManager(s, frame_period=lambda: period["s"])
+    m.start()
+    t = m.enttec[0].timing
+    assert abs(t.target_period() - 1 / 30) < 1e-9          # the engine's 40 fps is above what an Open sends
+    assert any("opendmx1: sends at most 30 fps (engine 40)" in r.getMessage() for r in caplog.records)
+    for i in range(401):
+        t.frame(100.0 + i / 30, 100.0 + i / 30 + 0.031)
+    summary = _timing_lines_any(caplog, "timing,")
+    assert len(summary) == 1 and "fps (target 30.0, clamped from 40.0)" in summary[0]
+    assert "late frames 0" in summary[0]                    # 33 ms gaps are on target now
+    period["s"] = 1 / 20                                    # the engine is slower than the clamp: no clamp
+    assert t.target_period() == 1 / 20
+
+
+def _timing_lines_any(caplog, kind):
+    return [r.getMessage() for r in caplog.records if kind in r.getMessage()]
+
+
+def test_open_dmx_status_tells_its_frame_cap(monkeypatch):
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    assert workers.OpenDmxWorker(DeviceRef(), "opendmx1").status()["max_fps"] == 30
+    assert "max_fps" not in workers.SerialWorker(DeviceRef(), 57600, "enttec1").status()
+
+
+def test_worker_keeps_a_minimum_gap_between_writes_and_writes_the_newest_frame():
+    import time as real_time
+
+    from pitchcontrol.io import workers
+
+    class Fake(workers.LatestFrameWorker):
+        name = "fake"
+        min_interval = 0.05
+
+        def __init__(self):
+            super().__init__()
+            self.writes: list[tuple[float, object]] = []
+
+        def write(self, frame):
+            self.writes.append((real_time.monotonic(), frame))
+
+    w = Fake()
+    w.start()
+    try:
+        w.submit(0)
+        real_time.sleep(0.02)                    # frame 0 is written; the next may start only 50 ms after it
+        for i in range(1, 6):                    # a burst while the worker waits out the gap
+            w.submit(i)
+            real_time.sleep(0.005)
+        real_time.sleep(0.12)
+        w.submit(6)
+        real_time.sleep(0.02)
+    finally:
+        w.stop()
+    frames = [f for _, f in w.writes]
+    assert frames == [0, 5, 6]                   # the burst became its newest frame, once
+    starts = [t for t, _ in w.writes]
+    assert all(b - a >= 0.05 - 0.002 for a, b in zip(starts, starts[1:]))
+
+
+def test_worker_without_min_interval_writes_every_frame_at_once():
+    import time as real_time
+
+    from pitchcontrol.io import workers
+
+    class Fake(workers.LatestFrameWorker):
+        name = "fake"
+
+        def __init__(self):
+            super().__init__()
+            self.frames = []
+
+        def write(self, frame):
+            self.frames.append(frame)
+
+    assert workers.LatestFrameWorker.min_interval == 0.0
+    assert workers.SerialWorker.min_interval == 0.0 and workers.OpenDmxWorker.min_interval == 1 / 30
+    w = Fake()
+    w.start()
+    try:
+        for i in range(3):
+            w.submit(i)
+            real_time.sleep(0.02)
+    finally:
+        w.stop()
+    assert w.frames == [0, 1, 2]

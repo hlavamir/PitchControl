@@ -12,7 +12,7 @@ from ..config.models import ARTNET_PORT, OutputSettings
 from .devices import detect_dmx_type
 from .osc import OscOutput
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
-from .workers import FrameTimingLog, LatestFrameWorker, OpenDmxWorker, SerialWorker
+from .workers import OPEN_DMX_MAX_FPS, FrameTimingLog, LatestFrameWorker, OpenDmxWorker, SerialWorker
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,10 @@ class OutputManager:
                     if kind == "open":
                         worker = OpenDmxWorker(e.device, f"opendmx{i + 1}", e.break_method)
                         if e.log_timing:
-                            worker.timing = FrameTimingLog(f"opendmx{i + 1}", self.frame_period)
+                            worker.timing = FrameTimingLog(f"opendmx{i + 1}", self.frame_period, 1 / OPEN_DMX_MAX_FPS)
+                        engine_fps = 1 / self.frame_period()
+                        if engine_fps > OPEN_DMX_MAX_FPS + 0.5:
+                            log.info("%s: sends at most %d fps (engine %.0f): an Open DMX can't keep up with more", f"opendmx{i + 1}", OPEN_DMX_MAX_FPS, engine_fps)
                     else:
                         worker = SerialWorker(e.device, ENTTEC_BAUD, f"enttec{i + 1}")
                     worker.start()
