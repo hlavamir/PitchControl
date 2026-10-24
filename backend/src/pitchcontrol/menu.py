@@ -96,7 +96,7 @@ MENUS: list[tuple[str, list[Item | Submenu | None]]] = [
             # ⌘1–⌘9 next to the plain keys; ⌘0 stays the UI scale's 100 %
             *(Item(f"view.page.{n}", page, "ui", win_key=str(n), mac_key=f"cmd+{n}") for n, page in enumerate(PAGES, 1)),
             SEPARATOR,
-            Item("view.fullscreen", "Full screen", "ui", win_key="F", mac_key="ctrl+cmd+f"),
+            Item("view.fullscreen", "Full screen", "ui", win_key="F", only="win"),  # macOS: the system adds its own Enter Full Screen (⌃⌘F) to View
             Item("view.browser", "Open in browser", "app"),  # the UI in the default browser, e.g. on a second screen
         ],
     ),

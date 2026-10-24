@@ -32,7 +32,8 @@ def test_one_definition_for_both_platforms():
     assert labels("mac", "File") == ["Save", None, "Import Fixture", None, "Open data folder", "Open logs folder"]  # Quit ⌘Q is in the application menu
     assert labels("mac", "PitchControl") == ["About PitchControl", "Settings…"]
     assert labels("win", "Edit") == labels("mac", "Edit") == ["Cut", "Copy", "Paste", None, "Select All"]
-    assert labels("win", "View") == labels("mac", "View") == [*PAGES, None, "Full screen", "Open in browser"]
+    assert labels("win", "View") == [*PAGES, None, "Full screen", "Open in browser"]
+    assert labels("mac", "View") == [*PAGES, None, "Open in browser"]  # the system adds its own Enter Full Screen (item 78)
     assert labels("mac", "Window") == ["Minimize", "Zoom"]
     assert labels("win", "Window") == ["Minimize", "Maximize"]
     assert labels("win", "Help") == ["Documentation", "Keyboard shortcuts", None, "Show log", "Report a problem", "Join the Discord", None, "About PitchControl"]
@@ -73,7 +74,7 @@ def test_keys_shown_and_bound():
     assert mac["view.page.9"] == "cmd+9"  # Help (item 60); ⌘0 stays the UI scale's 100 %
     assert "view.page.0" not in mac
     assert mac["app.settings"] == "cmd+,"
-    assert mac["view.fullscreen"] == "ctrl+cmd+f"
+    assert "view.fullscreen" not in mac  # the system adds its own Enter Full Screen (⌃⌘F) to View (item 78)
     assert mac["window.minimize"] == "cmd+m"
     assert key_equivalent("ctrl+cmd+f") == ("f", (1 << 18) | (1 << 20))
     assert key_equivalent("cmd+,") == (",", 1 << 20)
@@ -308,7 +309,6 @@ def test_macos_menu_bar_is_arranged(monkeypatch):
 
     assert (item("File", "Save").key, item("File", "Save").mask) == ("s", 1 << 20)
     assert (item("View", "Rig").key, item("View", "Rig").mask) == ("4", 1 << 20)
-    assert item("View", "Full screen").mask == (1 << 18) | (1 << 20)
     assert item("Window", "Minimize").key == "m"
     assert item("", "Settings…").key == ","
     assert item("Edit", "Copy").action() == b"copy:"  # native: ⌘C in text fields
