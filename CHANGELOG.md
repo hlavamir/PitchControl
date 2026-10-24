@@ -6,6 +6,8 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+## 1.8.3 — 2026-10-24
+
 ### Added
 - **Mask Curve, a macro in the General page's Scene section** (item 76). A fader under the scene view, **0.25 to 4, 1 in the middle** (logarithmic, so 0.5 and 2 are a quarter of the travel either side of 1 and the darkening isn't squeezed into a fifth of the fader). The engine raises the mask to this power, `out = in ** value`, before each fixture's own idle remap (their curves stay as they are): above 1 the mid-tones go darker, below 1 brighter, and **the scene view shows the curved mask**. It is a macro like the others: saved in scenes (a scene saved before has none and gets 1), MIDI Learn on the Connections → MIDI mapping page, keyboard (↑ ↓, Shift for fine, W A S D to get there), footer hints, double-click resets to 1. The state of macros that are logarithmic: `MacroDef.log_scale`.
 
