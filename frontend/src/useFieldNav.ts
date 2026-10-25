@@ -133,6 +133,9 @@ export function useFieldNav({ root, list, entry, onListAction, listFooter }: Fie
     const focus = (e: FocusEvent) => {
       const t = e.target as HTMLElement
       if (!root.current?.contains(t) || list?.current?.contains(t)) return
+      // Chromium (the Windows app) also focuses a button that is clicked, WebKit doesn't: a click on a button, tab or
+      // link is not a keyboard selection, so only a focus the keys gave it (Tab, :focus-visible) takes the highlight
+      if (t.matches('button, a[href], [role="tab"], [role="switch"], [role="slider"]') && !t.matches(':focus-visible')) return
       const i = controlsOf().indexOf(t)
       if (i >= 0) setNav({ zone: 'details', index: i })
     }
