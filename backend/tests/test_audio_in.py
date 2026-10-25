@@ -812,11 +812,22 @@ def test_listing_the_devices_waits_while_portaudio_is_being_reinitialised(monkey
     gate = threading.Event()
     inside = threading.Event()
 
+    calls: list[str] = []
+
     class Blocking(FakeSd):
         def _terminate(self):
             super()._terminate()
+            calls.append("terminate")
             inside.set()
             gate.wait(5)  # terminated, not yet initialised again
+
+        def _initialize(self):
+            super()._initialize()
+            calls.append("initialize")
+
+        def query_devices(self, index=None):
+            calls.append("query")
+            return super().query_devices(index)
 
     fake = Blocking([MIC, INTERFACE])
     monkeypatch.setattr(audio_in, "sd", fake)
@@ -831,4 +842,8 @@ def test_listing_the_devices_waits_while_portaudio_is_being_reinitialised(monkey
     gate.set()
     reinit.join(3)
     listing.join(3)
-    assert sorted(done) == ["list", "reinit"] and done[0] == "reinit"
+    assert sorted(done) == ["list", "reinit"]
+    # what the lock guarantees: no query while PortAudio is terminated. Which of the two finishes first is open: the
+    # re-init lists the devices itself after letting go of the lock, so the waiting listing may get there before it
+    start = calls.index("terminate")
+    assert "query" not in calls[start : calls.index("initialize", start)]
