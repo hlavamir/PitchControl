@@ -61,9 +61,10 @@ export function hsvCss(h: number, s: number, v: number): string {
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`
 }
 
+/** The value in range, as the backend computes it: a fader exactly (item 95), a toggle or button snapped to its steps. */
 export function valueInRange(def: MacroDef, control: number): number {
   const steps = def.steps > 1 ? def.steps - 1 : 1
-  const q = Math.floor(control * steps + 0.5) / steps
+  const q = def.kind === 'fader' ? Math.min(Math.max(control, 0), 1) : Math.floor(control * steps + 0.5) / steps
   return def.log_scale ? def.min * (def.max / def.min) ** q : def.min + q * (def.max - def.min)
 }
 

@@ -1,8 +1,8 @@
 """Macros: every controllable parameter, fed by the UI, MIDI and scenes.
 
 A macro stores a *control value* in 0..1 (what a fader or MIDI CC sets). The
-*value in range* maps it to ``min..max`` after quantising to ``steps``, exactly
-like the vvvv ``Macro`` record.
+*value in range* maps it to ``min..max``. A fader is continuous (item 95); a toggle, momentary, button or radio snaps to
+its ``steps`` (2), like the vvvv ``Macro`` record, which rounded every macro to 128 steps.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class MacroDef:
     name: str
     min: float = 0.0
     max: float = 1.0
-    steps: int = 128
+    steps: int = 128  # what a toggle, momentary, button or radio snaps to (2); a fader ignores it (item 95)
     kind: Kind = "fader"
     page: Page = "general"
     default: float = 0.0  # control value
@@ -80,9 +80,9 @@ def _defs() -> list[MacroDef]:
         MacroDef("Mask Param A", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
         MacroDef("Mask Param B", legacy_index=21, default=_step(64)),
         # the exponent of the mask before the fixtures' own idle remap (``mask ** value``): above 1 darker, below 1 brighter.
-        # 129 steps put 1 exactly on the middle step. The default is 2.18, the step nearest 2.2, a cheap sRGB-like curve
-        # (Miro, item 94): step 100 of 128 (2.2 itself lies between two steps). Not in the vvvv patch: no legacy index.
-        MacroDef("Mask Curve", 0.25, 4.0, steps=129, default=100 / 128, log_scale=True),
+        # The default is 2.2, a cheap sRGB-like curve (Miro, items 94 and 95: the fader is continuous, so exactly 2.2). Not in the
+        # vvvv patch: no legacy index.
+        MacroDef("Mask Curve", 0.25, 4.0, default=math.log(2.2 / 0.25) / math.log(16), log_scale=True),
         MacroDef("Invert Discoball", steps=2, kind="toggle", legacy_index=29),
         MacroDef("Fog Machine", steps=2, kind="momentary", legacy_index=30),
         MacroDef("Manual Strobo", steps=2, kind="momentary", legacy_index=31),
@@ -124,7 +124,7 @@ MACRO_DEFS: list[MacroDef] = _defs()
 
 # Macros that came after the first scenes were saved: a scene without one of them gets the control value that gives the
 # look it had when it was saved, instead of keeping whatever the macro was set to before the scene was loaded. Not the
-# macro's default: Mask Curve's default became 2.18 (item 94), but those scenes were made with a curve of 1.
+# macro's default: Mask Curve's default became 2.2 (items 94, 95), but those scenes were made with a curve of 1.
 LATE_MACROS = {"Mask Curve": 0.5}
 
 
@@ -151,11 +151,11 @@ class MacroBank:
         return self._values.get(name, 0.0)
 
     def value(self, name: str) -> float:
-        """Value in range (quantised, mapped to min..max)."""
+        """Value in range (mapped to min..max; a fader exactly, anything else snapped to its steps)."""
         m = self.defs.get(name)
         if m is None:
             return 0.0
-        q = quantise(self._values[name], m.steps)
+        q = self._values[name] if m.kind == "fader" else quantise(self._values[name], m.steps)
         if m.log_scale:
             return m.min * (m.max / m.min) ** q
         return m.min + q * (m.max - m.min)

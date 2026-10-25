@@ -5,8 +5,8 @@ import { macroHint, macroTip } from './hints'
 import type { EngineConnection } from './useEngine'
 import type { NavItem } from './useGridNav'
 
-const STEP = 0.025 // ↑/↓: half a fader segment
-const FINE_STEP = 0.0025 // Shift + ↑/↓
+export const STEP = 0.025 // ↑/↓: half a fader segment (the same since the fader became continuous, item 95)
+export const FINE_STEP = 0.0025 // Shift + ↑/↓
 
 /**
  * Keyboard items for macros. Remembers what was just sent so key repeat does not lose steps while

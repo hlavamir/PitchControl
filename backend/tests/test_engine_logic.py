@@ -77,6 +77,21 @@ def test_macro_range_and_quantise():
     assert quantise(0.5, 2) == 1.0 and quantise(0.49, 2) == 0.0
 
 
+def test_a_fader_is_continuous_and_a_toggle_still_snaps():
+    m = MacroBank()
+    m.set("Strobo Decay", 0.3003)  # between two of the old 128 steps (item 95)
+    assert m.control("Strobo Decay") == 0.3003
+    assert m.value("Strobo Decay") == pytest.approx(0.1 + 0.3003 * 2.9, abs=1e-12)
+    m.set("Strobo", 1 / 127 / 3)
+    assert m.value("Strobo") == pytest.approx(0.95 / 127 / 3, abs=1e-12)
+    m.load({"Strobo Decay": 0.7007, "Mask Curve": 0.5})  # saved state and scenes hold control floats: the same positions
+    assert m.control("Strobo Decay") == 0.7007 and m.value("Mask Curve") == pytest.approx(1.0)
+    m.set("Swap Colors", 0.4)  # a toggle: below the middle is off, above is on
+    assert m.value("Swap Colors") == 0.0
+    m.set("Swap Colors", 0.6)
+    assert m.value("Swap Colors") == 1.0
+
+
 def test_radio_group():
     m = MacroBank()
     m.set("Mask C", 1)
@@ -154,9 +169,9 @@ def test_invert_discoball_range_only_with_macro(store):
 
 def test_mask_curve_macro_is_logarithmic_with_one_in_the_middle():
     bank = MacroBank()
-    assert bank.value("Mask Curve") == pytest.approx(2.18, abs=0.005)  # the default: the step nearest 2.2 (item 94)
+    assert bank.value("Mask Curve") == pytest.approx(2.2, abs=1e-9)  # the default, exactly (items 94, 95)
     bank.set("Mask Curve", 0.5)
-    assert bank.value("Mask Curve") == pytest.approx(1.0)  # 1 exactly on the middle step
+    assert bank.value("Mask Curve") == pytest.approx(1.0)  # the middle of the travel
     bank.set("Mask Curve", 0.0)
     assert bank.value("Mask Curve") == pytest.approx(0.25)
     bank.set("Mask Curve", 1.0)
