@@ -6,7 +6,7 @@ import { midiNotice } from '../midiDevices'
 import { createSaveQueue } from '../saveQueue'
 import { unchanged, usePolling } from '../usePolling'
 import { Button, Row, Section, TextInput } from './forms'
-import { MidiMappingRow } from './MidiMappingRow'
+import { MAPPING_COLUMNS, MidiMappingRow } from './MidiMappingRow'
 import { placeOrder } from '../macroPlace'
 
 // MIDI mapping: one row per macro with the control (CC or note) and channel that drives it, whatever device it comes
@@ -365,7 +365,7 @@ export function MidiMappingSection({
   // -- rows
   const index = (macro: string) => (draft?.mappings ?? []).map((m, i) => (m.macro === macro && m.mode !== 'shift' ? i : -1)).filter((i) => i >= 0)
 
-  const row = (key: string, label: string, hint: string | undefined, i: number | null, d: MacroDef | null, template: MidiMappingEntry) => {
+  const row = (key: string, label: string, hint: string | undefined, i: number | null, d: MacroDef | null, template: MidiMappingEntry, subgrid = false) => {
     const m = i !== null && draft ? draft.mappings[i] : null
     const waiting = learning !== null && learning.index === i && (i !== null || (learning.template.macro === template.macro && learning.template.mode === template.mode))
     return (
@@ -385,6 +385,7 @@ export function MidiMappingSection({
         clashes={i !== null ? clashes.get(i) : undefined}
         deadText={i !== null ? dead.get(i) : undefined}
         highlighted={!!flash && flash === m?.macro}
+        subgrid={subgrid}
         patch={patch}
         remove={remove}
         onAdd={(number) => edit((c) => void c.mappings.push({ ...template, number }))}
@@ -398,7 +399,7 @@ export function MidiMappingSection({
       const idx = index(d.name)
       const template = newMapping({ macro: d.name, mode: defaultMode(d) })
       const label = labelOf(d.name)
-      return (idx.length ? idx : [null]).map((i, n) => row(`${d.name}-${n}`, label, undefined, i, d, template))
+      return (idx.length ? idx : [null]).map((i, n) => row(`${d.name}-${n}`, label, undefined, i, d, template, true))
     })
 
   // in the order of their places on the pages: fader 01, 02, …, then the buttons (item 96)
@@ -663,8 +664,8 @@ export function MidiMappingSection({
           ) : (
             // the table scrolls inside the section: the page fits the window (item 60)
             <div className="overflow-x-auto wide:min-h-0 wide:flex-1 wide:overflow-y-auto">
-              <div className="min-w-[880px] border border-edge/60">
-                <div className="lbl sticky top-0 z-10 grid grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] gap-x-2 border-b border-edge bg-panel px-2 py-1 text-[10px] text-dim">
+              <div className={`grid min-w-[880px] ${MAPPING_COLUMNS} gap-x-2 border border-edge/60`}>
+                <div className="lbl sticky top-0 z-10 col-span-full grid grid-cols-subgrid gap-x-2 border-b border-edge bg-panel px-2 py-1 text-[10px] text-dim">
                   <span>Macro</span>
                   <span>Control</span>
                   <span>Channel</span>

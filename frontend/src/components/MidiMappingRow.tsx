@@ -3,6 +3,10 @@ import { macroPlace } from '../macroPlace'
 import { LEARN_ASK, MODE_LABEL, MODE_TIP, defaultMode, modesFor } from '../midiMapping'
 import { Check, NumberInput } from './forms'
 
+/** The columns of the mapping table. The table's rows share them as a subgrid, so a row whose options are wider
+ *  (a button's latch, an encoder's settings) doesn't move its other columns out of line with the rest. */
+export const MAPPING_COLUMNS = 'grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem]'
+
 /** One row of the mapping editor: a macro and the control that drives it (or an empty row to take one). */
 export function MidiMappingRow({
   label,
@@ -19,6 +23,7 @@ export function MidiMappingRow({
   clashes: others,
   deadText,
   highlighted,
+  subgrid = false,
   patch,
   remove,
   onAdd,
@@ -45,6 +50,8 @@ export function MidiMappingRow({
   clashes: string[] | undefined
   deadText: string | undefined
   highlighted: boolean
+  /** a row of the mapping table, which holds the columns (otherwise the row has its own) */
+  subgrid?: boolean
   patch: (index: number, change: Partial<MidiMappingEntry>) => void
   remove: (index: number) => void
   /** the number typed into an empty row: the mapping is created from the template */
@@ -58,7 +65,7 @@ export function MidiMappingRow({
   return (
     <div
       data-tip={hint}
-      className={`grid min-w-[880px] grid-cols-[minmax(11rem,1.4fr)_8.6rem_11.6rem_9.5rem_5.5rem_5.5rem_minmax(4rem,auto)_1.5rem] items-center gap-x-2 border-b border-edge/50 px-2 py-[3px] text-[12px] ${
+      className={`grid ${subgrid ? 'col-span-full grid-cols-subgrid' : `min-w-[880px] ${MAPPING_COLUMNS}`} items-center gap-x-2 border-b border-edge/50 px-2 py-[3px] text-[12px] ${
         highlighted ? 'bg-panel-2' : ''
       }`}
     >
