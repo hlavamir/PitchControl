@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react'
 import type { MacroDef } from '../api'
 import { macroHint, macroTip } from '../hints'
+import { cellBox, spreadWithin } from './deviceSnap'
+import { useDeviceSnap } from './useDeviceSnap'
 
 const MIN_LABEL_PX = 8 // below this a label is cut off with an ellipsis instead of shrinking further
 const COLOR_TRACK_MS = 3500 // a hue / saturation fader shows its colour scale this long after its value changed
@@ -167,18 +169,25 @@ export function MacroControl(props: Props) {
 }
 
 export const SEGMENTS = 20
-const SEAM = 'inset 0 1px 0 rgba(15,16,17,.6)'
+const SEAM = 'rgba(15,16,17,.6)'
 const halo = '10px'
 
-/** One segment: no gaps, a 1px darker seam; the ink fades in with the fill (0..1). */
-export function segmentStyle(fill: number, bright: boolean, pending: boolean) {
+/** A seam of ``px`` CSS px on a cell's leading edge (the top of a vertical fader's cell, the left of a horizontal one), as an inset shadow. */
+export const seamShadow = (px: number, axis: 'x' | 'y', color: string) => `inset ${axis === 'x' ? `${px}px 0` : `0 ${px}px`} 0 ${color}`
+
+/**
+ * One segment: no gaps, a darker seam (``seam`` CSS px, 1 unless the cells are snapped to whole device pixels, item 81;
+ * on the left edge for ``axis`` x); the ink fades in with the fill (0..1).
+ */
+export function segmentStyle(fill: number, bright: boolean, pending: boolean, seam = 1, axis: 'x' | 'y' = 'y') {
+  const seamShade = seamShadow(seam, axis, SEAM)
   if (pending) {
-    return { background: 'rgb(var(--ink-rgb) / 0.14)', boxShadow: `${SEAM}, inset 0 0 0 1px rgb(var(--ink-rgb) / 0.7)` }
+    return { background: 'rgb(var(--ink-rgb) / 0.14)', boxShadow: `${seamShade}, inset 0 0 0 1px rgb(var(--ink-rgb) / 0.7)` }
   }
   const glow = bright && fill > 0.5 ? `, 0 0 ${halo} rgb(var(--ink-rgb) / 0.4)` : ''
   return {
     background: `rgb(var(--ink-rgb) / ${(0.06 + 0.94 * fill).toFixed(3)})`,
-    boxShadow: SEAM + glow,
+    boxShadow: seamShade + glow,
     zIndex: glow ? 1 : undefined,
     position: 'relative' as const,
     transition: 'background-color 120ms linear',
@@ -195,6 +204,9 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
   const [draft, setDraft] = useState<string | null>(null) // the name being edited
   const draftDone = useRef(false)
   const headRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
+  // the segments and the colour scale in whole device pixels, equal cells and seams (item 81); null until measured
+  const snap = useDeviceSnap(trackRef, SEGMENTS, 'y', 1, { leftover: 'end' })
 
   // The colour scale of a hue / saturation fader is only shown while the fader is in use: under the
   // mouse, being dragged, selected (keys), with a change pending, or for a few seconds after its
@@ -282,8 +294,10 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
   const hi = Math.ceil(Math.max(level, appliedLevel))
   const segments = Array.from({ length: SEGMENTS }, (_, s) => {
     const fill = Math.max(0, Math.min(1, level - s))
-    return segmentStyle(fill, s === top || Boolean(selected), notApplied && s >= lo && s < hi)
+    return segmentStyle(fill, s === top || Boolean(selected), notApplied && s >= lo && s < hi, snap?.seam)
   })
+  // the colour scale fills exactly the extent of the segments; its cells differ by at most 1 px, its seams are equal
+  const hue = snap && colorTrack ? spreadWithin(snap, colorTrack.steps.length, 1) : null
 
   const finishRename = (commit: boolean) => {
     if (draftDone.current || draft === null) return
@@ -357,7 +371,7 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
           {colorTrack && (
             // slides in from the left while the fader is in use, and back out afterwards
             <div
-              className="absolute inset-y-0 left-0 flex w-[5px] flex-col-reverse"
+              className={`absolute inset-y-0 left-0 w-[5px] ${hue ? '' : 'flex flex-col-reverse'}`}
               style={{
                 transform: showTrack ? 'translateX(0)' : 'translateX(-120%)',
                 opacity: showTrack ? 1 : 0,
@@ -365,11 +379,14 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
               }}
             >
               {colorTrack.steps.map((c, i) => (
-                <div key={i} className="flex-1" style={{ background: c, boxShadow: 'inset 0 1px 0 rgba(15,16,17,.35)' }} />
+                <div key={i} className={hue ? undefined : 'flex-1'} style={{ background: c, boxShadow: seamShadow(hue?.seam ?? 1, 'y', 'rgba(15,16,17,.35)'), ...(hue && cellBox(hue, i, 'y')) }} />
               ))}
             </div>
           )}
-          <div style={{ opacity: showTrack ? 0 : 1, transition: `opacity ${COLOR_TRACK_SLIDE_MS}ms ease-out` }} className="absolute inset-0">
+          <div
+            style={{ opacity: showTrack ? 0 : 1, transition: `opacity ${COLOR_TRACK_SLIDE_MS}ms ease-out`, ...(snap && { top: 'auto', height: snap.extent }) }}
+            className="absolute inset-0"
+          >
             {TICKS.map((p) => (
               <div
                 key={p}
@@ -380,8 +397,8 @@ function Fader({ def, value, applied, setMacro, colorTrack, pending, selected, o
             ))}
           </div>
         </div>
-        <div className={`flex flex-1 flex-col-reverse ${disabled ? 'hatch opacity-60' : ''}`}>
-          {!disabled && segments.map((st, i) => <div key={i} className="flex-1" style={st} />)}
+        <div ref={trackRef} className={`flex-1 ${snap ? 'relative' : 'flex flex-col-reverse'} ${disabled ? 'hatch opacity-60' : ''}`}>
+          {!disabled && segments.map((st, i) => <div key={i} className={snap ? undefined : 'flex-1'} style={snap ? { ...st, ...cellBox(snap, i, 'y') } : st} />)}
         </div>
       </div>
       <div className="flex h-[26px] flex-none items-center justify-between border-t border-seam px-2.5">

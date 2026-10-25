@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { bandColumns, layerHeight, snapColumns } from './bandColumns'
+import { cellBox, seamThickness } from './deviceSnap'
+import { observeDevicePixels, rootZoom, useDeviceSnap } from './useDeviceSnap'
 
 interface Props {
   bands: number[] // the live, normalised value of each band, 0–1
@@ -10,8 +12,6 @@ interface Props {
   height?: number | string
   tip?: string
 }
-
-const rootZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1
 
 /**
  * The audio bands as plain columns, one per band, no horizontal segments, as the vvvv patch's audio visualizer (items
@@ -39,7 +39,7 @@ export function BandMeter({ bands, max, min, peaks, weights, height = 80, tip }:
     const ink = style.getPropertyValue('--ink-rgb').trim().split(/\s+/).join(',') || '216,217,212'
     const dim = style.getPropertyValue('--color-dim').trim() || '#8a8c87'
     const scale = rootZoom() * window.devicePixelRatio
-    const px = Math.max(1, Math.round(scale)) // 1 CSS px in device px
+    const px = seamThickness(1, scale) // 1 CSS px in device px
     const { width: w, height: h } = el
     const { col, gap, offset } = snapColumns(w, columns.length || 1, px)
     const x = (i: number) => offset + i * (col + gap)
@@ -88,46 +88,12 @@ export function BandMeter({ bands, max, min, peaks, weights, height = 80, tip }:
       sized.current = true
       paint.current()
     }
-    // exact device pixels where supported (Chromium, WebView2); otherwise CSS size × zoom × devicePixelRatio. contentRect
-    // is in the element's own, unzoomed px, also under the root's CSS zoom, so the zoom is multiplied in. The device-pixel
-    // box is only trusted when it agrees with that estimate (an emulated devicePixelRatio is not in it).
-    const ro = new ResizeObserver((entries) => {
-      const e = entries[entries.length - 1]
-      const k = rootZoom() * window.devicePixelRatio
-      const w = e.contentRect.width * k
-      const h = e.contentRect.height * k
-      const d = e.devicePixelContentBoxSize?.[0]
-      if (d && Math.abs(d.inlineSize - w) <= 2 && Math.abs(d.blockSize - h) <= 2) size(d.inlineSize, d.blockSize)
-      else size(w, h)
-    })
-    try {
-      ro.observe(box, { box: 'device-pixel-content-box' })
-    } catch {
-      ro.observe(box) // WebKit: no device-pixel box
-    }
-    // the devicePixelRatio changed (window moved to another display, browser zoom): redraw, and resize in the fallback
-    let mq: MediaQueryList | undefined
-    const onDpr = () => {
-      ro.unobserve(box)
-      try {
-        ro.observe(box, { box: 'device-pixel-content-box' })
-      } catch {
-        ro.observe(box)
-      }
-      watch()
-    }
-    const watch = () => {
-      mq?.removeEventListener('change', onDpr)
-      mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
-      mq.addEventListener('change', onDpr)
-    }
-    watch()
+    const stop = observeDevicePixels(box, size)
     // a changed ink colour or UI scale (both are style properties of the root)
     const mo = new MutationObserver(() => paint.current())
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] })
     return () => {
-      ro.disconnect()
-      mq?.removeEventListener('change', onDpr)
+      stop()
       mo.disconnect()
     }
   }, [])
@@ -139,14 +105,26 @@ export function BandMeter({ bands, max, min, peaks, weights, height = 80, tip }:
   )
 }
 
-/** One-row segmented bar (phase, settings sliders): cells fade in with the value. */
+/**
+ * One-row segmented bar (phase, settings sliders): cells fade in with the value. The cells and the gaps between them are
+ * whole device pixels (item 81, ``useDeviceSnap``): every cell and every gap alike, the leftover pixels split at the two
+ * ends; until the first measurement a ``1fr`` grid.
+ */
 export function SegmentBar({ value, cells = 32, height = 8, gap = 2, tip }: { value: number; cells?: number; height?: number; gap?: number; tip?: string }) {
+  const track = useRef<HTMLDivElement>(null)
+  const snap = useDeviceSnap(track, cells, 'x', gap, { gap: true, leftover: 'split' })
   const level = Math.max(0, Math.min(1, value)) * cells
   return (
-    <div className="grid flex-1" data-hint="info" data-tip={tip} style={{ gridTemplateColumns: `repeat(${cells}, minmax(0, 1fr))`, gap, height }}>
+    <div
+      ref={track}
+      className={snap ? 'relative flex-1' : 'grid flex-1'}
+      data-hint="info"
+      data-tip={tip}
+      style={snap ? { height } : { gridTemplateColumns: `repeat(${cells}, minmax(0, 1fr))`, gap, height }}
+    >
       {Array.from({ length: cells }, (_, i) => {
         const fill = Math.max(0, Math.min(1, level - i))
-        return <div key={i} style={{ background: `rgb(var(--ink-rgb) / ${(0.06 + 0.94 * fill).toFixed(3)})` }} />
+        return <div key={i} style={{ background: `rgb(var(--ink-rgb) / ${(0.06 + 0.94 * fill).toFixed(3)})`, ...(snap && cellBox(snap, i, 'x')) }} />
       })}
     </div>
   )

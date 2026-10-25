@@ -1,6 +1,8 @@
 import { useRef, useState, type PointerEvent } from 'react'
 import type { MacroDef } from '../api'
 import { SEGMENTS, formatValue, segmentStyle, type ColorTrack } from '../components/MacroControl'
+import { cellBox, spreadWithin } from '../components/deviceSnap'
+import { useDeviceSnap } from '../components/useDeviceSnap'
 
 // a drag only starts after the finger moved this far sideways: a vertical swipe scrolls the page instead
 const SLOP_PX = 8
@@ -32,6 +34,9 @@ export function PhoneSlider({
   const [dragValue, setDragValue] = useState<number | null>(null)
   const drag = useRef<{ id: number; x: number; y: number; startValue: number; width: number; active: boolean; frame: number; out: number | null } | null>(null)
   const current = dragValue ?? value
+  const track = useRef<HTMLDivElement>(null)
+  // the segments and the colour scale in whole device pixels, the leftover split at the two ends (item 81); null until measured
+  const snap = useDeviceSnap(track, SEGMENTS, 'x', 1, { leftover: 'split' })
   const engineValue = applied ?? value
   const notApplied = Boolean(pending) || (def.deferred && dragValue !== null && Math.abs(dragValue - engineValue) > 1e-6)
 
@@ -90,6 +95,7 @@ export function PhoneSlider({
   const lo = Math.floor(Math.min(level, appliedLevel))
   const hi = Math.ceil(Math.max(level, appliedLevel))
   const active = dragValue !== null
+  const hue = snap && colorTrack ? spreadWithin(snap, colorTrack.steps.length, 0) : null
 
   return (
     <div
@@ -120,19 +126,19 @@ export function PhoneSlider({
           <span className="text-glow w-[4.5rem] text-right font-mono text-[20px] leading-none tabular-nums">{formatValue(def, current)}</span>
         )}
       </div>
-      <div className={`flex h-5 ${disabled ? 'hatch opacity-60' : ''}`}>
+      <div ref={track} className={`h-5 ${snap ? 'relative' : 'flex'} ${disabled ? 'hatch opacity-60' : ''}`}>
         {!disabled &&
           Array.from({ length: SEGMENTS }, (_, s) => {
-            const st = segmentStyle(Math.max(0, Math.min(1, level - s)), s === top || active, notApplied && s >= lo && s < hi)
             // the segments run left to right; the seam is on the left edge instead of the top
-            return <div key={s} className="flex-1" style={{ ...st, boxShadow: st.boxShadow?.replace('inset 0 1px 0', 'inset 1px 0 0') }} />
+            const st = segmentStyle(Math.max(0, Math.min(1, level - s)), s === top || active, notApplied && s >= lo && s < hi, snap?.seam, 'x')
+            return <div key={s} className={snap ? undefined : 'flex-1'} style={snap ? { ...st, ...cellBox(snap, s, 'x') } : st} />
           })}
       </div>
       {colorTrack && !disabled && (
-        // the colour scale is always shown on a phone (there is no hover)
-        <div className="flex h-1">
+        // the colour scale is always shown on a phone (there is no hover); under the segments, filling exactly their extent
+        <div className={`h-1 ${hue ? 'relative' : 'flex'}`}>
           {colorTrack.steps.map((c, i) => (
-            <div key={i} className="flex-1" style={{ background: c }} />
+            <div key={i} className={hue ? undefined : 'flex-1'} style={{ background: c, ...(hue && cellBox(hue, i, 'x')) }} />
           ))}
         </div>
       )}
