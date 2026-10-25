@@ -437,7 +437,7 @@ class Engine:
             self.macros.reset_to_defaults()
             log.info("scene %d is empty: macros set to their defaults", index + 1)
             return False
-        defaults = {n: self.macros.defs[n].default for n in LATE_MACROS if n in self.macros.defs}
+        defaults = {n: v for n, v in LATE_MACROS.items() if n in self.macros.defs}  # as the scene looked (item 94)
         self.macros.load(defaults | scene.values, source=f"scene {index + 1}")
         log.info("loaded scene %d (%s)", index + 1, scene.name)
         return True

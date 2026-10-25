@@ -154,7 +154,9 @@ def test_invert_discoball_range_only_with_macro(store):
 
 def test_mask_curve_macro_is_logarithmic_with_one_in_the_middle():
     bank = MacroBank()
-    assert bank.value("Mask Curve") == pytest.approx(1.0)  # the default, exactly on the middle step
+    assert bank.value("Mask Curve") == pytest.approx(2.18, abs=0.005)  # the default: the step nearest 2.2 (item 94)
+    bank.set("Mask Curve", 0.5)
+    assert bank.value("Mask Curve") == pytest.approx(1.0)  # 1 exactly on the middle step
     bank.set("Mask Curve", 0.0)
     assert bank.value("Mask Curve") == pytest.approx(0.25)
     bank.set("Mask Curve", 1.0)

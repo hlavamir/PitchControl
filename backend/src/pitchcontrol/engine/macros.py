@@ -80,8 +80,9 @@ def _defs() -> list[MacroDef]:
         MacroDef("Mask Param A", -2.0, 2.0, legacy_index=20, default=_step(64)),  # slider at the middle
         MacroDef("Mask Param B", legacy_index=21, default=_step(64)),
         # the exponent of the mask before the fixtures' own idle remap (``mask ** value``): above 1 darker, below 1 brighter.
-        # 129 steps put the default 1 exactly on the middle step. Not in the vvvv patch: no legacy index.
-        MacroDef("Mask Curve", 0.25, 4.0, steps=129, default=0.5, log_scale=True),
+        # 129 steps put 1 exactly on the middle step. The default is 2.18, the step nearest 2.2, a cheap sRGB-like curve
+        # (Miro, item 94): step 100 of 128 (2.2 itself lies between two steps). Not in the vvvv patch: no legacy index.
+        MacroDef("Mask Curve", 0.25, 4.0, steps=129, default=100 / 128, log_scale=True),
         MacroDef("Invert Discoball", steps=2, kind="toggle", legacy_index=29),
         MacroDef("Fog Machine", steps=2, kind="momentary", legacy_index=30),
         MacroDef("Manual Strobo", steps=2, kind="momentary", legacy_index=31),
@@ -121,9 +122,10 @@ def _defs() -> list[MacroDef]:
 
 MACRO_DEFS: list[MacroDef] = _defs()
 
-# Macros that came after the first scenes were saved: a scene without one of them gets its default (the look it had when
-# it was saved), instead of keeping whatever the macro was set to before the scene was loaded.
-LATE_MACROS = ("Mask Curve",)
+# Macros that came after the first scenes were saved: a scene without one of them gets the control value that gives the
+# look it had when it was saved, instead of keeping whatever the macro was set to before the scene was loaded. Not the
+# macro's default: Mask Curve's default became 2.18 (item 94), but those scenes were made with a curve of 1.
+LATE_MACROS = {"Mask Curve": 0.5}
 
 
 def quantise(control: float, steps: int) -> float:
