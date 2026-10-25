@@ -47,6 +47,13 @@ export const INKS: Record<InkName, string> = {
   phosphor: '#a8e6b5',
 }
 
+/** The Control Desk's colour for routed channels, one per ink so it stands apart from each (item 87, chosen by Miro). */
+export const ROUTE_COLORS: Record<InkName, string> = {
+  grey: '#e28f6a', // coral
+  amber: '#5fc7c0', // teal
+  phosphor: '#c9a6f2', // lavender
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
@@ -54,6 +61,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 export function applyTheme(ui: UiSettings): void {
   document.documentElement.style.setProperty('--ink-rgb', hexToRgb(INKS[ui.ink] ?? INKS.grey).join(' '))
+  document.documentElement.style.setProperty('--color-route', ROUTE_COLORS[ui.ink] ?? ROUTE_COLORS.grey)
 }
 
 /** The current ink as "r g b", for canvas drawing. */
