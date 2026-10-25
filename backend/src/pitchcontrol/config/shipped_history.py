@@ -39,7 +39,7 @@ _HASHES: dict[str, list[str]] = {
     'scenes/scene_6.json': ['c1ca97fa26e9c0c5'],
     'scenes/scene_7.json': ['0b0c68205b3c8822'],
     'scenes/scene_8.json': ['cc632a75695d7cf8'],
-    'settings.json': ['00e985dec1e636ed', '1ee671e0b87851c8', '2068e0ff5f4325f4', '3f3be820913293eb', '71ac31af11d424ad', '7b258b7ae4e894f2', '7cde1f9a0e2f6a66', 'ae2a343bba5e79a5', 'e11654256adf10fe'],
+    'settings.json': ['00e985dec1e636ed', '1ee671e0b87851c8', '2068e0ff5f4325f4', '3f3be820913293eb', '58d60a744ed31839', '71ac31af11d424ad', '7b258b7ae4e894f2', '7cde1f9a0e2f6a66', 'ae2a343bba5e79a5', 'e11654256adf10fe'],
 }
 
 SHIPPED: dict[str, frozenset[str]] = {k: frozenset(v) for k, v in _HASHES.items()}
