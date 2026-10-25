@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BUTTONS, FADERS, MASKS } from './generalControls'
-import { macroPlace } from './macroPlace'
+import { macroPlace, placeOrder } from './macroPlace'
 
 describe('macroPlace (item 96)', () => {
   it('numbers the faders as the General page does', () => {
@@ -34,5 +34,14 @@ describe('macroPlace (item 96)', () => {
     FADERS.forEach((n, i) => expect(macroPlace(n)).toBe(`fader ${String(i + 1).padStart(2, '0')}`))
     BUTTONS.forEach(([n], i) => expect(macroPlace(n)).toBe(`button ${String(i + 1).padStart(2, '0')}`))
     MASKS.forEach(([n], i) => expect(macroPlace(n)).toBe(`button ${String(i + 9).padStart(2, '0')}`))
+  })
+})
+
+describe('placeOrder (item 96)', () => {
+  it('sorts faders, then buttons, by number; macros without a place last, in their old order', () => {
+    const fn1 = BUTTONS[0][0], mask1 = MASKS[0][0], fn6 = BUTTONS[5][0]
+    const names = ['Mask Curve', fn6, FADERS[10], FADERS[0], mask1, 'Page General', fn1]
+    const sorted = [...names].sort((a, b) => placeOrder(a) - placeOrder(b))
+    expect(sorted.map((n) => macroPlace(n) ?? n)).toEqual(['fader 01', 'fader 11', 'button 01', 'button 06', 'button 09', 'Mask Curve', 'Page General'])
   })
 })

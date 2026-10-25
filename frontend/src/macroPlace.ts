@@ -32,3 +32,16 @@ export function macroPlace(name: string): string | null {
   if (scene) return `scene ${scene[1]}`
   return null
 }
+
+const KIND_ORDER = ['fader', 'button', 'dimmer', 'scene']
+
+/**
+ * The order of the MIDI mapping grid's rows (item 96): faders 01–16, then buttons 01–16, dimmers, scenes, by number;
+ * a macro with no place after them. Sort with ``Array.prototype.sort``, which is stable: equal keys keep their order.
+ */
+export function placeOrder(name: string): number {
+  const place = macroPlace(name)
+  if (!place) return KIND_ORDER.length * 100
+  const [kind, number] = place.split(' ')
+  return KIND_ORDER.indexOf(kind) * 100 + Number(number)
+}

@@ -7,6 +7,7 @@ import { createSaveQueue } from '../saveQueue'
 import { unchanged, usePolling } from '../usePolling'
 import { Button, Row, Section, TextInput } from './forms'
 import { MidiMappingRow } from './MidiMappingRow'
+import { placeOrder } from '../macroPlace'
 
 // MIDI mapping: one row per macro with the control (CC or note) and channel that drives it, whatever device it comes
 // from (items 89, 90). "Learn" listens for the next message. Every change is written at once, to the user's copy of the
@@ -400,7 +401,9 @@ export function MidiMappingSection({
       return (idx.length ? idx : [null]).map((i, n) => row(`${d.name}-${n}`, label, undefined, i, d, template))
     })
 
-  const inTab = (t: Tab) => defs.filter((d) => (t === 'scenes' ? d.page === 'scenes' || d.page === 'system' : d.page === t))
+  // in the order of their places on the pages: fader 01, 02, …, then the buttons (item 96)
+  const inTab = (t: Tab) =>
+    defs.filter((d) => (t === 'scenes' ? d.page === 'scenes' || d.page === 'system' : d.page === t)).sort((a, b) => placeOrder(a.name) - placeOrder(b.name))
   const unknown = (draft?.mappings ?? []).map((m, i) => ({ m, i })).filter(({ m }) => m.macro && !defOf.has(m.macro))
 
   // -- the controller tab
