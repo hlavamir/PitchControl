@@ -494,6 +494,8 @@ def test_open_dmx_writer_logs_timing_through_the_thread(monkeypatch, caplog):
     monkeypatch.setattr(workers, "TIMING_SUMMARY_S", 0.15)
     w = workers.OpenDmxWorker(DeviceRef(), "opendmx1")
     w.min_interval = 0.0                                           # the clamp has its own tests (item 35)
+    monkeypatch.setattr(workers, "DMX_BYTE_S", 0.0)                # and so has the wire guard: with it a frame takes ~27 ms,
+    monkeypatch.setattr(workers, "WIRE_MARGIN_S", 0.0)             # more than the 20 ms between the frames here
     w.timing = workers.FrameTimingLog("opendmx1", lambda: 0.001)   # target 1 ms: frames 20 ms apart are late
     w.start()
     try:

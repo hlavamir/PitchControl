@@ -994,7 +994,10 @@ def create_app(
 
     @app.get("/api/devices/midi")
     def midi_ports():
-        return list_midi_inputs()
+        # the MIDI watchdog's last look: listing here, on a request thread, would see on macOS only the devices of the
+        # start (item 92); without hardware (tests, a no-hardware run) the ports are listed as before
+        names = engine.midi_devices.names()
+        return names if names is not None else list_midi_inputs()
 
     @app.get("/api/midi/devices")
     def get_midi_devices():

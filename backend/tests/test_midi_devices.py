@@ -315,3 +315,29 @@ def test_saving_the_settings_from_the_page_leaves_the_devices_alone(store, syste
     page["midi_input"] = "something"
     assert client.put("/api/settings", json=page).status_code == 200
     assert port_key(F1) in store.settings.midi_devices and store.settings.midi_input is None
+
+
+def test_a_change_from_the_page_uses_the_last_look_and_lists_nothing_itself(store, system, devices, monkeypatch):
+    # item 92: on macOS a list read on a request thread shows only the devices of the start and would close the others
+    system.names = [F1, LC]
+    devices.sync()
+    assert devices.names() == [F1, LC]
+
+    def must_not_list():
+        raise AssertionError("listed on the page's thread")
+
+    monkeypatch.setattr(module, "list_midi_inputs_checked", must_not_list)
+    devices.set_switches(port_key(LC), input=False)
+    assert state(devices) == {F1: "connected", LC: "off"}
+
+
+def test_the_names_are_none_before_the_first_look(devices):
+    assert devices.names() is None
+
+
+def test_the_watchdog_pause_ends_at_once_when_stopped():
+    import threading
+
+    stop = threading.Event()
+    stop.set()
+    assert module.wait_between_looks(stop, 5.0) is True  # also with the run loop on macOS: no 5 s wait at a stop

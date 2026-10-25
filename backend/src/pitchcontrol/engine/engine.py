@@ -20,7 +20,7 @@ from ..config.models import Scene
 from ..io import audio_in
 from ..io.audio_in import AudioInput
 from ..io.live_input import LiveInput
-from ..io.midi_devices import MidiDevices
+from ..io.midi_devices import MidiDevices, wait_between_looks
 from ..io.midi_in import MidiInput
 from ..io.midi_routes import MidiRouteHub
 from ..io.outputs import OutputManager
@@ -157,7 +157,7 @@ class Engine:
         self.restart_live_input()
         self.restart_audio()
         self.restart_midi()
-        self.midi_devices.sync()
+        # the MIDI devices are looked at by the MIDI watchdog only, its first look included (item 92, see _midi_watch)
 
     def restart_live_input(self) -> None:
         """Make the Art-Net and DMX inputs match the saved settings (a receiver that didn't change keeps running)."""
@@ -309,11 +309,16 @@ class Engine:
         return self.midi_routes.status(r.midi_device for r in self.routes.all() if r.kind == "midi" and (r.enabled or r.id == learning))
 
     def _midi_watch(self) -> None:
-        while not self._stop.wait(MIDI_WATCH_S):
+        # Every look at the MIDI ports happens on this thread, the first one at once (item 92): on macOS CoreMIDI tells a
+        # process about devices plugged in later only on the run loop of the thread that made its first MIDI client, so
+        # this thread must be that one, and it runs its run loop while it waits (wait_between_looks).
+        while True:
             try:
                 self.midi_devices.sync()
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
                 log.exception("MIDI watchdog")
+            if wait_between_looks(self._stop, MIDI_WATCH_S):
+                return
 
     # ------------------------------------------------------------------ frame
     def tick(self, dt: float) -> None:

@@ -14,6 +14,7 @@ at once.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -41,6 +42,23 @@ class _Runtime:
     last: float | None = None  # time.monotonic() of its last message
 
 
+def wait_between_looks(stop: threading.Event, seconds: float) -> bool:
+    """The watchdog's pause between two looks; True when ``stop`` is set. On macOS CoreMIDI tells a process about
+    devices plugged in after its start only through the run loop of the thread that lists them: a worker thread that
+    just sleeps keeps seeing the devices of the start, so a controller plugged in later never showed up (item 92). The
+    watchdog runs its run loop while it waits instead (a plain wait elsewhere)."""
+    if sys.platform != "darwin":
+        return stop.wait(seconds)
+    try:
+        from CoreFoundation import CFRunLoopRunInMode, kCFRunLoopDefaultMode
+    except ImportError:  # pragma: no cover - pywebview brings PyObjC on macOS
+        return stop.wait(seconds)
+    end = time.monotonic() + seconds
+    while not stop.is_set() and time.monotonic() < end:
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, min(0.2, max(0.0, end - time.monotonic())), False)
+    return stop.is_set()
+
+
 def open_error_text(exc: Exception) -> str:
     """Why a port wouldn't open, in words. On Windows an open fails when another program holds the port."""
     text = str(exc) or exc.__class__.__name__
@@ -54,6 +72,7 @@ class MidiDevices:
         self._sync = threading.RLock()  # one look at a time: opening and closing a port is up to the driver and can be slow
         self._rt: dict[str, _Runtime] = {}
         self._subscribers: list[Subscriber] = []
+        self._names: list[str] | None = None  # the port list of the last look (item 92: a change from the page reuses it)
 
     # -- the stream
     def subscribe(self, subscriber: Subscriber) -> None:
@@ -87,6 +106,7 @@ class MidiDevices:
                 names = list_midi_inputs_checked()
                 if names is None:
                     return
+            self._names = names
             listed: dict[str, str] = {}
             for n in names:
                 listed.setdefault(port_key(n), n)  # two ports of one key (a renumbered twin) are one device: opened once
@@ -176,6 +196,10 @@ class MidiDevices:
         except OSError as exc:
             log.warning("the MIDI devices could not be saved: %s", exc)
 
+    def names(self) -> list[str] | None:
+        """The system's MIDI input names at the last look, None before the first one (item 92)."""
+        return list(self._names) if self._names is not None else None
+
     # -- what the page changes (applied at once)
     def set_switches(self, key: str, input: bool | None = None, output: bool | None = None) -> None:
         """Switch In and / or Out of a device. A closed In lets go of the port before this returns. KeyError: no such device."""
@@ -189,7 +213,9 @@ class MidiDevices:
                 if output is not None:
                     dev.output = output
             self._save()
-            self.sync()
+            # the list of the watchdog's last look: on macOS a list read on this (request) thread misses devices
+            # plugged in since the start (item 92) and would close them as gone
+            self.sync(self._names)
 
     def remove(self, key: str) -> None:
         """Take a device that isn't plugged in off the list (it is added again when it shows up). KeyError: no such
