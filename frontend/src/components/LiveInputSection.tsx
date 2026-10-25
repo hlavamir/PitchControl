@@ -1,9 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type SerialDevice } from '../api'
 import { ARTNET_DEFAULT_PORT, QUIET_AFTER_S, lastSeen, portAddressParts, portProblem, sortUniverses, type LiveInputSettings, type LiveInputView } from '../liveInput'
 import type { EngineConnection } from '../useEngine'
 import { usePolling } from '../usePolling'
-import { Button, DevicePicker, Section, StatusDot, Toggle } from './forms'
+import { DevicePicker, Section, StatusDot, TextInput, Toggle } from './forms'
 
 const POLL_MS = 3000 // the adapters and USB devices change when a cable does
 
@@ -11,8 +11,8 @@ export type LiveInput = ReturnType<typeof useLiveInput>
 
 /**
  * Connections → DMX & Art-Net: the Art-Net input and the DMX input (item 57), DMX that comes in from outside, for the
- * routes of the Control Desk (item 58). Per computer (machine.json); the switches apply at once, the port with its
- * button. Only the computer that runs PitchControl changes it, like the network switch.
+ * routes of the Control Desk (item 58). Per computer (machine.json); the switches apply at once, the port on Enter or
+ * when you leave the field (item 88). Only the computer that runs PitchControl changes it, like the network switch.
  */
 export function useLiveInput() {
   const [view, setView] = useState<LiveInputView | null>(null)
@@ -32,16 +32,25 @@ export function useLiveInput() {
   }, [])
   usePolling(read, POLL_MS)
 
-  const save = async (change: (s: LiveInputSettings) => void) => {
-    if (!view) return
-    setProblem(null)
-    const next = structuredClone(view.settings)
-    change(next)
-    try {
-      setView(await api.put<LiveInputView>('/api/live-input', next))
-    } catch (e) {
-      setProblem(String((e as Error).message ?? e))
+  // one change after the other (item 88): each builds on the view the one before it got back
+  const latest = useRef(view)
+  latest.current = view
+  const chain = useRef<Promise<unknown>>(Promise.resolve())
+  const save = (change: (s: LiveInputSettings) => void) => {
+    const run = async () => {
+      if (!latest.current) return
+      setProblem(null)
+      const next = structuredClone(latest.current.settings)
+      change(next)
+      try {
+        const v = await api.put<LiveInputView>('/api/live-input', next)
+        latest.current = v
+        setView(v)
+      } catch (e) {
+        setProblem(String((e as Error).message ?? e))
+      }
     }
+    return (chain.current = chain.current.then(run))
   }
   return { view, remote, devices, problem, save }
 }
@@ -64,16 +73,17 @@ function Status({ input, children }: { input: LiveInput; children: ReactNode }) 
 }
 
 export function ArtnetInputSection({ index, input, engine, className = '' }: { index: string; input: LiveInput; engine: EngineConnection; className?: string }) {
-  const [port, setPort] = useState<string | null>(null) // the port field while it is being edited
+  const [portBad, setPortBad] = useState<string | null>(null) // what was wrong with the port that was typed
   const cfg = input.view?.settings
   const art = engine.state?.io?.live_input?.artnet // live, at the preview rate; the settings come from the page's own reads
-  const portText = port ?? String(cfg?.artnet.port ?? ARTNET_DEFAULT_PORT)
-  const portBad = port !== null ? portProblem(port) : null
-  const portDirty = port !== null && port !== String(cfg?.artnet.port)
   const adapters = input.view?.adapters ?? []
   const adapterMissing = !!cfg?.artnet.adapter && !adapters.some((a) => a.ip === cfg.artnet.adapter)
   const universes = sortUniverses(art?.universes ?? [])
-  const applyPort = () => input.save((s) => (s.artnet.port = Number(port))).then(() => setPort(null))
+  const applyPort = (text: string) => {
+    const bad = portProblem(text.trim())
+    setPortBad(bad)
+    if (!bad) input.save((s) => (s.artnet.port = Number(text.trim())))
+  }
 
   return (
     <Section
@@ -105,18 +115,8 @@ export function ArtnetInputSection({ index, input, engine, className = '' }: { i
             <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
               <label className="flex flex-col gap-1" data-tip="The Art-Net standard port is 6454. Change it only when another Art-Net program on this computer has the port and doesn't share it">
                 <span className="lbl text-[10px] text-dim">Port</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-24"
-                  value={portText}
-                  onChange={(e) => setPort(e.target.value.trim())}
-                  onKeyDown={(e) => e.key === 'Enter' && !portBad && portDirty && applyPort()}
-                />
+                <TextInput className="w-24" inputMode="numeric" value={String(cfg.artnet.port ?? ARTNET_DEFAULT_PORT)} onCommit={applyPort} />
               </label>
-              <Button disabled={!portDirty || !!portBad} tip="Listen on this port" onClick={applyPort}>
-                Apply
-              </Button>
               <label className="flex min-w-[12rem] flex-1 flex-col gap-1" data-tip="Which network adapter to listen on. All adapters takes Art-Net from any network this computer is on; Loopback is for a program on this computer">
                 <span className="lbl text-[10px] text-dim">Network adapter</span>
                 <select value={cfg.artnet.adapter} onChange={(e) => input.save((s) => (s.artnet.adapter = e.target.value))}>

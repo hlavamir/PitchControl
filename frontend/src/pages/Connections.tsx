@@ -5,7 +5,7 @@ import { ArtnetInputSection, DmxInputSection, useLiveInput } from '../components
 import { MidiMappingSection } from '../components/MidiMapping'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { SubTabs, useSubTab, type SubTab } from '../components/SubTabs'
-import { ARTNET_UNIVERSES, Button, DevicePicker, NumberInput, Row, SaveBar, Section, StatusDot, Toggle, UniverseSelect, deviceKey, useSettings } from '../components/forms'
+import { ARTNET_UNIVERSES, Button, DevicePicker, NumberInput, Row, Section, StatusDot, TextInput, Toggle, UniverseSelect, deviceKey, useSettings } from '../components/forms'
 import { CONNECTION_TABS, type ConnectionTab } from '../pages'
 import { reconnectLine } from '../reconnect'
 import { savedPortState } from '../savedPort'
@@ -42,8 +42,9 @@ const TABS: SubTab<ConnectionTab>[] = [
 ]
 
 /**
- * Connections (item 60): what goes in and out of the app, one subpage tab per topic (Q / E step through them). The
- * settings of all tabs are one draft with one Save; the live input and the MIDI mapping save on their own.
+ * Connections (item 60): what goes in and out of the app, one subpage tab per topic (Q / E step through them). Every change
+ * is written and applied at once (item 88): switches and lists on the click, text and number fields on Enter or when you
+ * leave them. The MIDI mapping is a file with its own Save.
  */
 export function Connections({ engine }: { engine: EngineConnection }) {
   // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ edits the highlighted one
@@ -52,7 +53,7 @@ export function Connections({ engine }: { engine: EngineConnection }) {
   const [tab, setTab] = useSubTab('Connections', CONNECTION_TABS, 'audio')
 
   const settingsApi = useSettings()
-  const { settings, dirty, save, reload, message } = settingsApi
+  const { settings, message } = settingsApi
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [midiPorts, setMidiPorts] = useState<string[]>([])
   const [controllerLabels, setControllerLabels] = useState<Record<string, string>>({})
@@ -97,7 +98,11 @@ export function Connections({ engine }: { engine: EngineConnection }) {
             Rescan USB devices
           </Button>
         )}
-        <SaveBar dirty={dirty} save={save} reload={reload} message={message} />
+        {message && (
+          <span className="lbl text-[11px]" role="alert" data-tip="A change could not be written; the saved settings are shown again">
+            {message}
+          </span>
+        )}
       </div>
       {settings && (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -115,7 +120,7 @@ export function Connections({ engine }: { engine: EngineConnection }) {
 type SettingsApi = ReturnType<typeof useSettings>
 
 function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnection; settingsApi: SettingsApi; audioDevices: AudioDevice[] }) {
-  const { settings, update } = settingsApi
+  const { settings, commit } = settingsApi
   const [bands, setBands] = useState<BandInfo | null>(null)
   useEffect(() => {
     api.get<BandInfo>('/api/audio/bands').then(setBands)
@@ -145,8 +150,8 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
     >
       <div className="grid gap-x-6 wide:grid-cols-2">
         <div>
-          <Row label="Device" hint="Audio input device (a mixer's master out, a line input or a microphone); Save restarts the input">
-            <select className="w-full" value={selected?.label ?? a.device ?? ''} onChange={(e) => update((s) => (s.audio.device = e.target.value || null))}>
+          <Row label="Device" hint="Audio input device (a mixer's master out, a line input or a microphone); the input restarts with the new device">
+            <select className="w-full" value={selected?.label ?? a.device ?? ''} onChange={(e) => commit((s) => (s.audio.device = e.target.value || null))}>
               <option value="">System default{defaultDevice ? ` (${defaultDevice.name})` : ''}</option>
               {a.device && !selected && <option value={a.device}>{a.device} (not found)</option>}
               {audioDevices.map((d) => (
@@ -157,24 +162,21 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
             </select>
           </Row>
           <Row label="Input channels" hint="Numbers of the device inputs to listen to, 1-based, comma separated; they are summed to mono">
-            <input
-              type="text"
+            <TextInput
               className="w-32"
               value={a.channels.join(', ')}
-              onChange={(e) =>
-                update(
-                  (s) =>
-                    (s.audio.channels = e.target.value
-                      .split(',')
-                      .map((x) => parseInt(x.trim(), 10))
-                      .filter((x) => x > 0)),
-                )
-              }
+              onCommit={(text) => {
+                const channels = text
+                  .split(',')
+                  .map((x) => parseInt(x.trim(), 10))
+                  .filter((x) => x > 0)
+                if (channels.length > 0) commit((s) => (s.audio.channels = channels)) // nothing usable: the saved channels come back
+              }}
             />
             {inputsNote && <span className="text-[11px] text-dim">{inputsNote}</span>}
           </Row>
           <Row label="Gain" hint="Input gain before the analysis: raise it for a quiet signal. The bar shows the input level">
-            <NumberInput value={a.gain} min={0} onChange={(v) => update((s) => (s.audio.gain = v))} />
+            <NumberInput value={a.gain} min={0} onChange={(v) => commit((s) => (s.audio.gain = v))} />
             <div className="h-2 w-40 bg-panel-2" data-hint="info" data-tip="Input level after the gain; if it hits the right end on loud music, lower the gain or the source">
               <div className="h-2 dot-on" style={{ width: `${Math.min(1, io?.audio?.level ?? 0) * 100}%` }} />
             </div>
@@ -224,7 +226,7 @@ function MidiTab({
   controllerLabels: Record<string, string>
   refresh: () => void
 }) {
-  const { settings, update, applySaved } = settingsApi
+  const { settings, commit, applySaved } = settingsApi
   const io = engine.state?.io
   const midiNote = midiNotice(io?.midi)
   const saved = savedPortState(settings!.midi_input ?? '', midiPorts, io?.midi)
@@ -242,7 +244,7 @@ function MidiTab({
           <span className="truncate">{settings!.active_controller ? controllerLabels[settings!.active_controller] ?? settings!.active_controller : 'none'}</span>
         </Row>
         <Row label="MIDI port" hint="MIDI input to listen to; 'from controller file' picks the port by the name stored in the mapping">
-          <select value={settings!.midi_input ?? ''} onChange={(e) => update((s) => (s.midi_input = e.target.value || null))}>
+          <select value={settings!.midi_input ?? ''} onChange={(e) => commit((s) => (s.midi_input = e.target.value || null))}>
             <option value="">from controller file</option>
             {settings!.midi_input && saved.state === 'renamed' && (
               <option value={settings!.midi_input}>
@@ -307,7 +309,7 @@ function MidiTab({
 }
 
 function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineConnection; settingsApi: SettingsApi; devices: SerialDevice[]; liveInput: ReturnType<typeof useLiveInput> }) {
-  const { settings, update } = settingsApi
+  const { settings, commit } = settingsApi
   const [advanced, setAdvanced] = useState<Record<number, boolean>>({}) // interface index -> the unusual settings are open
   const o = settings!.outputs
   const io = engine.state?.io.outputs
@@ -335,7 +337,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
         tip="DMX over the network (Art-Net): each target sends one universe to one node, or to a broadcast address"
       >
         <div className="flex items-center gap-2.5">
-          <Toggle checked={o.artnet.enabled} tip="Send Art-Net to the targets below; off keeps them but sends nothing" onChange={(v) => update((s) => (s.outputs.artnet.enabled = v))} />
+          <Toggle checked={o.artnet.enabled} tip="Send Art-Net to the targets below; off keeps them but sends nothing" onChange={(v) => commit((s) => (s.outputs.artnet.enabled = v))} />
           <span className="lbl text-[12px]">Send Art-Net</span>
         </div>
         {/* the targets as a small table: one universe to one IP address each */}
@@ -350,29 +352,27 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
           )}
           {o.artnet.targets.map((t, i) => (
             <Fragment key={i}>
-              <UniverseSelect className="w-full" value={t.universe} tip="Universe of this app (as on the Rig page) to send to this target" onChange={(v) => update((s) => (s.outputs.artnet.targets[i].universe = v))} />
-              <input
-                type="text"
-                className="w-full"
-                data-tip="IP address of the Art-Net node; 255 in the last numbers (e.g. 2.255.255.255) broadcasts to a whole network"
+              <UniverseSelect className="w-full" value={t.universe} tip="Universe of this app (as on the Rig page) to send to this target" onChange={(v) => commit((s) => (s.outputs.artnet.targets[i].universe = v))} />
+              <TextInput
+                tip="IP address of the Art-Net node; 255 in the last numbers (e.g. 2.255.255.255) broadcasts to a whole network"
                 value={t.ip}
-                onChange={(e) => update((s) => (s.outputs.artnet.targets[i].ip = e.target.value))}
+                onCommit={(ip) => commit((s) => (s.outputs.artnet.targets[i].ip = ip))}
               />
               <UniverseSelect
                 className="w-full"
                 value={t.artnet_universe ?? t.universe}
                 options={ARTNET_UNIVERSES}
                 tip="Art-Net universe on the wire (what the node listens to), 0–15; by default the same number as the universe"
-                onChange={(v) => update((s) => (s.outputs.artnet.targets[i].artnet_universe = v))}
+                onChange={(v) => commit((s) => (s.outputs.artnet.targets[i].artnet_universe = v))}
               />
-              <Button onClick={() => update((s) => s.outputs.artnet.targets.splice(i, 1))} tip="Remove this Art-Net target (written with Save)">
+              <Button onClick={() => commit((s) => s.outputs.artnet.targets.splice(i, 1))} tip="Remove this Art-Net target">
                 ✕
               </Button>
             </Fragment>
           ))}
         </div>
         <div className="mt-2">
-          <Button onClick={() => update((s) => s.outputs.artnet.targets.push({ universe: 0, ip: '127.255.255.255' }))} tip="Add a target: one universe sent to one IP address">
+          <Button onClick={() => commit((s) => s.outputs.artnet.targets.push({ universe: 0, ip: '127.255.255.255' }))} tip="Add a target: one universe sent to one IP address">
             Add target
           </Button>
         </div>
@@ -400,7 +400,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
               data-tip={o.enttec.length >= MAX_ENTTEC ? `Maximum of ${MAX_ENTTEC} interfaces reached` : 'Add another USB DMX interface, with its own device and universe (up to 4)'}
               className="lbl h-[18px] border border-edge px-2 text-[10px] text-ink disabled:opacity-40"
               onClick={() =>
-                update((s) =>
+                commit((s) =>
                   s.outputs.enttec.push({ enabled: true, device: {}, type: 'auto', break_method: 'baud', log_timing: false, universe: s.outputs.enttec.reduce((n, x) => Math.max(n, x.universe + 1), 0) }),
                 )
               }
@@ -418,14 +418,14 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
               <div key={i} className="flex flex-col gap-1.5 border border-edge p-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2.5">
-                    <Toggle checked={e.enabled} tip="Switch on to send this interface's universe; off keeps the settings but sends nothing" onChange={(v) => update((s) => (s.outputs.enttec[i].enabled = v))} />
+                    <Toggle checked={e.enabled} tip="Switch on to send this interface's universe; off keeps the settings but sends nothing" onChange={(v) => commit((s) => (s.outputs.enttec[i].enabled = v))} />
                     <span className="lbl text-[12px]" data-tip="Switch on to send this interface's universe; off keeps the settings but sends nothing">
                       Interface {i + 1}
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
-                    <StatusDot ok={st ? st.connected : null} label={st ? (st.connected ? 'connected' : 'not connected') : 'off'} error={st?.error} tip="Whether this interface is open and receiving frames (after Save)" />
-                    <Button onClick={() => update((s) => s.outputs.enttec.splice(i, 1))} tip="Remove this interface; the ones below move up (written with Save)">
+                    <StatusDot ok={st ? st.connected : null} label={st ? (st.connected ? 'connected' : 'not connected') : 'off'} error={st?.error} tip="Whether this interface is open and receiving frames" />
+                    <Button onClick={() => commit((s) => s.outputs.enttec.splice(i, 1))} tip="Remove this interface; the ones below move up">
                       Remove
                     </Button>
                   </span>
@@ -433,10 +433,10 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                 <div className="flex items-center gap-2 text-[13px]">
                   <span className="text-dim">Device</span>
                   <div className="min-w-0 flex-1">
-                    <DevicePicker value={e.device} devices={devices} onChange={(d) => update((s) => (s.outputs.enttec[i].device = d))} />
+                    <DevicePicker value={e.device} devices={devices} onChange={(d) => commit((s) => (s.outputs.enttec[i].device = d))} />
                   </div>
                   <span className="text-dim">Universe</span>
-                  <UniverseSelect value={e.universe} tip="The universe this interface sends: fixtures with this universe on the Rig page are on its cable" onChange={(v) => update((s) => (s.outputs.enttec[i].universe = v))} />
+                  <UniverseSelect value={e.universe} tip="The universe this interface sends: fixtures with this universe on the Rig page are on its cable" onChange={(v) => commit((s) => (s.outputs.enttec[i].universe = v))} />
                 </div>
                 {/* what the app found out about the device, and the way in to the unusual settings */}
                 {(() => {
@@ -476,7 +476,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                               className="w-auto"
                               value={e.type}
                               data-tip="Detect automatically (recommended), or force one: the Enttec DMX USB Pro protocol (also DMXKing ultraDMX …), or a bare FTDI interface such as the Enttec Open DMX USB, where the app makes the DMX signal"
-                              onChange={(ev) => update((s) => (s.outputs.enttec[i].type = ev.target.value as 'auto' | 'pro' | 'open'))}
+                              onChange={(ev) => commit((s) => (s.outputs.enttec[i].type = ev.target.value as 'auto' | 'pro' | 'open'))}
                             >
                               <option value="auto">Detect automatically</option>
                               <option value="pro">Enttec DMX USB Pro or compatible</option>
@@ -490,7 +490,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                                 className="w-auto"
                                 value={e.break_method}
                                 data-tip="How the 88 µs break before each frame is made: one byte at a lower baud rate (default, works with the macOS driver), or the port's break line (the macOS driver can get stuck after it until the interface is unplugged)"
-                                onChange={(ev) => update((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
+                                onChange={(ev) => commit((s) => (s.outputs.enttec[i].break_method = ev.target.value as 'break' | 'baud'))}
                               >
                                 <option value="baud">one byte at a lower baud rate (default)</option>
                                 <option value="break">the port's break line</option>
@@ -503,7 +503,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
                               <Toggle
                                 checked={e.log_timing}
                                 tip="Writes the timing of every frame to the log file: a summary every 10 seconds (frames per second, longest write, largest gap, dropped frames) and one line for each frame that came more than twice the frame time after the one before. For finding out why a frame is lost now and then. Open the log with File → Open logs folder. Leave it off otherwise"
-                                onChange={(v) => update((s) => (s.outputs.enttec[i].log_timing = v))}
+                                onChange={(v) => commit((s) => (s.outputs.enttec[i].log_timing = v))}
                               />
                               <span className="text-dim">{e.log_timing ? 'on: writing to the log file' : 'off'}</span>
                             </div>
@@ -524,7 +524,7 @@ function DmxTab({ engine, settingsApi, devices, liveInput }: { engine: EngineCon
 }
 
 function OscTab({ engine, settingsApi }: { engine: EngineConnection; settingsApi: SettingsApi }) {
-  const { settings, update } = settingsApi
+  const { settings, commit } = settingsApi
   const [oscFiles, setOscFiles] = useState<{ available: string[]; folder: string }>({ available: [], folder: '' })
   const loadOscFiles = () => api.get<{ available: string[]; folder: string }>('/api/osc/files').then(setOscFiles)
   useEffect(() => {
@@ -543,16 +543,16 @@ function OscTab({ engine, settingsApi }: { engine: EngineConnection; settingsApi
         tip="OSC over the network (UDP): the base colours A and B, as the file below describes, to one IP address and port"
       >
         <Row label="Enabled" hint="Send the messages below; off keeps the settings but sends nothing">
-          <Toggle checked={o.osc.enabled} onChange={(v) => update((s) => (s.outputs.osc.enabled = v))} />
+          <Toggle checked={o.osc.enabled} onChange={(v) => commit((s) => (s.outputs.osc.enabled = v))} />
         </Row>
         <Row label="IP address" hint="Where to send: the IP address (or name) of the computer or device that receives OSC; a broadcast address works too">
-          <input type="text" className="w-40" value={o.osc.host} onChange={(e) => update((s) => (s.outputs.osc.host = e.target.value))} />
+          <TextInput className="w-40" value={o.osc.host} onCommit={(host) => commit((s) => (s.outputs.osc.host = host))} />
         </Row>
         <Row label="Port" hint="The UDP port the receiver listens on (1–65535)">
-          <NumberInput value={o.osc.port} integer min={1} max={65535} onChange={(v) => update((s) => (s.outputs.osc.port = v))} />
+          <NumberInput value={o.osc.port} integer min={1} max={65535} onChange={(v) => commit((s) => (s.outputs.osc.port = v))} />
         </Row>
         <Row label="Messages" hint={`The file that says what to send, to which address and in which format. The app ships examples; your own files go in ${oscFiles.folder || 'the osc folder of your data folder'}. A file is read again within a second when you edit it`}>
-          <select className="w-full" value={o.osc.file} onChange={(e) => update((s) => (s.outputs.osc.file = e.target.value))}>
+          <select className="w-full" value={o.osc.file} onChange={(e) => commit((s) => (s.outputs.osc.file = e.target.value))}>
             <option value="">— no file —</option>
             {o.osc.file && !oscFiles.available.includes(o.osc.file) && <option value={o.osc.file}>{o.osc.file} (not found)</option>}
             {oscFiles.available.map((n) => (
@@ -575,7 +575,7 @@ function OscTab({ engine, settingsApi }: { engine: EngineConnection; settingsApi
 }
 
 function SerialTab({ engine, settingsApi, devices }: { engine: EngineConnection; settingsApi: SettingsApi; devices: SerialDevice[] }) {
-  const { settings, update } = settingsApi
+  const { settings, commit } = settingsApi
   const o = settings!.outputs
   const v2 = engine.state?.io.outputs?.pitchpls_v2
   return (
@@ -587,20 +587,20 @@ function SerialTab({ engine, settingsApi, devices }: { engine: EngineConnection;
         right={<StatusDot ok={v2?.connected ?? null} label={v2 ? (v2.connected ? 'connected' : 'not connected') : 'off'} error={v2?.error} />}
       >
         <Row label="Enabled" hint="Send to the v2 strips; off keeps the settings but sends nothing">
-          <Toggle checked={o.pitchpls_v2.enabled} onChange={(v) => update((s) => (s.outputs.pitchpls_v2.enabled = v))} />
+          <Toggle checked={o.pitchpls_v2.enabled} onChange={(v) => commit((s) => (s.outputs.pitchpls_v2.enabled = v))} />
         </Row>
         <Row label="Device" hint="USB serial device of the v2 controller board">
-          <DevicePicker value={o.pitchpls_v2.device} devices={devices} onChange={(d) => update((s) => (s.outputs.pitchpls_v2.device = d))} />
+          <DevicePicker value={o.pitchpls_v2.device} devices={devices} onChange={(d) => commit((s) => (s.outputs.pitchpls_v2.device = d))} />
         </Row>
         <Row label="Baudrate" hint="Serial speed; must match the v2 firmware (921600 by default)">
-          <select value={o.pitchpls_v2.baudrate} onChange={(e) => update((s) => (s.outputs.pitchpls_v2.baudrate = Number(e.target.value)))}>
+          <select value={o.pitchpls_v2.baudrate} onChange={(e) => commit((s) => (s.outputs.pitchpls_v2.baudrate = Number(e.target.value)))}>
             {[57600, 115200, 230400, 460800, 921600].map((b) => (
               <option key={b}>{b}</option>
             ))}
           </select>
         </Row>
         <Row label="Mirror mode byte" hint="Mode byte sent after the pixels: how the firmware mirrors the 19 pixels onto its 38 LEDs (0–254)">
-          <NumberInput value={o.pitchpls_v2.mode} integer min={0} max={254} onChange={(v) => update((s) => (s.outputs.pitchpls_v2.mode = v))} />
+          <NumberInput value={o.pitchpls_v2.mode} integer min={0} max={254} onChange={(v) => commit((s) => (s.outputs.pitchpls_v2.mode = v))} />
         </Row>
       </Section>
     </div>

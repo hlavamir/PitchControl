@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef } from 'react'
 
-// Pages that keep edits in a local draft (Connections, Fog, the MIDI mapping) register here, so that
+// Pages that keep edits in a local draft (Fog, the MIDI mapping) register here, so that
 // changing the page asks what to do with unsaved edits instead of silently dropping them. The menu bar's Save (item 52)
 // saves what is registered here: those drafts, and the pages whose edits are live but not written yet (Fixtures, Rig),
 // which register with ``leave: false`` (leaving them keeps the edits, so nothing is asked).

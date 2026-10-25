@@ -20,44 +20,8 @@ import {
   type RouteState,
 } from '../routes'
 import { usePolling } from '../usePolling'
-import { Button, NumberInput, Section, Toggle } from './forms'
+import { Button, NumberInput, Section, TextInput, Toggle } from './forms'
 import { Icon } from './Icon'
-
-/** A text field that keeps what you type and applies it when you leave it or press Enter. */
-function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
-  const [text, setText] = useState(value)
-  const [dirty, setDirty] = useState(false)
-  useEffect(() => {
-    if (!dirty) setText(value)
-  }, [value, dirty])
-  const commit = () => {
-    if (!dirty) return
-    setDirty(false)
-    if (text !== value) onCommit(text)
-  }
-  return (
-    <input
-      type="text"
-      className="w-full"
-      value={text}
-      maxLength={60}
-      placeholder="name (optional)"
-      data-tip="A name for this route, to tell it from the others"
-      onChange={(e) => {
-        setText(e.target.value)
-        setDirty(true)
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') commit()
-        if (e.key === 'Escape') {
-          setDirty(false)
-          setText(value)
-        }
-      }}
-    />
-  )
-}
 
 const GRID = 'grid grid-cols-[2.6rem_minmax(7rem,1.2fr)_7.5rem_4.5rem_4.5rem_4.5rem_1.2rem_5.5rem_5rem] items-center gap-x-2'
 const CHANNEL_GRID = 'grid grid-cols-[3.2rem_9rem_5rem_6.5rem_6rem_2.6rem_minmax(0,1fr)] items-center gap-x-2'
@@ -270,7 +234,13 @@ export function RoutesSection({
               <div key={r.id} className="flex min-w-[56rem] flex-col gap-0.5" data-route={r.id}>
                 <div className={GRID}>
                   <Toggle checked={r.enabled} tip="Switch the route on or off. Off gives its channels back to the fixtures" onChange={(v) => edit(r.id, { enabled: v })} />
-                  <NameInput value={r.name} onCommit={(name) => edit(r.id, { name })} />
+                  <TextInput
+                    value={r.name}
+                    maxLength={60}
+                    placeholder="name (optional)"
+                    tip="A name for this route, to tell it from the others"
+                    onCommit={(name) => edit(r.id, { name })}
+                  />
                   <select
                     value={r.kind}
                     data-tip="Where the values come from: an Art-Net universe, the DMX input (an Enttec DMX USB Pro that receives), or a MIDI device"

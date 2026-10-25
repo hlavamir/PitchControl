@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type DeviceRef, type SerialDevice, type Settings } from '../api'
 import type { HintKind } from '../hints'
-import { useLeaveGuard } from '../leaveGuard'
+import { createSaveQueue } from '../saveQueue'
 import type { IconName } from '../icons'
 import { Icon } from './Icon'
 
@@ -95,6 +95,64 @@ export function UniverseSelect({
         </option>
       ))}
     </select>
+  )
+}
+
+/**
+ * Text field that keeps what you type and applies it on Enter (the field keeps focus) or when it loses focus; Escape puts
+ * the saved value back. Nothing happens on the keystrokes in between, so a half-typed IP address restarts no output
+ * (item 88). ``onCommit`` runs only when the text changed; if the parent doesn't change ``value`` (it refused the text),
+ * the field shows the saved value again.
+ */
+export function TextInput({
+  value,
+  onCommit,
+  className = 'w-full',
+  tip,
+  placeholder,
+  maxLength,
+  inputMode,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  className?: string
+  tip?: string
+  placeholder?: string
+  maxLength?: number
+  inputMode?: 'numeric' | 'decimal' | 'text'
+}) {
+  const [text, setText] = useState(value)
+  const [dirty, setDirty] = useState(false) // typed text that is not applied yet
+  useEffect(() => {
+    if (!dirty) setText(value)
+  }, [value, dirty])
+  const commit = () => {
+    if (!dirty) return
+    setDirty(false)
+    if (text !== value) onCommit(text)
+  }
+  return (
+    <input
+      type="text"
+      className={className}
+      value={text}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      inputMode={inputMode}
+      data-tip={tip}
+      onChange={(e) => {
+        setText(e.target.value)
+        setDirty(true)
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit()
+        if (e.key === 'Escape') {
+          setDirty(false)
+          setText(value)
+        }
+      }}
+    />
   )
 }
 
@@ -417,57 +475,61 @@ export function DevicePicker({
   )
 }
 
-/** Load settings, edit them locally, save them back with one PUT. */
+/**
+ * Load the settings. Every change is written and applied at once (item 88): ``commit(fn)`` changes the draft and queues
+ * a PUT of the whole draft, the PUTs one after the other with the latest draft winning (saveQueue.ts). A PUT that fails
+ * shows its message and loads what is saved.
+ */
 export function useSettings() {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const draft = useRef<Settings | null>(null) // the latest draft: commits that follow each other before a render build on it
+  const version = useRef(0) // counts the changes, so a late reload doesn't overwrite a newer one
+  const queue = useRef(createSaveQueue((s: Settings) => api.put('/api/settings', s)))
+
+  const show = useCallback((s: Settings) => {
+    draft.current = s
+    setSettings(s)
+  }, [])
 
   const reload = useCallback(() => {
+    const seen = version.current
     api.get<Settings>('/api/settings').then((s) => {
-      setSettings(s)
-      setDirty(false)
+      if (seen === version.current) show(s)
     })
-  }, [])
+  }, [show])
   useEffect(reload, [reload])
 
-  const update = useCallback((fn: (s: Settings) => void) => {
-    setSettings((prev) => {
-      if (!prev) return prev
-      const next = structuredClone(prev)
+  const commit = useCallback(
+    (fn: (s: Settings) => void) => {
+      if (!draft.current) return
+      const next = structuredClone(draft.current)
       fn(next)
-      return next
-    })
-    setDirty(true)
-  }, [])
+      version.current++
+      show(next)
+      queue.current.push(next).then((r) => {
+        if (r.ok) return
+        setMessage(String((r.error as Error)?.message ?? r.error))
+        window.setTimeout(() => setMessage(null), 6000)
+        version.current++ // what is shown is wrong now; the saved settings replace it
+        reload()
+      })
+    },
+    [show, reload],
+  )
 
-  /** Something else already saved this change to the server: mirror it in the draft without marking it unsaved or touching other edits. */
-  const applySaved = useCallback((fn: (s: Settings) => void) => {
-    setSettings((prev) => {
-      if (!prev) return prev
-      const next = structuredClone(prev)
+  /** Something else already saved this change to the server: mirror it in the draft without writing it again. */
+  const applySaved = useCallback(
+    (fn: (s: Settings) => void) => {
+      if (!draft.current) return
+      const next = structuredClone(draft.current)
       fn(next)
-      return next
-    })
-  }, [])
+      show(next)
+    },
+    [show],
+  )
 
-  const save = useCallback(async () => {
-    if (!settings) return true
-    let ok = true
-    try {
-      await api.put('/api/settings', settings)
-      setDirty(false)
-      setMessage('Saved')
-    } catch (e) {
-      ok = false
-      setMessage(String(e))
-    }
-    window.setTimeout(() => setMessage(null), 3000)
-    return ok
-  }, [settings])
-  useLeaveGuard('settings', dirty, save)
-
-  return { settings, update, applySaved, save, dirty, reload, message }
+  return { settings, commit, applySaved, reload, message }
 }
 
 export function SaveBar({
