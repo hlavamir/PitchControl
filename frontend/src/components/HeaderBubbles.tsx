@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { api, type DeviceRef, type IoStatus, type Settings } from '../api'
 import { IoTracker, PERF_WINDOW_MS, addPerf, midiRow, perfColumns, perfScale, perfSummary, type IoLive, type PerfFrame } from '../bubbles'
 import type { ConnectionTab } from '../pages'
+import { artnetDot, dmxDots } from '../headerDots'
 import { currentInk } from '../theme'
 import type { EngineConnection } from '../useEngine'
 import { LiveBandMeter } from './LiveBandMeter'
@@ -316,7 +317,7 @@ function ArtnetBubble({ engine, live: { rates } }: { engine: EngineConnection; l
  * any more: it is a row of the DMX bubble. */
 export function HeaderIndicators({ engine, openTab, openEngine, overrides }: { engine: EngineConnection; openTab: (tab: ConnectionTab) => void; openEngine: () => void; overrides: ReactNode }) {
   const s = engine.state
-  const out = s?.io.outputs
+  const artnet = artnetDot(s?.io) // the dots of DMX and Art-Net are lit by the outputs and the inputs (item 86)
   // kept for the header's life, so a bubble shows the rates and lights at once, not a second after it opened
   const [tracker] = useState(() => new IoTracker())
   const live = useMemo(() => tracker.update(s?.io, s?.received_at ?? 0), [tracker, s])
@@ -341,24 +342,13 @@ export function HeaderIndicators({ engine, openTab, openEngine, overrides }: { e
         <StatusDot ok={s?.io.midi ? Boolean(s.io.midi.port) : null} label="midi" error={s?.io.midi?.error} tip="MIDI controller: filled = connected, hollow = off. Click: Connections → MIDI" onClick={() => openTab('midi')} />
       </Indicator>
       <Indicator label="DMX over USB" bubble={() => <DmxBubble engine={engine} live={live} />}>
-        {/* one dot per configured USB DMX interface */}
-        {out?.enttec?.length ? (
-          out.enttec.map((e, i) => (
-            <StatusDot
-              key={i}
-              ok={e ? e.connected : null}
-              label={out.enttec.length > 1 ? `dmx ${i + 1}` : 'dmx'}
-              error={e?.error}
-              tip={`USB DMX interface ${i + 1}: filled = connected, hollow = off, crossed = error. Click: Connections → DMX & Art-Net`}
-              onClick={() => openTab('dmx')}
-            />
-          ))
-        ) : (
-          <StatusDot ok={null} label="dmx" tip="No USB DMX interface configured. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
-        )}
+        {/* one dot per USB DMX output interface, the first also for the DMX input; one dot for the input alone */}
+        {dmxDots(s?.io).map((d, i) => (
+          <StatusDot key={i} ok={d.ok} label={d.label} error={d.error} tip={d.tip} onClick={() => openTab('dmx')} />
+        ))}
       </Indicator>
       <Indicator label="Art-Net" bubble={() => <ArtnetBubble engine={engine} live={live} />}>
-        <StatusDot ok={out?.artnet ? out.artnet.connected : null} label="art-net" error={out?.artnet?.error} tip="Art-Net output: filled = sending, hollow = off. Click: Connections → DMX & Art-Net" onClick={() => openTab('dmx')} />
+        <StatusDot ok={artnet.ok} label={artnet.label} error={artnet.error} tip={artnet.tip} onClick={() => openTab('dmx')} />
       </Indicator>
     </div>
   )
