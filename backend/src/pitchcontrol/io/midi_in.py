@@ -4,7 +4,8 @@ The ports are not opened here (item 89): ``MidiDevices`` opens every device that
 on, from every device, to ``MidiInput.handle``, which maps it by channel, CC / note and page, and shows it in the monitor
 whether or not a mapping is active.
 
-A message is matched to a mapping by its kind (CC / note), number and channel. Several mappings can
+A message is matched to a mapping by its kind (CC / note), number and channel (a row's own channel, else the mapping's
+default in channel), never by the port it came from (item 90). Several mappings can
 share a control when they differ in the control page or in the shift state (the same physical fader
 drives other macros on the Dimmers page; a button saves a scene while shift is held). Where several
 fit, the shift setting is checked first and the page second: shift and page > shift only > page only >

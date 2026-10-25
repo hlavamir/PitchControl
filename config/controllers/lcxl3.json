@@ -5,7 +5,8 @@
   "description": "Faders and the bottom knob row (CC 5-12, 29-36) drive the general macros, the middle knob row (CC 21-28) Dimmer 01-08; the top knob row (CC 13-20) is unused. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select Mask A-D. Bottom button row: CC 45-51 save scenes 1-7, with shift they load them. CC 52 is the shift button.",
   "contact": "pitchcontrol.eu",
   "modified": "2026-10-13T22:18:21+02:00",
-  "port_match": "LCXL3",
+  "designed_for": "Novation Launch Control XL 3",
+  "mode": "factory template 1",
   "channel": 13,
   "mappings": [
     {

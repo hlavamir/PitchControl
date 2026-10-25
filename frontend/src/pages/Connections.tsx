@@ -54,7 +54,6 @@ export function Connections({ engine }: { engine: EngineConnection }) {
   const settingsApi = useSettings()
   const { settings, message } = settingsApi
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
-  const [midiPorts, setMidiPorts] = useState<string[]>([])
   const [controllerLabels, setControllerLabels] = useState<Record<string, string>>({})
   const [serialDevices, setSerialDevices] = useState<SerialDevice[]>([])
   const liveInput = useLiveInput()
@@ -64,7 +63,6 @@ export function Connections({ engine }: { engine: EngineConnection }) {
     () =>
       Promise.all([
         api.get<AudioDevice[]>('/api/devices/audio').then((d) => setAudioDevices((prev) => unchanged(prev, d))),
-        api.get<string[]>('/api/devices/midi').then((p) => setMidiPorts((prev) => unchanged(prev, p))),
         api
           .get<{ available: string[]; labels: Record<string, string> }>('/api/controllers')
           .then((c) => setControllerLabels((prev) => unchanged(prev, c.labels))),
@@ -105,7 +103,7 @@ export function Connections({ engine }: { engine: EngineConnection }) {
       {settings && (
         <div className="flex min-h-0 flex-1 flex-col">
           {tab === 'audio' && <AudioTab engine={engine} settingsApi={settingsApi} audioDevices={audioDevices} />}
-          {tab === 'midi' && <MidiTab engine={engine} settingsApi={settingsApi} midiPorts={midiPorts} controllerLabels={controllerLabels} refresh={refresh} />}
+          {tab === 'midi' && <MidiTab engine={engine} settingsApi={settingsApi} controllerLabels={controllerLabels} refresh={refresh} />}
           {tab === 'dmx' && <DmxTab engine={engine} settingsApi={settingsApi} devices={serialDevices} liveInput={liveInput} />}
           {tab === 'osc' && <OscTab engine={engine} settingsApi={settingsApi} />}
           {tab === 'serial' && <SerialTab engine={engine} settingsApi={settingsApi} devices={serialDevices} />}
@@ -213,13 +211,11 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
 
 function MidiTab({
   engine,
-  midiPorts,
   controllerLabels,
   settingsApi,
   refresh,
 }: {
   engine: EngineConnection
-  midiPorts: string[]
   controllerLabels: Record<string, string>
   settingsApi: SettingsApi
   refresh: () => void
@@ -269,7 +265,6 @@ function MidiTab({
         index="03"
         className="wide:min-h-0"
         engine={engine}
-        midiPorts={midiPorts}
         onActiveChanged={(name) => {
           applySaved((s) => (s.active_controller = name))
           refresh() // the labels the controller section shows (the controller's name) may not know a file created here yet

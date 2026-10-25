@@ -85,14 +85,14 @@ export function MidiMappingRow({
         <select
           value={m?.channel ?? ''}
           disabled={!m}
-          className="w-[4.6rem]"
+          className="w-[6.4rem]"
           onChange={(e) => i !== null && patch(i, { channel: e.target.value ? Number(e.target.value) : null })}
-          data-tip={`MIDI channel of this control: ${controllerChannel} unless you pick another one (some controllers use a channel per track)`}
+          data-tip={`MIDI channel this control is heard on: the mapping's default in channel (${controllerChannel}) unless you pick another one (some controllers use a channel per track). Learn picks it for you`}
         >
-          <option value="">ch {controllerChannel}</option>
+          <option value="">default ({controllerChannel})</option>
           {Array.from({ length: 16 }, (_, c) => (
             <option key={c} value={c + 1}>
-              ch {c + 1}
+              {c + 1}
             </option>
           ))}
         </select>

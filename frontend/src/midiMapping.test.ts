@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MacroDef, MidiMappingEntry } from './api'
-import { channelOf, clashes, deadMappings, defaultMode, modesFor, newMapping, overlaps } from './midiMapping'
+import { channelOf, clashes, deadMappings, defaultMode, learnedMapping, modesFor, newMapping, outChannelOf, overlaps } from './midiMapping'
 
 // the cases follow backend/tests/test_midi.py: the editor's rules have to agree with the engine's
 
@@ -32,6 +32,31 @@ describe('which channel a mapping listens on', () => {
   it("its own, else the controller's", () => {
     expect(channelOf(mapping({ channel: null }), 13)).toBe(13)
     expect(channelOf(mapping({ channel: 2 }), 13)).toBe(2)
+  })
+})
+
+describe('the default out channel', () => {
+  it('is the in channel until one is set (item 90)', () => {
+    expect(outChannelOf({ channel: 13 })).toBe(13)
+    expect(outChannelOf({ channel: 13, channel_out: null })).toBe(13)
+    expect(outChannelOf({ channel: 13, channel_out: 2 })).toBe(2)
+  })
+})
+
+describe('what Learn makes of a row (item 90)', () => {
+  const row = mapping({ number: 0, channel: 7, page: 'dimmers', invert: true })
+  it('takes the control and kind, and keeps the rest of the row', () => {
+    expect(learnedMapping(row, { kind: 'note', number: 36, channel: 13, shift: false }, 13)).toMatchObject({ type: 'note', number: 36, macro: 'Strobo', page: 'dimmers', invert: true })
+  })
+  it('leaves the row on "default" when the message came on the default in channel', () => {
+    expect(learnedMapping(row, { kind: 'cc', number: 5, channel: 13, shift: false }, 13).channel).toBeNull()
+  })
+  it('gives the row its own channel when the message came on another one', () => {
+    expect(learnedMapping(mapping({ channel: null }), { kind: 'cc', number: 5, channel: 4, shift: false }, 13).channel).toBe(4)
+  })
+  it('a control learned with shift held is the "with shift" row; otherwise the shift setting stays', () => {
+    expect(learnedMapping(row, { kind: 'cc', number: 5, channel: 13, shift: true }, 13).shift).toBe('on')
+    expect(learnedMapping(mapping({ shift: 'off' }), { kind: 'cc', number: 5, channel: 13, shift: false }, 13).shift).toBe('off')
   })
 })
 

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry, type Rig } from '../api'
 import type { EngineConnection } from '../useEngine'
-import { useLeaveGuard } from '../leaveGuard'
-import { clashes as findClashes, channelOf, deadMappings, defaultMode, newMapping } from '../midiMapping'
+import { clashes as findClashes, channelOf, deadMappings, defaultMode, learnedMapping, newMapping, outChannelOf } from '../midiMapping'
 import { midiNotice } from '../midiDevices'
+import { createSaveQueue } from '../saveQueue'
 import { unchanged, usePolling } from '../usePolling'
-import { Button, Row, Section } from './forms'
+import { Button, Row, Section, TextInput } from './forms'
 import { MidiMappingRow } from './MidiMappingRow'
 
-// MIDI mapping: one row per macro with the control (CC or note) that drives it. "Learn" listens for the
-// next message from the controller. Edits are made on a draft and written with Save, to the user's copy of
-// the controller file (the one that comes with the app is never changed).
+// MIDI mapping: one row per macro with the control (CC or note) and channel that drives it, whatever device it comes
+// from (items 89, 90). "Learn" listens for the next message. Every change is written at once, to the user's copy of the
+// controller file (the one that comes with the app is never changed): no Save (item 90, like Connections in item 88).
 
 type Tab = 'general' | 'dimmers' | 'scenes' | 'controller'
 const TABS: { id: Tab; label: string }[] = [
@@ -30,48 +30,39 @@ interface Learning {
   seconds: number
 }
 
-/** A learned control sends on another channel than the controller is set to. */
-interface ChannelAsk {
-  proposal: MidiMappingEntry
-  index: number | null
-  channel: number
-}
-
 type Prompt = { kind: 'name'; action: 'new' | 'duplicate' } | { kind: 'delete' } | { kind: 'reset' } | null
 
 export function MidiMappingSection({
   index: sectionIndex,
   className = '',
   engine,
-  midiPorts,
   onActiveChanged,
 }: {
   index: string
   className?: string
   engine: EngineConnection
-  midiPorts: string[]
   onActiveChanged: (name: string | null) => void
 }) {
   const [list, setList] = useState<{ active: string | null; available: string[]; origins: Record<string, string>; labels: Record<string, string> } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [saved, setSaved] = useState<ControllerFile | null>(null)
   const [draft, setDraft] = useState<ControllerFile | null>(null)
+  const draftRef = useRef<ControllerFile | null>(null) // the latest draft: edits that follow each other before a render build on it
+  const selectedRef = useRef<string | null>(null)
+  const version = useRef(0) // counts the edits, so a late reload doesn't overwrite a newer one
   const [defs, setDefs] = useState<MacroDef[]>([])
   const [dimmerNames, setDimmerNames] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<Tab>('general')
   const [learning, setLearning] = useState<Learning | null>(null)
-  const [ask, setAsk] = useState<ChannelAsk | null>(null)
-  // the controller's channel was changed while some mappings carry the old one as their own
+  // the default in channel was changed while some rows carry the old one as their own
   const [moveAsk, setMoveAsk] = useState<{ from: number; to: number; count: number } | null>(null)
   const [prompt, setPrompt] = useState<Prompt>(null)
   const [name, setName] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   // Learn refused because nothing would arrive: what to do about it
-  const [learnBlock, setLearnBlock] = useState<{ why: string; fix: 'use' | 'save' | null } | null>(null)
+  const [learnBlock, setLearnBlock] = useState<{ why: string; fix: 'use' | null } | null>(null)
   const learnSeen = useRef(false) // the state has shown the engine's Learn with this id
 
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const midi = engine.state?.io.midi
   const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
   const isActive = !!selected && list?.active?.toLowerCase() === selected.toLowerCase()
@@ -81,6 +72,19 @@ export function MidiMappingSection({
     window.setTimeout(() => setMessage(null), 4000)
   }
   const fail = (e: unknown) => say(e instanceof Error ? e.message : String(e))
+  const show = (c: ControllerFile | null) => {
+    draftRef.current = c
+    setDraft(c)
+  }
+  selectedRef.current = selected
+  // the PUTs go one after the other, the latest draft winning (saveQueue.ts); the answer carries the edit time the file got
+  const queue = useRef(
+    createSaveQueue(async (job: { name: string; data: ControllerFile }) => {
+      const c = await api.put<ControllerFile>(`/api/controllers/${encodeURIComponent(job.name)}`, job.data)
+      const cur = draftRef.current
+      if (cur && selectedRef.current === job.name) show({ ...cur, modified: c.modified, app_version: c.app_version })
+    }),
+  )
 
   // The list of controller files is read again every few seconds while the page is open (item 34: a file added or
   // removed outside the app shows up without a button). An answer that was overtaken by a later read is dropped, so
@@ -102,24 +106,29 @@ export function MidiMappingSection({
     api.get<Rig>('/api/rig').then((r) => setDimmerNames(r.dimmer_names ?? {}))
   }, [loadList])
 
-  useEffect(() => {
-    if (!selected) {
-      setSaved(null)
-      setDraft(null)
-      return
-    }
-    api
-      .get<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`)
+  // the file as saved replaces the draft: on a change of the selection, and after a PUT that failed
+  const reload = useCallback((name: string, seen?: number) => {
+    return api
+      .get<ControllerFile>(`/api/controllers/${encodeURIComponent(name)}`)
       .then((c) => {
-        setSaved(c)
-        setDraft(structuredClone(c))
-        setLearning(null)
-        setAsk(null)
-        setMoveAsk(null)
-        setLearnBlock(null)
+        if (selectedRef.current !== name || (seen !== undefined && seen !== version.current)) return
+        show(c)
       })
       .catch(fail)
-  }, [selected])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    version.current++
+    setLearning(null)
+    setMoveAsk(null)
+    setLearnBlock(null)
+    if (!selected) {
+      show(null)
+      return
+    }
+    reload(selected)
+  }, [selected, reload])
 
   const defOf = useMemo(() => new Map(defs.map((d) => [d.name, d])), [defs])
   const labelOf = (macro: string) => {
@@ -129,12 +138,27 @@ export function MidiMappingSection({
   }
 
   // -- edits
-  const edit = (fn: (c: ControllerFile) => void) => setDraft((c) => {
-    if (!c) return c
-    const next = structuredClone(c)
+  // Every edit is written at once. A shipped mapping is copied into the user's folder by its first one (the list is read
+  // again then, for the "app" / "modified" label). A PUT that fails shows its message and loads what is saved.
+  const edit = (fn: (c: ControllerFile) => void) => {
+    const cur = draftRef.current
+    const name = selectedRef.current
+    if (!cur || !name) return
+    const next = structuredClone(cur)
     fn(next)
-    return next
-  })
+    version.current++
+    show(next)
+    const first = origin === 'default'
+    queue.current.push({ name, data: next }).then((r) => {
+      if (r.ok) {
+        if (first) loadList().catch(fail)
+        return
+      }
+      fail(r.error)
+      version.current++ // what is shown is wrong now; the saved file replaces it
+      reload(name)
+    })
+  }
   const patch = (index: number, over: Partial<MidiMappingEntry>) => edit((c) => void Object.assign(c.mappings[index], over))
   const remove = (index: number) => {
     // Learn remembers its row by index: a row removed above it moves it up, the row itself being removed ends Learn
@@ -173,7 +197,7 @@ export function MidiMappingSection({
   }, [])
 
   // Learn listens to the engine's one MidiInput: the active controller's mapping, as of its last save, and every device that is on (item 89)
-  const learnProblem = (): { why: string; fix: 'use' | 'save' | null } | null => {
+  const learnProblem = (): { why: string; fix: 'use' | null } | null => {
     if (!selected || !draft) return null
     if (!isActive) {
       const now = list?.active ? `the active controller (${list.labels?.[list.active] ?? list.active})` : 'no controller'
@@ -187,11 +211,10 @@ export function MidiMappingSection({
     const block = learnProblem()
     setLearnBlock(block)
     if (block || !draft) return
-    setAsk(null)
     setMoveAsk(null)
     learnSeen.current = false
     setLearning({ ...l, id: null, seconds: 20 }) // waiting for the engine's answer
-    // the engine judges what is learnable against the mapping being edited, which may not be saved yet
+    // the engine judges what is learnable against the mapping being edited
     const shifts = draft.mappings.filter((m) => m.mode === 'shift').map((m) => ({ type: m.type, number: m.number, channel: channelOf(m, draft.channel) }))
     const shiftRow = (l.index !== null ? draft.mappings[l.index] : l.template).mode === 'shift'
     try {
@@ -253,18 +276,8 @@ export function MidiMappingSection({
     if (e.id !== learning.id) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
     if (!base) return
-    const proposal: MidiMappingEntry = {
-      ...base,
-      type: e.kind,
-      number: e.number,
-      channel: e.channel === draft.channel ? null : e.channel,
-      // learned while holding the shift button: it is the 'with shift' variant
-      shift: e.shift ? 'on' : base.shift,
-    }
-    // the first control that is not on the controller's channel: probably the controller is set to the wrong one
-    // (explicit channels that already equal the learned one count as none: "Yes" removes them)
-    if (e.channel !== draft.channel && draft.mappings.every((m) => !m.channel || m.channel === e.channel)) setAsk({ proposal, index: learning.index, channel: e.channel })
-    else commit(learning.index, proposal)
+    // the control and kind, and its own channel only when it isn't the default in channel (item 90); written at once
+    commit(learning.index, learnedMapping(base, e, draft.channel))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [midi?.learn_id, midi?.learned, midi?.learning, learning])
 
@@ -278,21 +291,6 @@ export function MidiMappingSection({
   }, [midi?.recent?.[0]?.seq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- files
-  const save = async (): Promise<boolean> => {
-    if (!draft || !selected) return true
-    try {
-      const c = await api.put<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`, draft)
-      setSaved(c)
-      setDraft(structuredClone(c))
-      await loadList()
-      say('Saved')
-      return true
-    } catch (e) {
-      fail(e)
-      return false
-    }
-  }
-  useLeaveGuard('MIDI mapping', dirty, save)
   const submitName = async (action: 'new' | 'duplicate') => {
     try {
       const res = await api.post<{ name: string }>('/api/controllers', { name: name.trim(), copy_of: action === 'duplicate' ? selected : undefined })
@@ -307,10 +305,9 @@ export function MidiMappingSection({
     try {
       await api.post(`/api/controllers/${encodeURIComponent(selected)}/reset`)
       setPrompt(null)
+      version.current++
       await loadList(selected)
-      const c = await api.get<ControllerFile>(`/api/controllers/${encodeURIComponent(selected)}`)
-      setSaved(c)
-      setDraft(structuredClone(c))
+      await reload(selected)
     } catch (e) {
       fail(e)
     }
@@ -326,8 +323,7 @@ export function MidiMappingSection({
       fail(e)
     }
   }
-  const saveAndUse = async () => {
-    if (dirty && !(await save())) return
+  const useAndRetry = async () => {
     if (!isActive && !(await useIt())) return
     setLearnBlock(null)
     say('Ready: click Learn again')
@@ -396,13 +392,23 @@ export function MidiMappingSection({
     if (!draft) return null
     const shift = draft.mappings.findIndex((m) => m.mode === 'shift')
     const set = <K extends keyof ControllerFile>(k: K, v: ControllerFile[K]) => edit((c) => void (c[k] = v))
-    // the controller's channel: controls that follow it move along; ones that name the new channel themselves now follow it;
-    // ones that name the old channel themselves are asked about
+    const channels = (value: number, onChange: (n: number) => void) => (
+      <select value={value} onChange={(e) => onChange(Number(e.target.value))}>
+        {Array.from({ length: 16 }, (_, c) => (
+          <option key={c} value={c + 1}>
+            {c + 1}
+          </option>
+        ))}
+      </select>
+    )
+    // the default in channel: rows on "default" move along; ones that name the new channel themselves now follow it;
+    // ones that name the old channel themselves are asked about. The default out channel follows it unless it was set apart.
     const changeChannel = (to: number) => {
       const from = draft.channel
       if (to === from) return
       const own = draft.mappings.filter((m) => m.channel === from).length
       edit((c) => {
+        if (outChannelOf(c) === from) delete c.channel_out
         c.channel = to
         c.mappings.forEach((m) => {
           if (m.channel === to) m.channel = null
@@ -414,53 +420,44 @@ export function MidiMappingSection({
     return (
       <div className="flex flex-col gap-3">
         <div className="grid gap-x-6 gap-y-0.5 wide:grid-cols-2">
-          <Row label="Name" hint="The name of this controller mapping, as shown in lists">
-            <input type="text" className="w-full" value={draft.name} onChange={(e) => set('name', e.target.value)} />
+          <Row label="Name" hint="The name of this MIDI mapping, as shown in lists">
+            <TextInput value={draft.name} onCommit={(v) => set('name', v)} />
           </Row>
           <Row label="Author" hint="Who made this mapping">
-            <input type="text" className="w-full" value={draft.author} onChange={(e) => set('author', e.target.value)} />
+            <TextInput value={draft.author} onCommit={(v) => set('author', v)} />
           </Row>
           <Row label="Contact" hint="An email address or a website, for questions about this mapping">
-            <input type="text" className="w-full" value={draft.contact} onChange={(e) => set('contact', e.target.value)} />
+            <TextInput value={draft.contact} onCommit={(v) => set('contact', v)} />
           </Row>
-          <Row label="Last edited" hint="Written by the app every time the mapping is saved">
+          <Row label="Last edited" hint="Written by the app every time the mapping changes">
             <span className="text-[12px] text-dim">
               {draft.modified ? new Date(draft.modified).toLocaleString() : 'never (as shipped)'}
               {draft.app_version ? ` · PitchControl ${draft.app_version}` : ''}
             </span>
           </Row>
-          <Row label="MIDI port" hint="Not used any more to find the controller: the app listens to every MIDI device that is switched on in Connections → MIDI">
-            <input type="text" className="w-full" value={draft.port_match} onChange={(e) => set('port_match', e.target.value)} />
-            {midiPorts.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="lbl text-[10px] text-dim">Connected</span>
-                {midiPorts.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`lbl h-6 border px-2 text-[10px] ${draft.port_match === p ? 'glow-on border-ink' : 'glow-hover border-edge'}`}
-                    data-hint="button"
-                    data-tip="Use this port's full name as the part to look for"
-                    onClick={() => set('port_match', p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            )}
+          <Row label="Designed for" hint="The device this mapping was made for, as a note (any MIDI device that is switched on in Connections → MIDI can play it)">
+            <TextInput value={draft.designed_for} onCommit={(v) => set('designed_for', v)} placeholder="e.g. Novation Launch Control XL 3" />
           </Row>
-          <Row label="Channel" hint="The MIDI channel the controls send on (a single control can use another one)">
-            <select value={draft.channel} onChange={(e) => changeChannel(Number(e.target.value))}>
-              {Array.from({ length: 16 }, (_, c) => (
-                <option key={c} value={c + 1}>
-                  {c + 1}
-                </option>
-              ))}
-            </select>
+          <Row label="Mode" hint="How the device must be set up for this mapping: a template, a MIDI mode, a preset. A note for you, nothing is checked">
+            <TextInput value={draft.mode} onCommit={(v) => set('mode', v)} placeholder="e.g. factory template 1" />
+          </Row>
+          <Row label="Default in channel" hint="The MIDI channel the controls send on. A row says 'default' or names its own channel (some controllers use a channel per track)">
+            {channels(draft.channel, changeChannel)}
+          </Row>
+          <Row label="Default out channel" hint="The channel for LED feedback to the controller: not used yet, the app only stores it. Follows the in channel until you pick another">
+            <div className="flex items-center gap-2">
+              {channels(outChannelOf(draft), (n) => edit((c) => (n === c.channel ? void delete c.channel_out : void (c.channel_out = n))))}
+              <span className="text-[11px] text-dim">for LED feedback, not used yet</span>
+            </div>
           </Row>
           <div className="wide:col-span-2">
             <Row label="Description" hint="Notes on the mapping: which controller, what is where">
-              <textarea className="h-20 w-full resize-y" value={draft.description} onChange={(e) => set('description', e.target.value)} />
+              <textarea
+                key={`${selected}-${draft.description}`}
+                className="h-20 w-full resize-y"
+                defaultValue={draft.description}
+                onBlur={(e) => e.target.value !== draft.description && set('description', e.target.value)}
+              />
             </Row>
           </div>
         </div>
@@ -546,39 +543,6 @@ export function MidiMappingSection({
           </Button>
         </div>
       )}
-      {ask && (
-        <div className="flex flex-wrap items-center gap-1.5 border border-ink p-2">
-          <span className="text-[11px]">
-            This control sends on channel {ask.channel}, but the controller is set to channel {draft?.channel}. Is the whole controller on channel {ask.channel}?
-          </span>
-          <Button
-            primary
-            onClick={() => {
-              edit((c) => {
-                c.channel = ask.channel
-                c.mappings.forEach((m) => {
-                  if (m.channel === ask.channel) m.channel = null // follows the controller now
-                })
-              })
-              commit(ask.index, { ...ask.proposal, channel: null })
-              setAsk(null)
-            }}
-            tip="Set the controller's channel: all its controls then use it"
-          >
-            Yes, set the controller to {ask.channel}
-          </Button>
-          <Button
-            onClick={() => {
-              commit(ask.index, ask.proposal)
-              setAsk(null)
-            }}
-            tip="Only this control gets its own channel"
-          >
-            Only this control
-          </Button>
-          <Button onClick={() => setAsk(null)}>Cancel</Button>
-        </div>
-      )}
     </>
   )
 
@@ -594,22 +558,15 @@ export function MidiMappingSection({
         <>
           {midi?.shift && <span className="text-ink">shift held</span>}
           {message && <span>{message}</span>}
-          {dirty && (
-            <span className="inline-flex items-center gap-1.5 text-ink">
-              <span className="dot-on inline-block size-[7px]" />
-              unsaved
-            </span>
-          )}
         </>
       }
-      tip="Which control on the controller drives which macro. Learn listens for the next message; Save writes your own copy of the controller file"
+      tip="Which control on the controller drives which macro. Learn listens for the next message; every change is written at once, to your own copy of the mapping file"
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <select
           value={selected ?? ''}
-          disabled={dirty}
           onChange={(e) => setSelected(e.target.value || null)}
-          data-tip={dirty ? 'Save or revert your changes first' : 'The controller file to edit'}
+          data-tip="The MIDI mapping to edit"
         >
           {names.length === 0 && <option value="">no controller files</option>}
           {names.map((n) => (
@@ -625,7 +582,7 @@ export function MidiMappingSection({
           </span>
         )}
         {selected && !isActive && (
-          <Button onClick={useIt} disabled={dirty} tip="Make this the controller that is listened to (saves the setting)">
+          <Button onClick={useIt} tip="Make this the controller that is listened to (saves the setting)">
             Use this controller
           </Button>
         )}
@@ -635,35 +592,29 @@ export function MidiMappingSection({
           </Button>
         )}
         <span className="flex-1" />
-        <Button onClick={() => { setName(''); setPrompt({ kind: 'name', action: 'new' }) }} disabled={dirty || prompt !== null} tip="Start an empty mapping for another controller">
+        <Button onClick={() => { setName(''); setPrompt({ kind: 'name', action: 'new' }) }} disabled={prompt !== null} tip="Start an empty mapping for another controller">
           New
         </Button>
-        <Button onClick={() => { setName(selected ? `${selected} copy` : ''); setPrompt({ kind: 'name', action: 'duplicate' }) }} disabled={!selected || dirty || prompt !== null} tip="Copy this mapping under a new name, as a starting point">
+        <Button onClick={() => { setName(selected ? `${selected} copy` : ''); setPrompt({ kind: 'name', action: 'duplicate' }) }} disabled={!selected || prompt !== null} tip="Copy this mapping under a new name, as a starting point">
           Duplicate
         </Button>
         {origin === 'modified' ? (
-          <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={dirty || prompt !== null} tip="Back to the version that comes with the app: your changes are deleted (asks first)">
-            Reset
+          <Button onClick={() => setPrompt({ kind: 'reset' })} disabled={prompt !== null} tip="Back to the version that comes with the app: your changes are deleted (asks first)">
+            Reset to default
           </Button>
         ) : (
-          <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={!selected || origin !== 'user' || isActive || dirty || prompt !== null} tip={origin === 'default' ? 'Comes with the app: it cannot be deleted' : isActive ? 'The active controller cannot be deleted: choose another one first' : 'Delete this controller file (asks first)'}>
+          <Button onClick={() => setPrompt({ kind: 'delete' })} disabled={!selected || origin !== 'user' || isActive || prompt !== null} tip={origin === 'default' ? 'Comes with the app: it cannot be deleted' : isActive ? 'The active controller cannot be deleted: choose another one first' : 'Delete this controller file (asks first)'}>
             Delete
           </Button>
         )}
-        <Button onClick={() => { if (saved) setDraft(structuredClone(saved)); stopLearning(); setAsk(null); setMoveAsk(null) }} disabled={!dirty} tip="Discard the unsaved changes">
-          Revert
-        </Button>
-        <Button primary onClick={save} disabled={!dirty} tip="Write the mapping to your copy of the controller file; it applies at once if this is the active controller">
-          Save
-        </Button>
       </div>
       {prompts()}
       {learnBlock && (
         <div className="flex flex-wrap items-center gap-1.5 border border-edge px-2 py-1.5 text-[12px]" role="alert">
           <span>{learnBlock.why}</span>
           {learnBlock.fix && (
-            <Button primary onClick={saveAndUse} tip={learnBlock.fix === 'use' ? 'Save the mapping if it has changes, make this the controller that is listened to, then click Learn again' : 'Save the mapping so that the new port is opened, then click Learn again'}>
-              {learnBlock.fix === 'use' ? (dirty ? 'Save and use this controller' : 'Use this controller') : 'Save'}
+            <Button primary onClick={useAndRetry} tip="Make this the controller that is listened to, then click Learn again">
+              Use this controller
             </Button>
           )}
           <Button onClick={() => setLearnBlock(null)}>Dismiss</Button>

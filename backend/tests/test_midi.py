@@ -610,6 +610,62 @@ def test_old_files_load_into_the_flat_list():
     assert Controller.model_validate({"mappings": [{"number": 13, "mode": "page_knob"}, {"number": 1, "macro": "Strobo"}]}).mappings[0].number == 1
 
 
+def test_port_match_of_an_old_file_becomes_the_note_on_the_device(caplog):
+    # item 90: a mapping is matched by channel and CC / note, not by port; the old text stays as "designed for"
+    with caplog.at_level("WARNING"):
+        old = Controller.model_validate({"name": "old", "port_match": "LCXL3", "channel": 13, "mappings": [{"number": 5, "macro": "Strobo"}]})
+    assert old.designed_for == "LCXL3" and old.channel == 13 and old.mode == ""
+    assert "port_match" not in old.model_dump() and not old.model_extra  # not kept, so the next save writes without it
+    assert old.out_channel == 13  # the default out channel is the in channel until it is set
+    # a file that has both keeps the text it was given
+    both = Controller.model_validate({"port_match": "LCXL3", "designed_for": "Novation Launch Control XL 3", "mode": "factory template 1", "channel": 2, "channel_out": 5})
+    assert (both.designed_for, both.mode, both.out_channel, both.channel) == ("Novation Launch Control XL 3", "factory template 1", 5, 2)
+    assert not any("port_match" in r.message for r in caplog.records)
+
+
+def test_old_files_with_and_without_row_channels_keep_their_channels():
+    ctrl = Controller.model_validate({"port_match": "X", "channel": 13, "mappings": [{"number": 1, "macro": "Strobo"}, {"number": 2, "macro": "Hue A", "channel": 3}]})
+    assert [m.channel for m in ctrl.mappings] == [None, 3]
+    midi = MidiInput(ctrl, MacroBank())
+    cc(midi, 1, 127, channel=12)  # channel 13, the default
+    cc(midi, 2, 127, channel=2)  # channel 3, the row's own
+    cc(midi, 2, 127, channel=12)  # a row with its own channel does not hear the default
+    assert [e["macro"] for e in midi.recent] == ["Strobo", "Hue A", None]
+
+
+def test_a_row_is_heard_by_channel_and_control_whichever_device_it_comes_from():
+    midi, macros = build(fader(5, "Strobo"), fader(5, "Hue A", channel=4), channel=2)
+    pad = lambda ch, v: mido.Message("control_change", channel=ch, control=5, value=v)  # noqa: E731
+    midi.handle(pad(1, 100), device="Launch Control XL 3")  # channel 2, the default: the first row
+    midi.handle(pad(3, 100), device="Other Pad")  # channel 4: the row with its own channel
+    midi.handle(pad(0, 100), device="Other Pad")  # channel 1: no row
+    got = [(e["device"], e["channel"], e["macro"]) for e in midi.recent]
+    assert got == [("Launch Control XL 3", 2, "Strobo"), ("Other Pad", 4, "Hue A"), ("Other Pad", 1, None)]
+    assert macros.control("Strobo") == 0.0  # the first message of a fader only says where it is
+    midi.handle(pad(1, 127), device="Another Device")  # the same channel from a third device is the same control
+    assert macros.control("Strobo") == 1.0
+
+
+def test_changing_the_default_channel_moves_the_rows_on_default_and_not_the_rows_with_their_own():
+    ctrl = Controller(channel=1, mappings=[MidiMapping(number=5, macro="Strobo"), MidiMapping(number=6, macro="Hue A", channel=1)])
+    midi = MidiInput(ctrl, MacroBank())
+    ctrl.channel = 9  # what a changed default does to the engine's matching
+    cc(midi, 5, 127, channel=8)
+    cc(midi, 6, 127, channel=8)
+    cc(midi, 6, 127, channel=0)
+    assert [e["macro"] for e in midi.recent] == ["Strobo", None, "Hue A"]
+
+
+def test_learn_reports_the_channel_of_the_message_so_the_row_can_name_it_or_stay_on_default():
+    midi, _ = build(fader(5), channel=13)
+    midi.set_learning(True)
+    cc(midi, 20, 90, channel=12)  # the default channel (13): the editor leaves the row on "default"
+    assert midi.status()["learned"]["channel"] == 13
+    midi.set_learning(True)
+    cc(midi, 21, 90, channel=4)  # another channel: the row gets its own
+    assert midi.status()["learned"]["channel"] == 5
+
+
 def test_a_mapping_needs_a_macro_unless_it_is_a_modifier():
     with pytest.raises(ValueError):
         MidiMapping(number=3)

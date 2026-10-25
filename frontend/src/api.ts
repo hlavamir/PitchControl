@@ -85,8 +85,10 @@ export interface ControllerFile {
   contact: string
   modified: string // when the app last wrote it
   app_version?: string | null // the version that wrote it
-  port_match: string
-  channel: number
+  designed_for: string // the device it was made for (free text; item 90: no port any more)
+  mode: string // how the device must be set up for it (free text)
+  channel: number // the default in channel
+  channel_out?: number | null // the default out channel (LED feedback, not used yet); none = the in channel
   mappings: MidiMappingEntry[]
 }
 

@@ -681,7 +681,7 @@ class MidiMapping(Model):
     number: int = Field(ge=0, le=127)  # CC or note number
     macro: str | None = None  # none for ``shift``
     mode: MidiMode = "absolute"
-    channel: int | None = Field(default=None, ge=1, le=16)  # 1-based; none = the controller's channel
+    channel: int | None = Field(default=None, ge=1, le=16)  # 1-based; none = the mapping's default in channel (item 90)
     page: Literal["general", "dimmers"] | None = None  # only while this control page is active; none = on every page
     shift: Literal["on", "off"] | None = None  # only while shift is held / not held; none = either way
     invert: bool = False
@@ -738,9 +738,28 @@ class Controller(Model):
     description: str = ""
     contact: str = ""  # an email address or a website
     modified: str = ""  # date and time of the last edit in the app (the file also says which version wrote it)
-    port_match: str = ""  # substring of the MIDI port name
-    channel: int = Field(default=1, ge=1, le=16)  # 1-based MIDI channel of the controls (a mapping can use another)
+    # A mapping is matched by channel and CC / note, from any device that is switched on (items 89, 90): no port.
+    designed_for: str = ""  # the device it was made for, free text ("Novation Launch Control XL 3"); before item 90 ``port_match``
+    mode: str = ""  # how the device must be set up for it, free text ("factory template 1")
+    channel: int = Field(default=1, ge=1, le=16)  # the default in channel, 1-based: the channel of the controls (a row can use another)
+    channel_out: int | None = Field(default=None, ge=1, le=16)  # the default out channel (LED feedback, not used yet); none = the in channel
     mappings: list[MidiMapping] = Field(default_factory=list)
+
+    @property
+    def out_channel(self) -> int:
+        return self.channel_out or self.channel
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_port_match(cls, data: Any) -> Any:
+        # before item 90 the mapping named a port by a substring (``port_match``); the text stays as the note on the
+        # device, and the file is written without the key the next time it is saved
+        if isinstance(data, dict) and "port_match" in data:
+            data = dict(data)
+            port = data.pop("port_match")
+            if not data.get("designed_for") and isinstance(port, str):
+                data["designed_for"] = port
+        return data
 
     @model_validator(mode="after")
     def _one_shift_button(self) -> "Controller":

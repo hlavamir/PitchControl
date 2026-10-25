@@ -47,6 +47,22 @@ export const newMapping = (over: Partial<MidiMappingEntry>): MidiMappingEntry =>
 /** The MIDI channel a mapping listens on: its own, else the controller's. */
 export const channelOf = (m: MidiMappingEntry, controllerChannel: number) => m.channel ?? controllerChannel
 
+/** The default out channel: its own, else the in channel (item 90; LED feedback will use it, nothing does yet). */
+export const outChannelOf = (c: { channel: number; channel_out?: number | null }) => c.channel_out ?? c.channel
+
+/** The row Learn makes (item 90): the control and kind that arrived, and its own channel only when the message was not on
+ *  the mapping's default in channel (then the row stays on "default"). Everything else of the row is kept. */
+export function learnedMapping(base: MidiMappingEntry, learned: { kind: 'cc' | 'note'; number: number; channel: number; shift: boolean }, defaultChannel: number): MidiMappingEntry {
+  return {
+    ...base,
+    type: learned.kind,
+    number: learned.number,
+    channel: learned.channel === defaultChannel ? null : learned.channel,
+    // learned while holding the shift button: it is the 'with shift' variant
+    shift: learned.shift ? 'on' : base.shift,
+  }
+}
+
 /** Two mappings on the same control (kind, number, channel) whose page and shift settings can both apply at once ("any"
  *  overlaps with everything). The shift button is not compared with the macros: see ``deadMappings``. */
 export const overlaps = (a: MidiMappingEntry, b: MidiMappingEntry, controllerChannel: number) =>

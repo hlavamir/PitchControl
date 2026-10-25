@@ -258,6 +258,22 @@ def test_editing_a_shipped_controller_makes_a_user_copy_and_reset_removes_it(lay
     assert again["author"] == "" and not user.exists()  # the test config has no author
 
 
+def test_a_controller_file_with_port_match_loads_and_is_written_without_it(layered):
+    # item 90: the port is no longer part of a mapping; the old text is kept as the note "designed for"
+    user = layered.root / "controllers" / "old.json"
+    user.parent.mkdir(parents=True, exist_ok=True)
+    user.write_text(json.dumps({"name": "old", "port_match": "LCXL3", "channel": 13, "mappings": [{"number": 5, "macro": "Strobo"}]}), encoding="utf-8")
+    client = TestClient(create_app(Engine(layered, enable_hardware=False)))
+    data = client.get("/api/controllers/old").json()
+    assert data["designed_for"] == "LCXL3" and data["channel"] == 13 and "port_match" not in data
+    data["mode"] = "factory template 1"
+    data["channel_out"] = 5
+    client.put("/api/controllers/old", json=data)
+    stored = read(user)
+    assert "port_match" not in stored
+    assert (stored["designed_for"], stored["mode"], stored["channel"], stored["channel_out"]) == ("LCXL3", "factory template 1", 13, 5)
+
+
 def test_new_duplicate_and_delete_controller(layered):
     client = TestClient(create_app(Engine(layered, enable_hardware=False)))
     assert client.post("/api/controllers", json={"name": "bad/name"}).status_code == 409
