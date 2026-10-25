@@ -51,6 +51,8 @@ Origin = Literal["default", "user", "modified"]
 VERSION_KEY = "app_version"
 # 1.5.0 replaced the shipped LCXL3 layout (see ConfigStore.upgrade_notice)
 NEW_LCXL3_VERSION = (1, 5, 0)
+# the shipped Launch Control XL 3 mapping was renamed (the LCXL3 rename, 2026-10-25): see ConfigStore.rename_lcxl3
+OLD_LCXL3, LCXL3 = "lcxl3", "Novation_LaunchControlXL3"
 TYPES, RIGS, CONTROLLERS, SCENES, OSC = "fixtures/types", "rigs", "controllers", "scenes", "osc"
 DEFAULT_RIG = "Default"
 
@@ -319,6 +321,7 @@ class ConfigStore:
     def load_all(self) -> None:
         fresh = self._is_fresh_install()  # before anything is written
         self.load_settings()
+        self.rename_lcxl3()  # before the controller is loaded and before upgrade_notice looks at its name
         self.load_fixture_types()
         self.move_fog_into_rigs()
         self.load_rig(self.settings.active_rig)
@@ -356,8 +359,8 @@ class ConfigStore:
             text = ""
         recorded = _version_tuple(text)
         name = self.settings.active_controller or ""
-        shipped_lcxl3 = (
-            name.lower() == "lcxl3" and self.user_file(CONTROLLERS, name) is None and self.default_file(CONTROLLERS, name) is not None
+        shipped_lcxl3 = (  # rename_lcxl3 has already moved a user of the old name to the new one
+            name.lower() == LCXL3.lower() and self.user_file(CONTROLLERS, name) is None and self.default_file(CONTROLLERS, name) is not None
         )
         if (recorded is None or recorded < NEW_LCXL3_VERSION) and current >= NEW_LCXL3_VERSION and not fresh and shipped_lcxl3:
             self.notice(
@@ -372,6 +375,30 @@ class ConfigStore:
                 self.last_version_path.write_text(__version__ + "\n", encoding="utf-8")
             except OSError as exc:
                 log.warning("cannot record the app version: %s", exc)
+
+    def rename_lcxl3(self) -> None:
+        """The LCXL3 rename (2026-10-25): the shipped mapping ``lcxl3`` is now ``Novation_LaunchControlXL3``
+        (the vendor naming of the Kontrol F1's). Once, and without breaking anyone's setup: a user's own
+        ``controllers/lcxl3.json`` (a changed copy of the old shipped mapping, or their own file under that
+        name) becomes ``Novation_LaunchControlXL3.json``, so it stays their version of the shipped mapping
+        (with Reset to default); if that file exists as well, both are left alone (the old one then lists
+        as the user's own mapping). Then a settings.json that still names ``lcxl3`` is pointed at the new
+        name, unless a mapping called ``lcxl3`` is still there (the user's own file, kept above)."""
+        old = self.user_file(CONTROLLERS, OLD_LCXL3)
+        try:
+            if old is not None:
+                if self.user_file(CONTROLLERS, LCXL3) is not None:
+                    log.info("the LCXL3 rename: %s and %s.json both exist, left as they are", old.name, LCXL3)
+                else:
+                    old.replace(self.controllers_dir / f"{LCXL3}.json")
+                    log.info("the LCXL3 rename: your %s is now %s.json", old.name, LCXL3)
+            active = self.settings.active_controller
+            if active and active.lower() == OLD_LCXL3 and self.find(CONTROLLERS, OLD_LCXL3) is None:
+                self.settings.active_controller = LCXL3
+                self.save_settings()
+                log.info("the LCXL3 rename: the active controller %s is now %s", active, LCXL3)
+        except OSError as exc:
+            log.warning("the LCXL3 rename failed: %s", exc)
 
     def move_fog_into_rigs(self) -> None:
         """Up to 1.4 the fog machines were in settings.json; now each rig has its own. Once: every rig

@@ -1,12 +1,12 @@
 {
-  "app_version": "1.4.1",
+  "app_version": "1.8.3",
   "name": "Novation Launch Control XL 3",
   "author": "Miroslav Hlava",
-  "description": "Faders and the bottom knob row (CC 5-12, 29-36) drive the general macros, the middle knob row (CC 21-28) Dimmer 01-08; the top knob row (CC 13-20) is unused. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select Mask A-D. Bottom button row: CC 45-51 save scenes 1-7, with shift they load them. CC 52 is the shift button.",
+  "description": "Faders and the bottom knob row (CC 5-12, 29-36) drive the general macros, the middle knob row (CC 21-28) Dimmer 01-08; the top knob row (CC 13-20) is unused. Top button row: CC 37-42 switches (Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change, Swap Colors); with shift CC 37-40 select Mask A-D; CC 44 is the shift button. Bottom button row: CC 45-52 save scenes 1-8, with shift they load them.",
   "contact": "pitchcontrol.eu",
-  "modified": "2026-10-13T22:18:21+02:00",
+  "modified": "2026-10-25T21:46:57+01:00",
   "designed_for": "Novation Launch Control XL 3",
-  "mode": "factory template 1",
+  "mode": "PitchPlease! Ch13",
   "channel": 13,
   "mappings": [
     {
@@ -188,7 +188,7 @@
       "shift": "off"
     },
     {
-      "number": 52,
+      "number": 44,
       "mode": "shift"
     },
     {
@@ -248,6 +248,18 @@
     {
       "number": 51,
       "macro": "Scene 7 Load",
+      "mode": "trigger",
+      "shift": "on"
+    },
+    {
+      "number": 52,
+      "macro": "Scene 8 Save",
+      "mode": "trigger",
+      "shift": "off"
+    },
+    {
+      "number": 52,
+      "macro": "Scene 8 Load",
       "mode": "trigger",
       "shift": "on"
     }

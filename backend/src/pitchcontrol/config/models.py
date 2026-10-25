@@ -648,7 +648,7 @@ class Settings(Model):
     fps: float = 40.0
     preview_fps: float = 15.0
     active_rig: str = "default"
-    active_controller: str | None = "lcxl3"
+    active_controller: str | None = "Novation_LaunchControlXL3"
     midi_input: str | None = None  # item 89: no longer a choice; a value from an earlier version turns that device's In on, once, and goes
     midi_devices: dict[str, MidiDeviceSetting] = Field(default_factory=dict)  # per computer (item 89)
     midi_settle_s: float = 0.4  # hue/saturation knobs apply once they rest this long

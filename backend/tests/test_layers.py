@@ -15,7 +15,7 @@ from pitchcontrol.engine.engine import Engine
 from pitchcontrol.engine.overrides import Overrides
 from pitchcontrol.server.app import create_app
 
-from conftest import CONFIG
+from conftest import CONFIG, SHIPPED_CONFIG
 
 
 @pytest.fixture
@@ -241,20 +241,20 @@ def test_saved_files_record_the_app_version(layered, tmp_path):
 
 def test_editing_a_shipped_controller_makes_a_user_copy_and_reset_removes_it(layered):
     client = TestClient(create_app(Engine(layered, enable_hardware=False)))
-    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "default"}
-    data = client.get("/api/controllers/lcxl3").json()
+    assert client.get("/api/controllers").json()["origins"] == {"Novation_LaunchControlXL3": "default"}
+    data = client.get("/api/controllers/Novation_LaunchControlXL3").json()
     data["author"] = "Me"
     data["mappings"].append({"number": 99, "macro": "Fog Machine", "mode": "momentary"})
-    saved = client.put("/api/controllers/lcxl3", json=data).json()
+    saved = client.put("/api/controllers/Novation_LaunchControlXL3", json=data).json()
     assert saved["modified"] and saved["author"] == "Me"
-    user = layered.root / "controllers" / "lcxl3.json"
+    user = layered.root / "controllers" / "Novation_LaunchControlXL3.json"
     stored = read(user)
     assert stored["app_version"] == __version__ and stored["modified"] == saved["modified"]  # when and with which version
     assert stored["mappings"][-1] == {"number": 99, "macro": "Fog Machine", "mode": "momentary"}  # defaults are left out
-    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "modified"}
+    assert client.get("/api/controllers").json()["origins"] == {"Novation_LaunchControlXL3": "modified"}
     assert layered.controller.author == "Me"  # it is the active one: live
-    assert client.delete("/api/controllers/lcxl3").status_code == 409  # shipped
-    again = client.post("/api/controllers/lcxl3/reset").json()
+    assert client.delete("/api/controllers/Novation_LaunchControlXL3").status_code == 409  # shipped
+    again = client.post("/api/controllers/Novation_LaunchControlXL3/reset").json()
     assert again["author"] == "" and not user.exists()  # the test config has no author
 
 
@@ -277,11 +277,11 @@ def test_a_controller_file_with_port_match_loads_and_is_written_without_it(layer
 def test_new_duplicate_and_delete_controller(layered):
     client = TestClient(create_app(Engine(layered, enable_hardware=False)))
     assert client.post("/api/controllers", json={"name": "bad/name"}).status_code == 409
-    assert client.post("/api/controllers", json={"name": "LCXL3"}).status_code == 409  # exists, ignoring case
+    assert client.post("/api/controllers", json={"name": "novation_launchcontrolxl3"}).status_code == 409  # exists, ignoring case
     assert client.post("/api/controllers", json={"name": "Mine"}).json()["name"] == "Mine"
-    assert client.post("/api/controllers", json={"name": "Copy", "copy_of": "lcxl3"}).status_code == 200
+    assert client.post("/api/controllers", json={"name": "Copy", "copy_of": "Novation_LaunchControlXL3"}).status_code == 200
     copy = client.get("/api/controllers/Copy").json()
-    assert copy["name"] == "Copy" and len(copy["mappings"]) == len(client.get("/api/controllers/lcxl3").json()["mappings"])
+    assert copy["name"] == "Copy" and len(copy["mappings"]) == len(client.get("/api/controllers/Novation_LaunchControlXL3").json()["mappings"])
     assert client.get("/api/controllers").json()["origins"]["Mine"] == "user"
     assert client.delete("/api/controllers/Mine").status_code == 200
     assert "Mine" not in client.get("/api/controllers").json()["available"]
@@ -449,8 +449,8 @@ def test_a_machine_with_an_earlier_run_but_an_empty_data_folder_counts_as_an_upg
 def test_an_own_copy_of_lcxl3_gets_only_the_page_knob_notice(tmp_path, monkeypatch):
     store = upgrade_store(tmp_path, monkeypatch, "1.5.0", "1.4.1")
     (store.root / "controllers").mkdir(parents=True)
-    old = {"name": "lcxl3", "page_knob": 13, "mappings": [{"number": 5, "macro": "Audio Reactivity"}]}
-    (store.root / "controllers" / "lcxl3.json").write_text(json.dumps(old), encoding="utf-8")
+    old = {"name": "Novation_LaunchControlXL3", "page_knob": 13, "mappings": [{"number": 5, "macro": "Audio Reactivity"}]}
+    (store.root / "controllers" / "Novation_LaunchControlXL3.json").write_text(json.dumps(old), encoding="utf-8")
     store.load_all()
     assert layout_notices(store) == []
     assert sum("page knob" in n for n in store.notices) == 1
@@ -468,10 +468,10 @@ def test_no_lcxl3_notice_before_1_5_0_or_after_it_was_shown(tmp_path, monkeypatc
 
 def test_saving_a_shipped_controller_unchanged_is_not_a_modification(layered):
     client = TestClient(create_app(Engine(layered, enable_hardware=False)))
-    data = client.get("/api/controllers/lcxl3").json()
-    saved = client.put("/api/controllers/lcxl3", json=data).json()
+    data = client.get("/api/controllers/Novation_LaunchControlXL3").json()
+    saved = client.put("/api/controllers/Novation_LaunchControlXL3", json=data).json()
     assert saved["modified"]  # the edit time is recorded ...
-    assert client.get("/api/controllers").json()["origins"] == {"lcxl3": "default"}  # ... but it isn't a change
+    assert client.get("/api/controllers").json()["origins"] == {"Novation_LaunchControlXL3": "default"}  # ... but it isn't a change
 
 
 def test_a_validation_error_in_the_servers_own_code_shows_in_the_log(layered, caplog):
@@ -490,3 +490,104 @@ def test_a_validation_error_in_the_servers_own_code_shows_in_the_log(layered, ca
         res = TestClient(app).get("/api/_boom")
     assert res.status_code == 422
     assert any("/api/_boom" in r.getMessage() and "a mapping needs a macro" in r.getMessage() for r in caplog.records)
+
+
+# --- the LCXL3 rename (2026-10-25): the shipped mapping lcxl3 became Novation_LaunchControlXL3
+
+NEW = "Novation_LaunchControlXL3"
+
+
+def rename_store(tmp_path: Path, active: str | None = "lcxl3", old_file: dict | None = None, new_file: dict | None = None) -> ConfigStore:
+    """A store (not loaded yet) of a user who updates from before the rename."""
+    defaults = tmp_path / "defaults"
+    shutil.copytree(CONFIG, defaults, ignore=shutil.ignore_patterns("state", "scenes"))
+    store = ConfigStore(tmp_path / "user", defaults=defaults, machine=tmp_path / "machine")
+    store.root.mkdir(parents=True)
+    (store.root / "settings.json").write_text(json.dumps({"active_controller": active} if active else {}), encoding="utf-8")
+    (store.root / "controllers").mkdir()
+    for name, data in (("lcxl3", old_file), (NEW, new_file)):
+        if data is not None:
+            (store.root / "controllers" / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
+    return store
+
+
+def test_the_lcxl3_rename_points_the_settings_at_the_new_name(tmp_path, caplog):
+    store = rename_store(tmp_path)  # active_controller "lcxl3", no file of their own
+    with caplog.at_level("INFO"):
+        store.load_all()
+    assert store.settings.active_controller == NEW and store.controller is not None
+    assert any("LCXL3 rename" in r.getMessage() and r.levelname == "INFO" for r in caplog.records)
+    assert read(store.settings_path).get("active_controller") in (None, NEW)  # the new default isn't kept as a change
+    assert store.user_file("controllers", NEW) is None and not (store.root / "controllers" / "lcxl3.json").exists()
+    assert not any("not found" in n for n in store.notices)
+    again = ConfigStore(store.root, defaults=store.defaults, machine=store.machine)
+    again.load_all()  # once: the second start finds nothing to do
+    assert again.settings.active_controller == NEW
+
+
+def test_the_lcxl3_rename_moves_the_users_own_copy(tmp_path, caplog):
+    mine = {"name": "lcxl3", "author": "Me", "mappings": [{"number": 5, "macro": "Audio Reactivity"}]}
+    store = rename_store(tmp_path, old_file=mine)
+    with caplog.at_level("INFO"):
+        store.load_all()
+    controllers = store.root / "controllers"
+    assert not (controllers / "lcxl3.json").exists() and read(controllers / f"{NEW}.json")["author"] == "Me"
+    assert store.settings.active_controller == NEW and store.controller.author == "Me"
+    assert store.controller_origins() == {NEW: "modified"}  # still their version of the shipped mapping: Reset to default works
+    store.reset_controller(NEW)
+    assert store.controller_origins() == {NEW: "default"}
+    assert any("LCXL3 rename" in r.getMessage() for r in caplog.records)
+
+
+def test_an_untouched_copy_of_the_old_mapping_that_is_moved_counts_as_the_default(tmp_path):
+    store = rename_store(tmp_path, old_file=read(CONFIG / "controllers" / f"{NEW}.json"))
+    store.load_all()
+    assert store.controller_origins() == {NEW: "default"}
+
+
+def test_the_lcxl3_rename_leaves_both_files_when_both_exist(tmp_path, caplog):
+    old = {"name": "lcxl3", "author": "Old", "mappings": [{"number": 5, "macro": "Strobo"}]}
+    new = {"name": NEW, "author": "New", "mappings": [{"number": 6, "macro": "Strobo"}]}
+    store = rename_store(tmp_path, old_file=old, new_file=new)
+    with caplog.at_level("INFO"):
+        store.load_all()
+    controllers = store.root / "controllers"
+    assert read(controllers / "lcxl3.json")["author"] == "Old" and read(controllers / f"{NEW}.json")["author"] == "New"
+    assert store.controller_origins() == {"lcxl3": "user", NEW: "modified"}  # the old one lists as their own mapping
+    assert store.settings.active_controller == "lcxl3" and store.controller.author == "Old"  # that mapping still exists
+    assert any("LCXL3 rename" in r.getMessage() and "both exist" in r.getMessage() for r in caplog.records)
+
+
+def test_a_fresh_install_gets_the_new_name_and_no_rename(tmp_path, caplog):
+    store = ConfigStore(tmp_path / "user", defaults=SHIPPED_CONFIG, machine=tmp_path / "machine")
+    with caplog.at_level("INFO"):
+        store.load_all()
+    assert store.settings.active_controller == NEW and store.controller is not None
+    assert not any("LCXL3 rename" in r.getMessage() for r in caplog.records)
+    assert store.controller_names() == ["NativeInstruments_TraktorKontrolF1", NEW]
+    assert not (store.settings_path).exists() or "active_controller" not in read(store.settings_path)
+
+
+def test_another_active_controller_is_left_alone(tmp_path):
+    store = rename_store(tmp_path, active="mine", old_file={"name": "lcxl3", "mappings": []})
+    (store.root / "controllers" / "mine.json").write_text(json.dumps({"name": "mine", "mappings": []}), encoding="utf-8")
+    store.load_all()
+    assert store.settings.active_controller == "mine"
+
+
+def test_the_shipped_lcxl3_mapping_is_miros_of_2026_10_25():
+    # shipped under the new name with Miro's newest version (2026-10-25): the shift button on CC 44, CC 52 saves scene 8
+    # (with shift: loads it); the old file is gone
+    data = read(SHIPPED_CONFIG / "controllers" / f"{NEW}.json")
+    rows = {(m["number"], m.get("shift")): m for m in data["mappings"]}
+    assert rows[(44, None)]["mode"] == "shift" and rows[(52, "off")]["macro"] == "Scene 8 Save" and rows[(52, "on")]["macro"] == "Scene 8 Load"
+    assert not (SHIPPED_CONFIG / "controllers" / "lcxl3.json").exists()
+
+
+def test_the_shipped_history_knows_every_old_lcxl3_version_under_the_new_name():
+    from pitchcontrol.config.loader import content_hash
+    from pitchcontrol.config.shipped_history import SHIPPED
+
+    old, new = SHIPPED["controllers/lcxl3.json"], SHIPPED[f"controllers/{NEW}.json"]
+    assert len(old) >= 8 and old <= new
+    assert content_hash(read(SHIPPED_CONFIG / "controllers" / f"{NEW}.json")) in new

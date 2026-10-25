@@ -2,7 +2,9 @@
 tools/shipped_config_history.py; don't edit by hand). Path relative to the config folder -> hashes."""
 
 _HASHES: dict[str, list[str]] = {
-    'controllers/lcxl3.json': ['10f3371f085b9b15', '5f5c44138ca71943', '6bc13ad17192bf90', '781b0969581c85d9', '84358223e98f3048', 'aa196041acd41268', 'cae529030a3c0601', 'd5ccd653b0c8c06b'],
+    'controllers/NativeInstruments_TraktorKontrolF1.json': ['9918e0fdf572b3f4'],
+    'controllers/Novation_LaunchControlXL3.json': ['10f3371f085b9b15', '2a15c27d0e3f178b', '4451f2fd6a9fcace', '5f5c44138ca71943', '6bc13ad17192bf90', '781b0969581c85d9', '84358223e98f3048', 'aa196041acd41268', 'cae529030a3c0601', 'd5ccd653b0c8c06b'],
+    'controllers/lcxl3.json': ['10f3371f085b9b15', '2a15c27d0e3f178b', '5f5c44138ca71943', '6bc13ad17192bf90', '781b0969581c85d9', '84358223e98f3048', 'aa196041acd41268', 'cae529030a3c0601', 'd5ccd653b0c8c06b'],
     'fixtures/types/Ape Labs Neon Tube PIX.json': ['baede4a616649b57', 'fe2e8dd6b6e964b6'],
     'fixtures/types/Astera FP1 Titan Tube.json': ['7ea31f29b540eeb1', '9ba36ed6bbb9f5f3', 'e1ac04add6fc9bca'],
     'fixtures/types/Cameo Q-Spot 15.json': ['8494195b427aac79', 'c6921b0f700eed6f', 'd419d0286256be53', 'eed4660943695b58'],

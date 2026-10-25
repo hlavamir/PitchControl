@@ -2,7 +2,7 @@
   "fps": 40.0,
   "preview_fps": 15.0,
   "active_rig": "default",
-  "active_controller": "lcxl3",
+  "active_controller": "Novation_LaunchControlXL3",
   "midi_settle_s": 0.4,
   "audio": {
     "device": "Komplete Audio 6",

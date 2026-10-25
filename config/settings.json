@@ -1,7 +1,7 @@
 {
   "_note": "Shipped defaults: only what differs from the built-in values. The user folder keeps its own settings.json with the changes, this computer its machine.json.",
   "active_rig": "Default",
-  "active_controller": "lcxl3",
+  "active_controller": "Novation_LaunchControlXL3",
   "ui": {
     "ink": "amber"
   }
