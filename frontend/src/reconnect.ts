@@ -12,7 +12,7 @@ const clock = (epochSeconds: number) => {
  * time. The device is named only when it changed (no device saved: after a pulled interface the system default
  * moves to another one). Nothing while the input hasn't dropped or hasn't come back yet.
  */
-export function reconnectLine(status: IoStatus | null | undefined): string | null {
+export function reconnectLine(status: Pick<IoStatus, 'reconnect'> | null | undefined): string | null {
   const r = status?.reconnect
   if (!r || r.back == null) return null
   if (r.lost == null) return `not found at start · connected ${clock(r.back)}`

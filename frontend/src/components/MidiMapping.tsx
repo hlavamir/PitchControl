@@ -3,7 +3,7 @@ import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry,
 import type { EngineConnection } from '../useEngine'
 import { useLeaveGuard } from '../leaveGuard'
 import { clashes as findClashes, channelOf, deadMappings, defaultMode, newMapping } from '../midiMapping'
-import { midiNotice } from '../midiNotice'
+import { midiNotice } from '../midiDevices'
 import { unchanged, usePolling } from '../usePolling'
 import { Button, Row, Section } from './forms'
 import { MidiMappingRow } from './MidiMappingRow'
@@ -172,21 +172,14 @@ export function MidiMappingSection({
     api.post('/api/midi/learning', { on: false }).catch(() => {})
   }, [])
 
-  // Learn listens to the engine's one MidiInput: the active controller's port, as of its last save
+  // Learn listens to the engine's one MidiInput: the active controller's mapping, as of its last save, and every device that is on (item 89)
   const learnProblem = (): { why: string; fix: 'use' | 'save' | null } | null => {
     if (!selected || !draft) return null
     if (!isActive) {
       const now = list?.active ? `the active controller (${list.labels?.[list.active] ?? list.active})` : 'no controller'
-      return { why: `This controller isn't the active one, so its MIDI port isn't open: Learn would listen to ${now}.`, fix: 'use' }
+      return { why: `This controller isn't the active one: Learn would listen for ${now}.`, fix: 'use' }
     }
-    // an override in Settings (section 02) decides the port, so the controller file's port doesn't matter
-    if (!midi?.port_override && dirty && saved && draft.port_match !== saved.port_match) return { why: 'The MIDI port was changed but not saved: the app still listens to the old one.', fix: 'save' }
-    if (!midi?.port) {
-      const note = midiNotice(midi)
-      if (note) return { why: note.text, fix: null } // the MIDI tab's words for the same case
-      const where = midi?.port_override ? `the MIDI port in Settings (section 02: "${midi.port_override}")` : 'the MIDI port on the Controller tab'
-      return { why: `No MIDI port is open${midi?.error ? ` (${midi.error})` : ''}: check that the controller is connected and that ${where} matches its name.`, fix: null }
-    }
+    if (!midi?.connected_devices) return { why: midiNotice(midi)?.text ?? 'No MIDI device is connected.', fix: null }
     return null
   }
 
@@ -251,8 +244,8 @@ export function MidiMappingSection({
     if (!e) {
       if (!midi.learning) {
         setLearning(null)
-        const port = midi.port
-        say(port ? `Learn: the port "${port}" is open, but no message arrived (is it the right controller, and does it send MIDI?)` : 'Learn: no MIDI port is open, so nothing can arrive')
+        const open = midi.connected_devices ?? 0
+        say(open ? `Learn: ${open} MIDI device${open > 1 ? 's are' : ' is'} open, but no control arrived (does the controller send MIDI, and is its In on?)` : 'Learn: no MIDI device is open, so nothing can arrive')
       }
       return
     }
@@ -436,7 +429,7 @@ export function MidiMappingSection({
               {draft.app_version ? ` · PitchControl ${draft.app_version}` : ''}
             </span>
           </Row>
-          <Row label="MIDI port" hint="Part of the MIDI port's name: the controller is found by it (unless a port is chosen above)">
+          <Row label="MIDI port" hint="Not used any more to find the controller: the app listens to every MIDI device that is switched on in Connections → MIDI">
             <input type="text" className="w-full" value={draft.port_match} onChange={(e) => set('port_match', e.target.value)} />
             {midiPorts.length > 0 && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

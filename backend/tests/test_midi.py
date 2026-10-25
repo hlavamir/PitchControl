@@ -6,7 +6,7 @@ import pytest
 
 from pitchcontrol.config.models import Controller, MidiMapping
 from pitchcontrol.engine.macros import MacroBank
-from pitchcontrol.io.midi_in import MidiInput, decode_step, scale
+from pitchcontrol.io.midi_in import MidiInput, decode_step, match_port, port_key, scale
 
 from conftest import SHIPPED_CONFIG
 
@@ -22,7 +22,7 @@ def note(midi, number, velocity=127, channel=0):
 def build(*mappings, channel=1, **kw):
     ctrl = Controller(name="t", channel=channel, mappings=list(mappings), **kw)
     macros = MacroBank()
-    return MidiInput(ctrl, None, macros), macros
+    return MidiInput(ctrl, macros), macros
 
 
 def fader(number=5, macro="Strobo", **kw):
@@ -478,11 +478,19 @@ def test_a_macro_on_the_shift_button_never_fires_and_the_load_says_so(caplog):
 # --------------------------------------------------------------------------- learn mode
 
 
-def test_status_names_the_port_override():
+def test_the_input_has_no_port_of_its_own(monkeypatch):
+    """Item 89: the ports belong to ``MidiDevices``; the mapping only gets the messages."""
     midi, _ = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
-    assert midi.status()["port_override"] is None
-    midi.port_override = "APC40"
-    assert midi.status()["port_override"] == "APC40"
+    assert not {"port", "port_override", "wanted", "error", "error_kind", "port_wanted"} & set(midi.status())
+
+
+def test_the_monitor_shows_the_device_also_without_a_mapping():
+    midi = MidiInput(None, MacroBank())
+    midi.handle(mido.Message("control_change", channel=2, control=7, value=9), "Traktor Kontrol F1")
+    midi.handle(mido.Message("clock"), "Traktor Kontrol F1")  # timing is no message of interest
+    (e,) = midi.status()["recent"]
+    assert (e["device"], e["kind"], e["number"], e["channel"], e["value"], e["note"]) == ("Traktor Kontrol F1", "cc", 7, 3, 9, "no controller selected")
+    assert midi.status()["received"] == 1
 
 
 def test_learning_shows_messages_without_applying_them():
@@ -657,254 +665,34 @@ def test_settings_that_mean_nothing_are_set_right(caplog):
     assert "2 shift buttons" in caplog.records[-1].getMessage()
 
 
-# --------------------------------------------------------------------------- port errors and rescan
-
-
-class FakePort:
-    def __init__(self, name):
-        self.name, self.closed = name, False
-
-    def close(self):
-        self.closed = True
-
-
-def fake_ports(monkeypatch, names, fail=()):
-    import pitchcontrol.io.midi_in as module
-
-    opened = []
-
-    def open_input(name, callback=None):
-        if name in fail:
-            raise OSError("MIDI port is in use")
-        port = FakePort(name)
-        opened.append(port)
-        return port
-
-    monkeypatch.setattr(module, "list_midi_inputs", lambda: list(names))
-    monkeypatch.setattr(module.mido, "open_input", open_input)
-    return opened
-
-
-def test_a_port_that_isnt_there_is_a_not_found_error_naming_what_was_looked_for(monkeypatch):
-    fake_ports(monkeypatch, ["IAC Driver Bus 1"])
-    midi, _ = build(port_match="lcxl3")
-    midi.start()
-    st = midi.status()
-    assert st["port"] is None
-    assert (st["error"], st["error_kind"], st["port_wanted"]) == ("no MIDI port matches 'lcxl3'", "not_found", "lcxl3")
-
-
-def test_a_port_that_wont_open_is_an_open_failed_error_with_the_drivers_reason(monkeypatch):
-    fake_ports(monkeypatch, ["Launch Control XL 3"], fail=("Launch Control XL 3",))
-    midi, _ = build(port_match="launch control")
-    midi.start()
-    st = midi.status()
-    assert st["port"] is None
-    assert (st["error"], st["error_kind"], st["port_wanted"]) == ("MIDI port is in use", "open_failed", "Launch Control XL 3")
-
-
-def test_the_wanted_port_keeps_the_name_as_it_was_saved(monkeypatch):
-    fake_ports(monkeypatch, ["IAC Driver Bus 1"])
-    ctrl = Controller(name="t", channel=1, mappings=[], port_match="x")
-    midi = MidiInput(ctrl, "LCXL3 1 MIDI In", MacroBank())  # a port picked in the MIDI port row
-    midi.start()
-    st = midi.status()
-    assert st["port_wanted"] == "LCXL3 1 MIDI In" and st["error"] == "no MIDI port matches 'LCXL3 1 MIDI In'"
-
-
-# --------------------------------------------------------------------------- the MIDI input reconnects by itself (item 33)
-def watched_midi(monkeypatch, store, names, fail=(), match="lcxl3", override=None):
-    """An engine with fake MIDI ports: ``names`` is the system's list right now (change it to plug and pull),
-    ``engine.midi_check()`` is one look of the watchdog. Returns (engine, names, opened)."""
-    import pitchcontrol.engine.engine as engine_module
-    from pitchcontrol.engine.engine import Engine
-
-    opened = fake_ports(monkeypatch, names, fail=fail)
-    monkeypatch.setattr(engine_module, "list_midi_inputs_checked", lambda: list(names) if names is not None else None)
-    engine = Engine(store, enable_hardware=False)
-    engine.enable_hardware = True
-    store.controller.port_match = match
-    store.settings.midi_input = override  # a port picked in the MIDI port row: saved with the name as it was listed
-    engine.restart_midi()
-    return engine, names, opened
-
-
-def test_a_controller_plugged_in_late_opens_by_itself(monkeypatch, store):
-    engine, names, opened = watched_midi(monkeypatch, store, ["IAC Driver Bus 1"])
-    assert engine.midi.status()["error_kind"] == "not_found"
-    engine.midi_check()
-    assert opened == [] and engine.midi_status()["port"] is None  # not there yet: nothing touched
-
-    names.append("LCXL3 1 MIDI In")
-    first = engine.midi
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "LCXL3 1 MIDI In" and st["error"] is None and engine.midi is first  # same input, port opened
-    assert [p.name for p in opened] == ["LCXL3 1 MIDI In"]
-    assert st["reconnect"]["lost"] is None and st["reconnect"]["back"] is not None  # "not found at start · connected …"
-    engine.midi.stop()
-
-
-def test_a_pulled_controller_says_so_and_opens_again_when_it_is_back(monkeypatch, store):
-    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
-    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In"
-    engine.midi_check()
-    assert engine.midi_status()["reconnect"] is None  # healthy: nothing recorded
-
-    names.clear()  # the cable comes out: the open port object doesn't notice, the list does
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] is None and st["error_kind"] == "not_found" and opened[0].closed
-    assert st["reconnect"]["lost"] is not None and st["reconnect"]["back"] is None
-    assert st["reconnect"]["lost_device"] == "LCXL3 1 MIDI In"
-
-    names.append("LCXL3 1 MIDI In")
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "LCXL3 1 MIDI In" and st["error"] is None
-    assert st["reconnect"]["lost"] <= st["reconnect"]["back"] and st["reconnect"]["back_device"] == "LCXL3 1 MIDI In"
-    engine.midi.stop()
-
-
-def test_a_renumbered_port_is_not_a_pulled_one(monkeypatch, store, caplog):
-    """Windows (WinMM) appends the port index to every name: plugging in another device renumbers the controller.
-    The open port is still the controller, so nothing is closed, no held button is let go and nothing is reported."""
-    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In 0"])
-    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In 0"
-
-    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 1"]  # another device plugged in, the controller is now ... 1
-    with caplog.at_level("WARNING"):
-        engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "LCXL3 1 MIDI In 0" and st["error"] is None and not opened[0].closed
-    assert st["reconnect"] is None
-    assert not [r for r in caplog.records if r.levelname == "WARNING"]
-
-    names[:] = ["Some Keyboard 0"]  # now the controller itself is pulled: that is still seen
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] is None and opened[0].closed and st["reconnect"]["lost"] is not None
-    engine.midi.stop()
-
-
-def test_a_port_that_fails_to_open_is_retried_and_opens_when_it_is_free(monkeypatch, store, caplog):
-    import logging
-
-    engine, names, opened = watched_midi(
-        monkeypatch, store, ["LCXL3 1 MIDI In"], fail=("LCXL3 1 MIDI In",)
-    )
-    assert engine.midi_status()["error_kind"] == "open_failed"
-    with caplog.at_level(logging.WARNING):
-        for _ in range(3):
-            engine.midi_check()
-    assert engine.midi_status()["port"] is None
-    assert sum("MIDI input failed" in r.getMessage() for r in caplog.records) == 1  # the same error is logged once (at the start), not at every try
-
-    fake_ports(monkeypatch, names)  # the other program let go
-    engine.midi_check()
-    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In" and engine.midi_status()["error"] is None
-    engine.midi.stop()
-
-
-def test_a_failed_listing_is_not_a_pulled_controller(monkeypatch, store):
-    import pitchcontrol.engine.engine as engine_module
-
-    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
-    monkeypatch.setattr(engine_module, "list_midi_inputs_checked", lambda: None)  # the system couldn't say
-    engine.midi_check()
-    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In" and not opened[0].closed
-    engine.midi.stop()
-
-
-def test_a_pulled_controller_lets_go_of_held_buttons(monkeypatch, store):
-    engine, names, _ = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In"])
-    midi = engine.midi
-    released = []
-    monkeypatch.setattr(midi, "release_all", lambda: released.append(True))
-    names.clear()
-    engine.midi_check()
-    assert released  # a fog button held when the cable came out is switched off
-    engine.midi.stop()
-
-
-def test_saving_another_port_forgets_the_drop(monkeypatch, store):
-    engine, names, _ = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In", "Other 1"])
-    names.remove("LCXL3 1 MIDI In")
-    engine.midi_check()
-    assert engine.midi_status()["reconnect"]["lost"] is not None
-    store.settings.midi_input = "Other"  # the user picks another port and saves
-    engine.restart_midi()
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "Other 1" and st["reconnect"] is None
-    engine.midi.stop()
-
-
-# --------------------------------------------------------------------------- the port rule on Windows (item 33, review 2)
+# --------------------------------------------------------------------------- the port rule (a saved name, on Windows too)
 def on_windows(monkeypatch, windows=True):
     import pitchcontrol.io.midi_in as midi_module
 
     monkeypatch.setattr(midi_module, "_winmm_indices", lambda: windows)
 
 
-def finder(wanted, names):
-    return MidiInput(Controller(name="t", channel=1, mappings=[], port_match=""), wanted, MacroBank()).find_port(names)
-
-
-def test_a_port_picked_in_settings_survives_winmm_renumbering(monkeypatch, store, caplog):
-    """The Settings port is saved with WinMM's index (``… In 0``). Another device renumbers the controller to ``… 1``:
-    the open port stays open, nothing is reported, and it is not looked for again (before: the watchdog closed it
-    and it never came back)."""
-    on_windows(monkeypatch)
-    engine, names, opened = watched_midi(monkeypatch, store, ["LCXL3 1 MIDI In 0"], override="LCXL3 1 MIDI In 0")
-    assert engine.midi_status()["port"] == "LCXL3 1 MIDI In 0"
-
-    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 1"]
-    with caplog.at_level("WARNING"):
-        engine.midi_check()
-        engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "LCXL3 1 MIDI In 0" and st["error"] is None and not opened[0].closed
-    assert st["reconnect"] is None and not [r for r in caplog.records if r.levelname == "WARNING"]
-
-    names[:] = ["Some Keyboard 0"]  # the controller itself is pulled: seen
-    engine.midi_check()
-    assert engine.midi_status()["port"] is None and opened[0].closed
-    names[:] = ["Some Keyboard 0", "LCXL3 1 MIDI In 3"]  # plugged in again, under yet another index
-    engine.midi_check()
-    st = engine.midi_status()
-    assert st["port"] == "LCXL3 1 MIDI In 3" and st["reconnect"]["back_device"] == "LCXL3 1 MIDI In 3"
-    engine.midi.stop()
-
-
-def test_a_start_with_the_saved_index_opens_the_renumbered_port(monkeypatch):
-    on_windows(monkeypatch)
-    opened = fake_ports(monkeypatch, ["Some Keyboard 0", "LCXL3 1 MIDI In 1"])
-    midi = MidiInput(Controller(name="t", channel=1, mappings=[], port_match="x"), "LCXL3 1 MIDI In 0", MacroBank())
-    midi.start()
-    assert midi.status()["port"] == "LCXL3 1 MIDI In 1" and [p.name for p in opened] == ["LCXL3 1 MIDI In 1"]
-    assert midi.status()["wanted"] == "LCXL3 1 MIDI In 0"  # the Inputs page compares the saved name with the open port
-
-
 def test_the_exact_name_beats_a_longer_one(monkeypatch):
     for windows in (True, False):
         on_windows(monkeypatch, windows)
-        assert finder("X MIDI In 1", ["X MIDI In 10", "X MIDI In 1"]) == "X MIDI In 1"
+        assert match_port("X MIDI In 1", ["X MIDI In 10", "X MIDI In 1"]) == "X MIDI In 1"
     on_windows(monkeypatch, False)
-    assert finder("x midi in 1", ["X MIDI In 10"]) is None  # a number is not the start of a longer one
-    assert finder("Port 1", ["Port 2"]) is None and finder("Port 2", ["Port 1", "Port 2"]) == "Port 2"
+    assert match_port("x midi in 1", ["X MIDI In 10"]) is None  # a number is not the start of a longer one
+    assert match_port("Port 1", ["Port 2"]) is None and match_port("Port 2", ["Port 1", "Port 2"]) == "Port 2"
 
 
 def test_the_index_is_only_ignored_on_windows(monkeypatch):
     on_windows(monkeypatch, False)  # macOS: a trailing number is part of the name
-    assert finder("IAC Driver Bus 1", ["IAC Driver Bus 2"]) is None
+    assert match_port("IAC Driver Bus 1", ["IAC Driver Bus 2"]) is None
+    assert port_key("IAC Driver Bus 1") == "iac driver bus 1"
     on_windows(monkeypatch, True)
-    assert finder("IAC Driver Bus 1", ["IAC Driver Bus 2"]) == "IAC Driver Bus 2"  # WinMM: the same port, renumbered
+    assert match_port("IAC Driver Bus 1", ["IAC Driver Bus 2"]) == "IAC Driver Bus 2"  # WinMM: the same port, renumbered
+    assert port_key("LCXL3 1 MIDI In 0") == port_key("LCXL3 1 MIDI In 1") == "lcxl3 1 midi in"
 
 
 def test_parts_of_a_name_still_find_a_port(monkeypatch):
     for windows in (True, False):
         on_windows(monkeypatch, windows)
-        assert finder("LCXL3", ["Some Keyboard 0", "LCXL3 1 MIDI In 4"]) == "LCXL3 1 MIDI In 4"
-        assert finder("lcxl", ["LCXL3 1 MIDI In"]) == "LCXL3 1 MIDI In"
-        assert finder("", ["LCXL3 1 MIDI In"]) is None
+        assert match_port("LCXL3", ["Some Keyboard 0", "LCXL3 1 MIDI In 4"]) == "LCXL3 1 MIDI In 4"
+        assert match_port("lcxl", ["LCXL3 1 MIDI In"]) == "LCXL3 1 MIDI In"
+        assert match_port("", ["LCXL3 1 MIDI In"]) is None

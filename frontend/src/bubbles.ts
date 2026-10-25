@@ -168,7 +168,7 @@ export class Activity {
 /** What the bubbles show that needs the readings before: the rates of the outputs and the MIDI lights. */
 export interface IoLive {
   rates: Record<string, number | null> // enttec0, enttec1 …, artnet, v2: frames per second
-  active: Record<string, boolean> // midi, route:<device>: a message came in just now
+  active: Record<string, boolean> // midi, device:<key>: a message came in just now
 }
 
 /** Follows the engine state for the header's whole life, so a bubble that opens shows the rates and lights at once. */
@@ -184,7 +184,7 @@ export class IoTracker {
     live.rates.artnet = this.rates.update('artnet', out.artnet?.frames, now)
     live.rates.v2 = this.rates.update('v2', out.pitchpls_v2?.frames, now)
     live.active.midi = this.activity.update('midi', io.midi?.received, now)
-    for (const d of io.midi_routes?.devices ?? []) live.active[`route:${d.device}`] = this.activity.update(`route:${d.device}`, d.received, now)
+    for (const d of io.midi?.devices ?? []) live.active[`device:${d.key}`] = this.activity.update(`device:${d.key}`, d.received, now)
     return live
   }
 }

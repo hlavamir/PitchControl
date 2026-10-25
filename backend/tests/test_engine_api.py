@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 
+import mido
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -182,7 +183,7 @@ def test_dimmer_names_and_unused_dimmers_ignore_midi(store):
     for f in store.rig.fixtures[1:]:
         f.dimmer_macro = None
     ctrl = Controller(name="t", channel=1, mappings=[MidiMapping(cc=1, macro="Dimmer 01"), MidiMapping(cc=2, macro="Dimmer 02")])
-    midi = MidiInput(ctrl, None, engine.macros, ignored=store.dimmer_unassigned)
+    midi = MidiInput(ctrl, engine.macros, ignored=store.dimmer_unassigned)
     engine.macros.set("Dimmer 01", 1.0)
     engine.macros.set("Dimmer 02", 1.0)
     for cc in (1, 2):
@@ -357,47 +358,19 @@ def test_frame_rate_is_a_setting_the_engine_follows(store):
     assert store.settings.fps == 25.0
 
 
-def test_a_slow_midi_restart_does_not_hold_up_the_frames_and_restarts_run_one_by_one(store, monkeypatch):
-    import threading
-    import time
+def test_a_midi_restart_swaps_the_mapping_lets_go_of_held_buttons_and_leaves_the_ports_alone(store):
+    from pitchcontrol.config.models import Controller, MidiMapping
 
-    from pitchcontrol.engine import engine as engine_module
-
-    log, open_ports, overlap = [], [0], [False]
-
-    class SlowMidi:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def start(self):
-            if open_ports[0]:
-                overlap[0] = True  # the previous port is still open: two restarts ran at the same time
-            open_ports[0] += 1
-            time.sleep(0.4)
-            log.append("started")
-
-        def stop(self):
-            time.sleep(0.2)
-            open_ports[0] -= 1
-
-        def status(self):
-            return {}
-
-    monkeypatch.setattr(engine_module, "MidiInput", SlowMidi)
     engine = Engine(store, enable_hardware=False)
     engine.enable_hardware = True
-    engine.tick(1 / 40)
-    restarts = [threading.Thread(target=engine.restart_midi) for _ in range(2)]
-    for t in restarts:
-        t.start()
-    time.sleep(0.1)  # a restart is now closing or opening the port
-    t0 = time.perf_counter()
-    engine.tick(1 / 40)
-    engine.state()
-    assert time.perf_counter() - t0 < 0.1  # the frame didn't wait for the driver
-    for t in restarts:
-        t.join()
-    assert log == ["started", "started"] and not overlap[0] and open_ports[0] == 1 and isinstance(engine.midi, SlowMidi)
+    store.controller = Controller(name="t", channel=1, mappings=[MidiMapping(number=7, macro="Fog Machine", mode="momentary")])
+    engine.restart_midi()
+    first = engine.midi
+    engine._midi_message("pad", "Pad", mido.Message("control_change", channel=0, control=7, value=127))
+    assert engine.macros.on("Fog Machine") and first.recent[-1]["device"] == "Pad"
+    engine.restart_midi()  # e.g. another controller file was saved
+    assert engine.midi is not first and not engine.macros.on("Fog Machine")  # the button held is let go
+    assert engine.midi_devices.status()["devices"] == []  # no port was opened or closed
 
 
 # ---------------------------------------------------------------- Mask Curve (item 76)

@@ -37,7 +37,8 @@ export interface FixtureState {
 
 export interface MidiEvent {
   t: number
-  seq: number // counts every message since the port was opened
+  seq: number // counts every message since the mapping was last swapped
+  device: string // the MIDI device it came from (item 89)
   text: string
   kind: 'cc' | 'note' | null
   number: number
@@ -96,14 +97,25 @@ export interface OscStatus extends IoStatus {
   file_error: string | null // the file is missing or can't be read
 }
 
+/** One MIDI device of this computer (item 89): the matrix row of Connections → MIDI. ``input`` / ``output`` are the In / Out switches. */
+export interface MidiDevice {
+  key: string
+  name: string
+  input: boolean
+  output: boolean
+  state: 'connected' | 'off' | 'missing' | 'error' // off: plugged in, In switched off; missing: not plugged in
+  error: string | null
+  received: number
+  age: number | null // seconds since its last message
+  reconnect: { lost: number | null; back: number | null } | null // it came back by itself (lost null: not found at the start)
+}
+
 export interface IoStatus {
   connected?: boolean
   running?: boolean
   error: string | null
   frames?: number
   level?: number
-  error_kind?: 'not_found' | 'open_failed' | null // MIDI input: what failed
-  port_wanted?: string | null // MIDI input: the match string that found nothing, or the port that wouldn't open
   warning?: string | null // audio input: it runs, but not as set up (fallback channel, system default instead of the device)
   device_missing?: boolean // audio input: the set device wasn't found, the system default is used
   device?: string | null // audio input: the device that was opened
@@ -114,9 +126,8 @@ export interface IoStatus {
   reconnect?: { lost: number | null; back: number | null; lost_device?: string | null; back_device?: string | null } | null
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   max_fps?: number // an Open DMX: the most frames per second it is sent, whatever the engine runs at (item 35)
-  port?: string | null
-  port_override?: string | null // the MIDI port set in Settings, which wins over the controller file's
-  wanted?: string // the MIDI port name looked for, as saved (the Settings port, else the controller file's)
+  devices?: MidiDevice[] // MIDI input: every MIDI device of this computer (item 89)
+  connected_devices?: number // MIDI input: how many devices that are switched on are open
   controller?: string | null
   channel?: number | null
   received?: number
@@ -222,7 +233,6 @@ export interface Settings {
   preview_fps: number
   active_rig: string
   active_controller: string | null
-  midi_input: string | null
   audio: {
     device: string | null
     channels: number[]

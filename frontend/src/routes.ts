@@ -26,7 +26,7 @@ export interface RouteState {
   midi_device: string // a MIDI route: the port
   midi_channel: number // 1–16
   channels: MidiChannelState[] // a MIDI route: one input per output channel
-  midi_open?: boolean // a MIDI route: the device is open (here or by the controller's input)
+  midi_open?: boolean // a MIDI route: the device is open
   midi_error?: string | null
   seen: boolean // the source has sent something
   age: number | null // seconds since its last packet
@@ -55,7 +55,7 @@ export interface MidiNotice {
 
 /** The MIDI hub's state: the devices of the routes, and a Learn that waits. */
 export interface MidiRoutesStatus {
-  devices: { device: string; open: boolean; via: string | null; error: string | null; received: number; age: number | null }[]
+  devices: { device: string; open: boolean; error: string | null; received: number; age: number | null }[]
   learn: { id: number; route: string; index: number; channel: number; seconds: number; heard: { kind: 'cc' | 'note'; number: number; channel: number } | null } | null
   learned: { id: number; route: string; index: number; type: 'cc' | 'note'; number: number } | null
   learn_seconds: number

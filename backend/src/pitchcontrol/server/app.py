@@ -96,6 +96,11 @@ class Learning(BaseModel):
     shift_row: bool = False  # the Shift row is learning: it takes a shift button
 
 
+class MidiDeviceSwitches(BaseModel):
+    input: bool | None = None
+    output: bool | None = None
+
+
 class DimmerName(BaseModel):
     macro: str
     name: str
@@ -346,7 +351,7 @@ def create_app(
         """The routes of the Control Desk (item 58) with the state of their sources, the output channels that two
         routes cover, and (item 59) the controls of MIDI routes that the app's MIDI mapping uses too."""
         return {
-            "routes": engine.routes.status(engine.live.sources(), engine.midi_routes.status()),
+            "routes": engine.routes.status(engine.live.sources(), engine.midi_routes_status()),
             "overlaps": engine.routes.overlaps(),
             "midi_notices": engine.routes.midi_overlaps(engine.midi),
         }
@@ -398,8 +403,9 @@ def create_app(
             raise HTTPException(404, f"no MIDI route '{route_id}' with channel {body.index + 1}")
         if body.on and not route.midi_device:
             raise HTTPException(409, "choose the MIDI device of the route first")
+        if body.on and engine.midi_devices.is_off(route.midi_device):  # an In that is off can't be heard (item 89); a device not plugged in is waited for
+            raise HTTPException(409, f"switch In on for '{route.midi_device}' first (Connections → MIDI)")
         learn_id = engine.midi_routes.set_learning(route_id, route.midi_device, route.midi_channel, body.index, body.on)
-        engine.sync_midi_routes()  # the device is open by now, whatever the watchdog's timing
         return {"ok": True, "learn_id": learn_id, "seconds": LEARN_SECONDS}
 
     @app.delete("/api/routes/{route_id}")
@@ -478,7 +484,7 @@ def create_app(
         report_unknown_keys(new, "settings (from UI)")
         old = store.settings
         # only /api/network and /api/live-input change these (the PIN isn't in what the pages read)
-        new = new.model_copy(update={"network": old.network, "live_input": old.live_input})
+        new = new.model_copy(update={"network": old.network, "live_input": old.live_input, "midi_devices": old.midi_devices, "midi_input": old.midi_input})
         with engine.lock:
             store.settings = new
         store.save_settings()
@@ -490,7 +496,7 @@ def create_app(
                 engine.outputs.restart_osc(new.outputs)
         if new.audio != old.audio:
             engine.restart_audio() if engine.enable_hardware else engine.rebuild_audio_analysis()
-        if new.active_controller != old.active_controller or new.midi_input != old.midi_input:
+        if new.active_controller != old.active_controller:
             store.load_controller(new.active_controller)
             engine.restart_midi()
         if new.masks != old.masks:
@@ -987,8 +993,34 @@ def create_app(
         return list_input_devices_fresh()
 
     @app.get("/api/devices/midi")
-    def midi_devices():
+    def midi_ports():
         return list_midi_inputs()
+
+    @app.get("/api/midi/devices")
+    def get_midi_devices():
+        """The MIDI devices of this computer with their state (item 89): ``input`` / ``output`` are the switches; ``state``
+        is connected, off, missing (not plugged in) or error (``error`` says why)."""
+        return engine.midi_devices.status()
+
+    @app.put("/api/midi/devices/{key}")
+    def put_midi_device(key: str, body: MidiDeviceSwitches):
+        """Switch In (and Out) of a device; applied before this answers: a device switched off is let go of at once."""
+        try:
+            engine.midi_devices.set_switches(key, body.input, body.output)
+        except KeyError:
+            raise HTTPException(404, f"no MIDI device '{key}'") from None
+        return engine.midi_devices.status()
+
+    @app.delete("/api/midi/devices/{key}")
+    def delete_midi_device(key: str):
+        """Take a device that isn't plugged in off the list."""
+        try:
+            engine.midi_devices.remove(key)
+        except KeyError:
+            raise HTTPException(404, f"no MIDI device '{key}'") from None
+        except ValueError:
+            raise HTTPException(409, "the device is plugged in: unplug it first") from None
+        return engine.midi_devices.status()
 
     # ------------------------------------------------------------------ scenes
     @app.get("/api/scenes")

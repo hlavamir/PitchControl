@@ -1,5 +1,9 @@
 """MIDI controller input: CC and note messages → macros, using a ``controllers/*.json`` mapping.
 
+The ports are not opened here (item 89): ``MidiDevices`` opens every device that is switched on and hands every message
+on, from every device, to ``MidiInput.handle``, which maps it by channel, CC / note and page, and shows it in the monitor
+whether or not a mapping is active.
+
 A message is matched to a mapping by its kind (CC / note), number and channel. Several mappings can
 share a control when they differ in the control page or in the shift state (the same physical fader
 drives other macros on the Dimmers page; a button saves a scene while shift is held). Where several
@@ -37,11 +41,16 @@ LEARN_GRACE = 0.7  # after a capture the new control stays muted this long, whil
 _learn_ids = itertools.count(1)  # one counter for every MidiInput: a restart of the input never repeats an id
 
 
+def _real_names(names) -> list[str]:
+    """CoreMIDI lists a port that was pulled while the app runs with no name (None): it is not a port."""
+    return [n for n in names if isinstance(n, str) and n]
+
+
 def list_midi_inputs() -> list[str]:
     if mido is None:
         return []
     try:
-        return list(mido.get_input_names())
+        return _real_names(mido.get_input_names())
     except Exception as exc:  # noqa: BLE001
         log.warning("cannot list MIDI inputs: %s", exc)
         return []
@@ -53,7 +62,7 @@ def list_midi_inputs_checked() -> list[str] | None:
     if mido is None:
         return None
     try:
-        return list(mido.get_input_names())
+        return _real_names(mido.get_input_names())
     except Exception as exc:  # noqa: BLE001
         log.warning("cannot list MIDI inputs: %s", exc)
         return None
@@ -95,15 +104,13 @@ def _winmm_indices() -> bool:
 
 
 def match_port(wanted: str, names: list[str]) -> str | None:
-    """The one rule by which a port is found, at the start and by the watchdog (all case-insensitive):
+    """The port a saved name stands for (all case-insensitive; item 89 uses it for the port setting of earlier versions):
 
     1. a listed name that is the wanted name;
     2. on Windows, a listed name that differs only in the index WinMM appends to every name: another device coming
-       or going renumbers a port (``LCXL3 1 MIDI In 0`` → ``… 1``), and a port picked in the MIDI port row is
-       saved with its index;
-    3. the first listed name that contains the wanted name (a controller file's ``port_match`` is a part of the
-       name), except that a wanted name ending in a digit isn't taken for the start of a longer number
-       (``… In 1`` is not ``… In 10``).
+       or going renumbers a port (``LCXL3 1 MIDI In 0`` → ``… 1``);
+    3. the first listed name that contains the wanted name, except that a wanted name ending in a digit isn't taken
+       for the start of a longer number (``… In 1`` is not ``… In 10``).
     """
     wanted = wanted.lower()
     if not wanted:
@@ -132,17 +139,10 @@ def port_key(name: str) -> str:
 
 
 class MidiInput:
-    def __init__(self, controller: Controller | None, port_override: str | None, macros, ignored=None, tap=None):
+    def __init__(self, controller: Controller | None, macros, ignored=None):
         self.controller = controller
-        self.tap = tap  # (port name, message): the routes of the Control Desk see every message of this port too (item 59)
         self.ignored = ignored or (lambda macro: False)  # macro → True: drop the message (unassigned dimmer)
-        self.port_override = port_override
         self.macros = macros
-        self.port = None
-        self.port_name: str | None = None
-        self.error: str | None = None
-        self.error_kind: str | None = None  # "not_found" (no port matches) or "open_failed": Connections → MIDI words the advice
-        self.port_wanted: str | None = None  # the match string that found nothing, or the port that wouldn't open
         self.by_control: dict[tuple[str, int], list[MidiMapping]] = {}
         self.shift_controls: set[tuple[str, int, int]] = set()  # (kind, number, channel) of the shift buttons held down
         # (kind, number, channel) of a held button -> the momentary mapping that got its press: the release goes
@@ -174,38 +174,6 @@ class MidiInput:
                         controller.name, m.type, m.number, m.channel or controller.channel, m.macro,
                     )
 
-    # -- port
-    def wanted_name(self) -> str:
-        """The port name (or part of it) looked for, as saved: the Settings port wins over the controller file's."""
-        return (self.port_override or (self.controller.port_match if self.controller else None) or "")
-
-    def find_port(self, names: list[str]) -> str | None:
-        """The one rule by which the port is found, at the start and by the watchdog: ``match_port``."""
-        return match_port(self.wanted_name(), names)
-
-    def start(self) -> None:
-        """Open the port. Called again by the watchdog while the input has an error: what goes wrong is logged when it
-        changes, not at every try."""
-        if mido is None or self.controller is None:
-            return
-        wanted = self.wanted_name()  # shown as it is saved; matched in lower case
-        previous = (self.error_kind, self.error)
-        name = self.find_port(list_midi_inputs())
-        if name is None:
-            self.error, self.error_kind, self.port_wanted = f"no MIDI port matches '{wanted}'", "not_found", wanted
-            if previous != (self.error_kind, self.error):
-                log.warning("MIDI input: %s", self.error)
-            return
-        try:
-            self.port = mido.open_input(name, callback=self.handle)
-            self.port_name = name
-            self.error, self.error_kind, self.port_wanted = None, None, None
-            log.info("MIDI input: %s (controller '%s')", name, self.controller.name)
-        except Exception as exc:  # noqa: BLE001
-            self.error, self.error_kind, self.port_wanted = str(exc), "open_failed", name
-            if previous != (self.error_kind, self.error):
-                log.error("MIDI input failed: %s", exc)
-
     def release_all(self) -> None:
         """Let go of everything the controller still holds: a momentary macro (fog!) must not stay on when the input
         is closed or the mapping is swapped while a button is down."""
@@ -219,12 +187,6 @@ class MidiInput:
 
     def stop(self) -> None:
         self.release_all()
-        if self.port is not None:
-            try:
-                self.port.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self.port = None
 
     # -- learn mode: the first learnable CC / note after the start is captured here and ends Learn; until then (and a
     # moment after) messages are shown in the monitor but move nothing
@@ -264,15 +226,10 @@ class MidiInput:
         return bool(self.shift_controls)
 
     # -- messages
-    def handle(self, msg) -> None:
+    def handle(self, msg, device: str = "") -> None:
+        """One message of ``device`` (its name): shown in the monitor, and mapped when a controller is active."""
         if msg.type in ("clock", "active_sensing"):
             return
-        tap = self.tap
-        if tap is not None and self.port_name:
-            try:
-                tap(self.port_name, msg)
-            except Exception:  # noqa: BLE001 - the routes must never stop the controller
-                log.exception("MIDI routes")
         self.received += 1
         kind, number, value = None, 0, 0
         if msg.type == "control_change":
@@ -283,6 +240,7 @@ class MidiInput:
         entry = {
             "t": round(time.time(), 2),
             "seq": self.received,
+            "device": device,
             "text": str(msg),
             "kind": kind,
             "number": number,
@@ -440,12 +398,6 @@ class MidiInput:
 
     def status(self) -> dict:
         return {
-            "port": self.port_name,
-            "port_override": self.port_override or None,  # section 02's MIDI port; wins over the controller file's
-            "wanted": self.wanted_name(),
-            "error": self.error,
-            "error_kind": self.error_kind,
-            "port_wanted": self.port_wanted,
             "controller": self.controller.name if self.controller else None,
             "channel": self.controller.channel if self.controller else None,
             "received": self.received,

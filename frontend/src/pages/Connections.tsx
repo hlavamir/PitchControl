@@ -2,15 +2,14 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AudioDevice, type OscStatus, type SerialDevice } from '../api'
 import { LiveBandMeter } from '../components/LiveBandMeter'
 import { ArtnetInputSection, DmxInputSection, useLiveInput } from '../components/LiveInputSection'
+import { MidiDevicesSection } from '../components/MidiDevicesSection'
 import { MidiMappingSection } from '../components/MidiMapping'
 import { OutputMonitor } from '../components/OutputMonitor'
 import { SubTabs, useSubTab, type SubTab } from '../components/SubTabs'
 import { ARTNET_UNIVERSES, Button, DevicePicker, NumberInput, Row, Section, StatusDot, TextInput, Toggle, UniverseSelect, deviceKey, useSettings } from '../components/forms'
 import { CONNECTION_TABS, type ConnectionTab } from '../pages'
 import { reconnectLine } from '../reconnect'
-import { savedPortState } from '../savedPort'
 import { unchanged, usePolling } from '../usePolling'
-import { midiNotice } from '../midiNotice'
 import type { EngineConnection } from '../useEngine'
 import { useFieldNav } from '../useFieldNav'
 
@@ -35,7 +34,7 @@ const KIND_NAMES = { pro: 'Enttec DMX USB Pro or compatible', open: 'Enttec Open
 
 const TABS: SubTab<ConnectionTab>[] = [
   { id: 'audio', label: 'Audio', tip: 'Audio input: the device, its channels and gain, and the 32 frequency bands' },
-  { id: 'midi', label: 'MIDI', tip: 'MIDI controller: its port, the MIDI monitor and the mapping of its controls to the macros' },
+  { id: 'midi', label: 'MIDI', tip: 'MIDI devices (In per device), the MIDI monitor and the mapping of a controller to the macros' },
   { id: 'dmx', label: 'DMX & Art-Net', tip: 'DMX out and in, side by side: Art-Net over the network and the USB DMX interfaces; and the live output of every fixture' },
   { id: 'osc', label: 'OSC', tip: 'OSC output: the base colours to another program or device on the network' },
   { id: 'serial', label: 'Serial', tip: 'The PitchPlease v2 strips on a USB serial line' },
@@ -83,10 +82,9 @@ export function Connections({ engine }: { engine: EngineConnection }) {
   usePolling(loadLists)
   // a device that came back by itself is in the lists now: read them again, so the fields stop saying "(not found)"
   const audioBack = engine.state?.io?.audio?.reconnect?.back
-  const midiBack = engine.state?.io?.midi?.reconnect?.back
   useEffect(() => {
-    if (audioBack != null || midiBack != null) refresh()
-  }, [audioBack, midiBack])
+    if (audioBack != null) refresh()
+  }, [audioBack])
 
   return (
     <div ref={pageRef} className="flex flex-col gap-1.5 wide:h-full">
@@ -215,87 +213,60 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
 
 function MidiTab({
   engine,
-  settingsApi,
   midiPorts,
   controllerLabels,
+  settingsApi,
   refresh,
 }: {
   engine: EngineConnection
-  settingsApi: SettingsApi
   midiPorts: string[]
   controllerLabels: Record<string, string>
+  settingsApi: SettingsApi
   refresh: () => void
 }) {
-  const { settings, commit, applySaved } = settingsApi
+  const { settings, applySaved } = settingsApi
   const io = engine.state?.io
-  const midiNote = midiNotice(io?.midi)
-  const saved = savedPortState(settings!.midi_input ?? '', midiPorts, io?.midi)
-  const midiLine = reconnectLine(io?.midi)
+  const devices = io?.midi?.devices ?? []
   return (
     <div className="grid gap-1.5 wide:h-full wide:min-h-0 wide:grid-cols-[25rem_minmax(0,1fr)]">
-      <Section
-        index="01"
-        title="MIDI controller" icon="in"
-        className="wide:min-h-0"
-        right={<StatusDot ok={io?.midi ? Boolean(io.midi.port) : null} label={io?.midi?.port ?? 'not connected'} error={io?.midi?.error} tip="The MIDI port the controller is connected to" />}
-        tip="The hardware controller (e.g. Launch Control XL 3) that drives the macros: faders, knobs and buttons"
-      >
-        <Row label="Controller mapping" hint="The controller file in use. It is chosen in the MIDI mapping (Use this controller / Stop using it); controller files are shipped with the app or live in controllers/ in your data folder" plain>
-          <span className="truncate">{settings!.active_controller ? controllerLabels[settings!.active_controller] ?? settings!.active_controller : 'none'}</span>
-        </Row>
-        <Row label="MIDI port" hint="MIDI input to listen to; 'from controller file' picks the port by the name stored in the mapping">
-          <select value={settings!.midi_input ?? ''} onChange={(e) => commit((s) => (s.midi_input = e.target.value || null))}>
-            <option value="">from controller file</option>
-            {settings!.midi_input && saved.state === 'renamed' && (
-              <option value={settings!.midi_input}>
-                {settings!.midi_input} (now {saved.now})
-              </option>
-            )}
-            {settings!.midi_input && saved.state === 'missing' && <option value={settings!.midi_input}>{settings!.midi_input} (not found)</option>}
-            {midiPorts.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
-        </Row>
-        {midiNote?.level === 'error' && (
-          <div className="my-1 border border-edge px-2 py-1.5 text-[12px]" role="alert">
-            ✕ {midiNote.text}
+      <div className="flex min-h-0 flex-col gap-1.5">
+        <MidiDevicesSection index="01" devices={devices} className="flex-none" />
+        <Section
+          index="02"
+          title="MIDI controller" icon="in"
+          className="wide:min-h-0 wide:flex-1"
+          right={<StatusDot ok={io?.midi ? (io.midi.connected_devices ?? 0) > 0 : null} label={`${io?.midi?.connected_devices ?? 0} connected`} tip="How many MIDI devices that are switched on are connected" />}
+          tip="The mapping of a hardware controller (e.g. Launch Control XL 3) to the macros: faders, knobs and buttons"
+        >
+          <Row label="Controller mapping" hint="The controller file in use. It is chosen in the MIDI mapping (Use this controller / Stop using it); controller files are shipped with the app or live in controllers/ in your data folder" plain>
+            <span className="truncate">{settings!.active_controller ? controllerLabels[settings!.active_controller] ?? settings!.active_controller : 'none'}</span>
+          </Row>
+          <div className="mt-3 flex min-h-0 flex-1 flex-col" data-tip="Every MIDI message of every device that is on, and the macro it moves; use it to check cables and the mapping">
+            <div className="mb-1 flex flex-none justify-between gap-2 text-[11px] text-dim">
+              <span>MIDI monitor, newest first</span>
+              <span className="truncate">
+                {io?.midi?.received ?? 0} received · mapping on channel {io?.midi?.channel ?? '–'}
+              </span>
+            </div>
+            <div className="h-56 overflow-x-hidden overflow-y-auto bg-panel-2 p-2 font-mono text-[11px] wide:h-auto wide:min-h-0 wide:flex-1">
+              {(io?.midi?.recent ?? []).length === 0 && <div className="text-dim">Nothing received yet — move a fader or knob on a device that is on.</div>}
+              {(io?.midi?.recent ?? []).map((m, i) => (
+                <div key={`${m.t}-${i}`} className="flex gap-3">
+                  <span className="flex-1 truncate text-ink" title={`${m.device}: ${m.text} (the raw message counts channels from 0)`}>
+                    {/* the channel as on the controller (1-16), not the 0-15 of the raw message */}
+                    {m.device ? `${m.device} · ` : ''}
+                    {m.kind ? `ch ${m.channel} · ${m.kind === 'cc' ? 'CC' : 'note'} ${m.number} · ${m.value}` : m.text}
+                  </span>
+                  {m.macro ? <span className="text-ink">→ {m.macro}</span> : <span className="text-ink">{m.note}</span>}
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-        {midiNote?.level === 'warning' && (
-          <div className="my-1 px-2 py-1 text-[11px]" role="status">
-            ! {midiNote.text}
-          </div>
-        )}
-        {midiLine && (
-          <div className="my-1 px-2 text-[11px] text-dim" role="status">
-            {midiLine}
-          </div>
-        )}
-        <div className="mt-3 flex min-h-0 flex-1 flex-col" data-tip="Every MIDI message that arrives and the macro it moves; use it to check cables and the mapping">
-          <div className="mb-1 flex flex-none justify-between gap-2 text-[11px] text-dim">
-            <span>MIDI monitor, newest first</span>
-            <span className="truncate">
-              {io?.midi?.received ?? 0} received · mapping on channel {io?.midi?.channel ?? '–'}
-            </span>
-          </div>
-          <div className="h-56 overflow-x-hidden overflow-y-auto bg-panel-2 p-2 font-mono text-[11px] wide:h-auto wide:min-h-0 wide:flex-1">
-            {(io?.midi?.recent ?? []).length === 0 && <div className="text-dim">Nothing received yet — move a fader or knob on the controller.</div>}
-            {(io?.midi?.recent ?? []).map((m, i) => (
-              <div key={`${m.t}-${i}`} className="flex gap-3">
-                <span className="flex-1 truncate text-ink" title={`raw message: ${m.text} (the raw message counts channels from 0)`}>
-                  {/* the channel as on the controller (1-16), not the 0-15 of the raw message */}
-                  {m.kind ? `ch ${m.channel} · ${m.kind === 'cc' ? 'CC' : 'note'} ${m.number} · ${m.value}` : m.text}
-                </span>
-                {m.macro ? <span className="text-ink">→ {m.macro}</span> : <span className="text-ink">{m.note}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </Section>
+        </Section>
+      </div>
 
       <MidiMappingSection
-        index="02"
+        index="03"
         className="wide:min-h-0"
         engine={engine}
         midiPorts={midiPorts}

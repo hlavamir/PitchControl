@@ -299,7 +299,7 @@ def test_midi_learning_endpoint(layered):
     from pitchcontrol.io.midi_in import MidiInput
 
     engine = Engine(layered, enable_hardware=False)
-    engine.midi = MidiInput(layered.controller, None, engine.macros)
+    engine.midi = MidiInput(layered.controller, engine.macros)
     client = TestClient(create_app(engine))
     res = client.post("/api/midi/learning", json={"on": True, "shifts": [{"type": "cc", "number": 60, "channel": 1}]})
     assert res.status_code == 200

@@ -15,7 +15,7 @@ Layout of the defaults and the user folder::
 
 and of this computer's folder::
 
-    machine.json              per-computer settings (audio input, MIDI port, outputs, UI, the network switch)
+    machine.json              per-computer settings (audio input, MIDI devices, outputs, UI, the network switch)
     last_version              the app version of the last start (for upgrade notices)
     state/macros.json         auto-saved macro values (crash recovery)
     state/overrides.json      Control Desk overrides

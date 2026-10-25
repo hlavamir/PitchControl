@@ -238,21 +238,22 @@ class Routes:
             if r.kind == "midi":
                 d = devices.get(port_key(r.midi_device))
                 info = {"age": d["age"], "pps": 0.0} if d and d["age"] is not None else None
-                extra = {"midi_open": bool(d and (d["open"] or d["via"])), "midi_error": d["error"] if d else None}
+                extra = {"midi_open": bool(d and d["open"]), "midi_error": d["error"] if d else None}
             else:
                 info = sources.get(r.source_key)
             out.append({**r.model_dump(mode="json"), **extra, "seen": info is not None, "age": info["age"] if info else None, "pps": info["pps"] if info else 0.0})
         return out
 
     def midi_overlaps(self, midi_input) -> list[dict]:
-        """CCs and notes of MIDI routes that the app's MIDI mapping uses too, on the same device and MIDI channel: a
-        warning, not a block (both react). ``midi_input``: the app's ``MidiInput`` (its controller file and port)."""
+        """CCs and notes of MIDI routes that the app's MIDI mapping uses too, on the same MIDI channel: a warning, not a
+        block (both react). The mapping listens to every device that is on (item 89), so the device doesn't matter.
+        ``midi_input``: the app's ``MidiInput`` (its controller file)."""
         controller = getattr(midi_input, "controller", None)
         if controller is None:
             return []
         out = []
         for r in self.all():
-            if r.kind != "midi" or not r.enabled or not MidiRouteHub.controller_owns(r.midi_device, midi_input):
+            if r.kind != "midi" or not r.enabled:
                 continue
             for i, spec in enumerate(r.channels):
                 if spec.type not in ("cc", "cc14", "note"):

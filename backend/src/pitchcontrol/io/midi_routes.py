@@ -5,11 +5,9 @@ of the route has its own input (a CC, a 14-bit CC pair, a note, or a constant, s
 ``engine/routes.py``). This hub keeps the latest value of every control it has seen, like the input store of Art-Net
 does: a control that stops keeps its last value (Miro, 2026-10-22).
 
-Where the messages come from:
-
-- the controller of the MIDI mapping has its port open already, and two programs (or two opens in this one) can't
-  share a MIDI port on Windows, so the controller's ``MidiInput`` hands every message on (``MidiInput.tap``);
-- any other device is opened here, from the devices the enabled MIDI routes name (``sync``).
+Where the messages come from (item 89): ``MidiDevices`` owns every MIDI port (a port can be opened once only on
+Windows) and hands every message of every device on, with the device's key, to ``handle``. A route still takes the
+messages of its own device only.
 
 Learn per channel: ``set_learning`` waits for the next CC or note-on of the route's device on the route's MIDI channel
 and tells the caller which control it was; messages on another channel are remembered as "heard" so the page can say
@@ -18,15 +16,12 @@ so.
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from .midi_in import LEARN_SECONDS, list_midi_inputs_checked, match_port, mido, port_key
-
-log = logging.getLogger(__name__)
+from .midi_in import LEARN_SECONDS, port_key
 
 Control = tuple[str, int, str, int]  # (device key, MIDI channel 1-16, "cc" or "note", number)
 
@@ -46,10 +41,8 @@ class MidiRouteHub:
         self._clock = clock
         self._lock = threading.Lock()
         self._controls: dict[Control, dict[str, Any]] = {}  # the latest of each control: {"v": 0..127, "on": bool}
-        self._ports: dict[str, Any] = {}  # device key -> the mido port this hub opened
-        self._errors: dict[str, str] = {}  # device key -> why it isn't open
-        self._names: dict[str, str] = {}  # device key -> the name the route asks for
-        self._via: dict[str, str] = {}  # device key -> "controller" when the controller's input hands the messages on
+        # device name -> (open, why not): what ``MidiDevices`` says about the device a route names
+        self.device_state: Callable[[str], tuple[bool, str | None]] = lambda device: (False, None)
         self._last: dict[str, float] = {}  # device key -> clock() of its last message
         self._received: dict[str, int] = {}
         # Learn: what waits for a control
@@ -60,11 +53,8 @@ class MidiRouteHub:
         self.on_learned: Callable[[str, int, dict], None] = lambda route_id, index, spec: None
 
     # -- messages
-    def tap(self, port_name: str, msg) -> None:
-        """A message of the controller's own port (``MidiInput.tap``)."""
-        self.handle(port_key(port_name), msg)
-
     def handle(self, device: str, msg) -> None:
+        """A message of the device with this ``port_key``."""
         kind, number, value, on = None, 0, 0, False
         if msg.type == "control_change":
             kind, number, value, on = "cc", msg.control, msg.value, msg.value > 0
@@ -135,97 +125,26 @@ class MidiRouteHub:
             learn = self._learn
             return learn["route"] if learn is not None and self._clock() < learn["until"] else None
 
-    # -- ports
-    def sync(self, devices: Iterable[str], controller=None, names: list[str] | None = None) -> None:
-        """Make the open ports match the devices the enabled MIDI routes name. ``controller``: the app's ``MidiInput``;
-        a device that is its port is not opened here (the controller's input hands its messages on). ``names``: the
-        system's port list (read when not given; a failed listing changes nothing)."""
-        wanted = {port_key(d): d for d in devices if d}
-        via: dict[str, str] = {}
-        for key, device in wanted.items():
-            if controller is not None and self.controller_owns(device, controller):
-                via[key] = "controller"
-        need = [k for k in wanted if k not in via]
-        if names is None and need:
-            names = list_midi_inputs_checked()
-            if names is None:
-                return
-        with self._lock:
-            self._names = wanted
-            self._via = via
-            self._errors = {k: e for k, e in self._errors.items() if k in need}
-        for key in [k for k in list(self._ports) if k not in need]:
-            self._close(key)
-        for key in need:
-            port = self._ports.get(key)
-            listed = match_port(wanted[key], names or [])
-            if port is not None and (listed is None):
-                self._close(key)  # pulled
-                port = None
-            if port is not None:
-                continue
-            if listed is None:
-                self._set_error(key, f"no MIDI port matches '{wanted[key]}'")
-                continue
-            self._open(key, listed)
-
-    @staticmethod
-    def controller_owns(device: str, controller) -> bool:
-        """Whether the controller's input owns this device: its open port is it, or it is not open yet and the port it
-        looks for is this one (then it opens it, and a second open here would take the port from it)."""
-        if controller.port_name:
-            return port_key(controller.port_name) == port_key(device)
-        wanted = controller.wanted_name().lower()
-        return bool(wanted) and wanted in device.lower()
-
-    def _open(self, key: str, name: str) -> None:
-        if mido is None:
-            self._set_error(key, "MIDI isn't available")
-            return
-        try:
-            self._ports[key] = mido.open_input(name, callback=lambda msg, k=key: self.handle(k, msg))
-            with self._lock:
-                self._errors.pop(key, None)
-            log.info("MIDI routes: opened '%s'", name)
-        except Exception as exc:  # noqa: BLE001
-            self._set_error(key, str(exc) or exc.__class__.__name__)
-
-    def _set_error(self, key: str, message: str) -> None:
-        with self._lock:
-            if self._errors.get(key) != message:
-                log.warning("MIDI routes: %s", message)
-            self._errors[key] = message
-
-    def _close(self, key: str) -> None:
-        port = self._ports.pop(key, None)
-        if port is not None:
-            try:
-                port.close()
-            except Exception:  # noqa: BLE001
-                pass
-
-    def stop(self) -> None:
-        for key in list(self._ports):
-            self._close(key)
-
     # -- what the page shows
-    def status(self) -> dict:
+    def status(self, devices: Iterable[str] = ()) -> dict:
+        """``devices``: the names the routes that listen (or learn) ask for."""
         now = self._clock()
+        wanted = {port_key(d): d for d in devices if d}
+        states = {k: self.device_state(d) for k, d in wanted.items()}  # outside the lock: it asks MidiDevices
         with self._lock:
-            devices = [
+            rows = [
                 {
-                    "device": self._names[k],
-                    "open": k in self._ports,
-                    "via": self._via.get(k),
-                    "error": self._errors.get(k),
+                    "device": d,
+                    "open": states[k][0],
+                    "error": states[k][1],
                     "received": self._received.get(k, 0),
                     "age": round(now - self._last[k], 2) if k in self._last else None,
                 }
-                for k in self._names
+                for k, d in wanted.items()
             ]
             learn = self._learn
             return {
-                "devices": devices,
+                "devices": rows,
                 "learn": None
                 if learn is None or now >= learn["until"]
                 else {"id": learn["id"], "route": learn["route"], "index": learn["index"], "channel": learn["channel"], "seconds": round(learn["until"] - now, 1), "heard": self.heard},

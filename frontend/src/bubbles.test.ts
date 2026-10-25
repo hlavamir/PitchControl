@@ -125,14 +125,13 @@ describe('rates and lights', () => {
       ({
         outputs: { enttec: [{ connected: true, error: null, frames: n }, null], artnet: { connected: true, error: null, frames: n }, pitchpls_v2: null, osc: null },
         audio: null,
-        midi: { error: null, received: n },
-        midi_routes: { devices: [{ device: 'nano', open: true, via: null, error: null, received: 3, age: 0 }], learn: null, learned: null, learn_seconds: 10 },
+        midi: { error: null, received: n, devices: [{ key: 'nano', name: 'Nano', input: true, output: false, state: 'connected', error: null, received: 3, age: 0, reconnect: null }], connected_devices: 1 },
       }) as unknown as EngineState['io']
     const t = new IoTracker()
     t.update(io(0), 0)
     const live = t.update(io(40), 1000)
     expect(live.rates).toEqual({ enttec0: 40, enttec1: null, artnet: 40, v2: null })
-    expect(live.active).toEqual({ midi: true, 'route:nano': false })
+    expect(live.active).toEqual({ midi: true, 'device:nano': false })
     expect(t.update(undefined, 2000)).toEqual({ rates: {}, active: {} })
   })
 })
@@ -141,6 +140,7 @@ describe('MIDI messages', () => {
   const ev = (over: Partial<MidiEvent>): MidiEvent => ({
     t: 0,
     seq: 1,
+    device: 'Nano',
     text: 'control_change channel=0 control=13 value=64',
     kind: 'cc',
     number: 13,

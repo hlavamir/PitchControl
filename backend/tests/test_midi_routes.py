@@ -4,11 +4,10 @@ import mido
 import pytest
 from fastapi.testclient import TestClient
 
-from pitchcontrol.config.models import Controller, MidiMapping
+from pitchcontrol.config.models import Controller, MidiDeviceSetting, MidiMapping
 from pitchcontrol.engine.engine import Engine
-from pitchcontrol.engine.macros import MacroBank
 from pitchcontrol.engine.routes import MidiChannel, Route
-from pitchcontrol.io import midi_routes
+from pitchcontrol.io.midi_devices import _Runtime
 from pitchcontrol.io.midi_in import MidiInput, port_key
 from pitchcontrol.io.midi_routes import MidiRouteHub, scale14, scale7
 from pitchcontrol.server.app import create_app
@@ -207,20 +206,8 @@ def controller() -> Controller:
     return Controller(name="LCXL", port_match="Fake Pad", channel=13, mappings=[MidiMapping(type="cc", number=21, macro="Strobo Decay"), MidiMapping(type="note", number=40, macro="Fog Machine", channel=1)])
 
 
-def test_the_controller_hands_every_message_to_the_routes():
-    hub = MidiRouteHub()
-    macros = MacroBank()
-    midi = MidiInput(controller(), None, macros, tap=hub.tap)
-    midi.port_name = DEVICE
-    midi.handle(mido.Message("control_change", channel=12, control=21, value=64))  # the first message only says where the fader is
-    midi.handle(mido.Message("control_change", channel=12, control=21, value=127))
-    assert hub.value(KEY, 13, MidiChannel(type="cc", number=21)) == 255
-    assert macros.control("Strobo Decay") == 1.0  # and the mapping still works
-
-
 def test_the_overlap_notice_names_the_macros_the_mapping_drives_by_that_control(engine):
-    midi = MidiInput(controller(), None, engine.macros)
-    midi.port_name = DEVICE
+    midi = MidiInput(controller(), engine.macros)
     routes = [
         Route(id="a", kind="midi", midi_device=DEVICE, midi_channel=13, count=3, channels=[MidiChannel(type="cc", number=21), MidiChannel(type="cc", number=22), MidiChannel(type="note", number=40)]),
         Route(id="b", kind="midi", midi_device=DEVICE, midi_channel=1, count=2, channels=[MidiChannel(type="cc", number=21), MidiChannel(type="note", number=40)]),
@@ -231,67 +218,44 @@ def test_the_overlap_notice_names_the_macros_the_mapping_drives_by_that_control(
     assert [(n["route"], n["index"], n["kind"], n["number"], n["macros"]) for n in notices] == [
         ("a", 0, "cc", 21, ["Strobo Decay"]),  # channel 13 is the controller's: CC 21 is mapped
         ("b", 1, "note", 40, ["Fog Machine"]),  # the note is mapped on channel 1 explicitly
-    ]  # CC 22 isn't mapped, route b's CC 21 is on channel 1 (the mapping is on 13), route c is another device
+        ("c", 0, "cc", 21, ["Strobo Decay"]),  # the mapping listens to every device (item 89): another device overlaps too
+    ]  # CC 22 isn't mapped, route b's CC 21 is on channel 1 (the mapping is on 13)
     assert notices[0]["text"] == f"CC 21 on {DEVICE} also drives Strobo Decay in the MIDI mapping: both will react"
-    assert engine.routes.midi_overlaps(MidiInput(None, None, engine.macros)) == []  # no controller: nothing to overlap with
+    assert engine.routes.midi_overlaps(MidiInput(None, engine.macros)) == []  # no controller: nothing to overlap with
 
 
 def test_a_14_bit_pair_overlaps_with_its_second_half_too(engine):
-    midi = MidiInput(controller(), None, engine.macros)
-    midi.port_name = DEVICE
+    midi = MidiInput(controller(), engine.macros)
     engine.routes.set_all([Route(kind="midi", midi_device=DEVICE, midi_channel=13, count=1, channels=[MidiChannel(type="cc14", number=21)])])
     assert [n["number"] for n in engine.routes.midi_overlaps(midi)] == [21]  # CC 53 isn't mapped
 
 
-# -- ports
+# -- the devices (item 89)
 
 
-class FakeMido:
-    def __init__(self, names):
-        self.names, self.opened, self.closed = names, [], []
-
-    def open_input(self, name, callback=None):
-        fake = self
-        fake.opened.append(name)
-
-        class Port:
-            def close(self):
-                fake.closed.append(name)
-
-        return Port()
+def test_the_stream_reaches_the_routes_and_the_mapping_of_the_engine(engine):
+    engine.enable_hardware = True
+    engine.store.controller = controller()
+    engine.restart_midi()
+    engine._midi_message(KEY, DEVICE, mido.Message("control_change", channel=12, control=21, value=64))  # the first message only says where the fader is
+    engine._midi_message(KEY, DEVICE, mido.Message("control_change", channel=12, control=21, value=127))
+    assert engine.midi_routes.value(KEY, 13, MidiChannel(type="cc", number=21)) == 255
+    assert engine.macros.control("Strobo Decay") == 1.0  # and the mapping still works
 
 
-def test_the_hub_opens_the_devices_of_the_routes_but_not_the_controllers(monkeypatch):
-    fake = FakeMido([DEVICE, "Other Box 2 MIDI In 0"])
-    monkeypatch.setattr(midi_routes, "mido", fake)
-    hub = MidiRouteHub()
-    midi = MidiInput(controller(), None, MacroBank())
-    midi.port_name = DEVICE  # the controller has it open
-    hub.sync([DEVICE, "Other Box 2 MIDI In 0", "Missing Thing 9 MIDI In 0"], midi, names=fake.names)
-    assert fake.opened == ["Other Box 2 MIDI In 0"]  # the controller's own port is not opened a second time
-    status = {d["device"]: d for d in hub.status()["devices"]}
-    assert status[DEVICE]["via"] == "controller" and status["Other Box 2 MIDI In 0"]["open"]
-    assert "no MIDI port matches" in status["Missing Thing 9 MIDI In 0"]["error"]
-
-    hub.sync([DEVICE], midi, names=fake.names)  # the route of the other box is gone
-    assert fake.closed == ["Other Box 2 MIDI In 0"]
-    hub.sync(["Other Box 2 MIDI In 0"], midi, names=[DEVICE])  # unplugged while a route uses it
-    assert hub.status()["devices"][0]["open"] is False
-
-    # a controller that isn't connected yet owns the port it looks for: this hub must not take it
-    fake.opened.clear()
-    waiting = MidiInput(controller(), None, MacroBank())
-    hub.sync([DEVICE], waiting, names=[DEVICE])
-    assert fake.opened == []
-
-
-def test_a_listing_that_failed_changes_nothing(monkeypatch):
-    fake = FakeMido(["Box 1 MIDI In 0"])
-    monkeypatch.setattr(midi_routes, "mido", fake)
-    monkeypatch.setattr(midi_routes, "list_midi_inputs_checked", lambda: None)
-    hub = MidiRouteHub()
-    hub.sync(["Box 1 MIDI In 0"], None)
-    assert fake.opened == []
+def test_the_status_says_what_the_devices_make_of_the_routes_devices(engine):
+    engine.routes.set_all([midi_route(MidiChannel(type="cc", number=1), id="r1"), Route(kind="midi", id="r2", midi_device="Gone 3 MIDI In 0", midi_channel=1, count=1, channels=[MidiChannel()])])
+    engine.store.settings.midi_devices[KEY] = MidiDeviceSetting(name=DEVICE, input=False)
+    engine.midi_devices._rt[KEY] = _Runtime(state="off")  # plugged in, In off
+    got = {d["device"]: d for d in engine.midi_routes_status()["devices"]}
+    assert got[DEVICE]["open"] is False and "In switch is off" in got[DEVICE]["error"]
+    assert "no MIDI port matches" in got["Gone 3 MIDI In 0"]["error"]
+    engine.midi_devices._rt[KEY] = _Runtime(state="connected")
+    engine.store.settings.midi_devices[KEY].input = True
+    cc(engine.midi_routes, 1, 5)
+    got = {d["device"]: d for d in engine.midi_routes_status()["devices"]}
+    assert got[DEVICE]["open"] is True and got[DEVICE]["error"] is None and got[DEVICE]["received"] == 1
+    assert engine.routes.status({}, engine.midi_routes_status())[0]["midi_open"] is True
 
 
 # -- the endpoints
@@ -327,16 +291,10 @@ def test_endpoints_for_a_channel_and_for_learn(engine):
     assert client.post(f"/api/routes/{noname}/learn", json={"index": 0}).status_code == 409
 
 
-def test_learn_opens_the_device_of_a_route_that_is_off(monkeypatch, engine):
-    fake = FakeMido([DEVICE])
-    monkeypatch.setattr(midi_routes, "mido", fake)
-    monkeypatch.setattr(midi_routes, "list_midi_inputs_checked", lambda: fake.names)
-    engine.routes.set_all([midi_route(MidiChannel(), id="r1", enabled=False)])
-    engine.sync_midi_routes()
-    assert fake.opened == []  # an off route listens to nothing
-    engine.midi_routes.set_learning("r1", DEVICE, 1, 0)
-    engine.sync_midi_routes()
-    assert fake.opened == [DEVICE]
-    engine.midi_routes.set_learning("r1", DEVICE, 1, 0, on=False)
-    engine.sync_midi_routes()
-    assert fake.closed == [DEVICE]  # and lets go again when Learn ends
+def test_learn_refuses_a_device_whose_in_is_off(engine):
+    client = TestClient(create_app(engine))
+    engine.routes.set_all([midi_route(MidiChannel(), id="r1")])
+    engine.store.settings.midi_devices[KEY] = MidiDeviceSetting(name=DEVICE, input=False)
+    assert client.post("/api/routes/r1/learn", json={"index": 0}).status_code == 409
+    engine.store.settings.midi_devices[KEY].input = True
+    assert client.post("/api/routes/r1/learn", json={"index": 0}).json()["learn_id"] == 1

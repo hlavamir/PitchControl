@@ -20,7 +20,8 @@ from ..config.models import Scene
 from ..io import audio_in
 from ..io.audio_in import AudioInput
 from ..io.live_input import LiveInput
-from ..io.midi_in import MidiInput, list_midi_inputs_checked
+from ..io.midi_devices import MidiDevices
+from ..io.midi_in import MidiInput
 from ..io.midi_routes import MidiRouteHub
 from ..io.outputs import OutputManager
 from ..quitguard import UnsavedReports
@@ -43,7 +44,7 @@ AUDIO_WATCH_S = 2.0  # how often the audio input is looked at when it isn't on t
 # The device list is read by starting a child process (0.3 s on the Mac, unmeasured on Windows). A cable stepped on is
 # plugged back within seconds, so the first minute is looked at every AUDIO_WATCH_S; a device that has been away longer
 # (the interface left at home, the stand-in running all night) is looked for every AUDIO_SLOW_WATCH_S only.
-MIDI_WATCH_S = 2.0  # how often the MIDI input is looked at (listing the ports is cheap and cuts nothing: item 33)
+MIDI_WATCH_S = 2.0  # how often the MIDI devices are looked at (listing the ports is cheap and cuts nothing: items 33, 89)
 AUDIO_FAST_PHASE_S = 60.0
 AUDIO_SLOW_WATCH_S = 10.0
 AUDIO_RETRY_S = 10.0  # after a reconnect that didn't work (the device is listed but won't open), wait this long
@@ -73,14 +74,7 @@ class Engine:
         self._audio_retry_at = 0.0
         self._audio_problem_since = 0.0  # time.monotonic() the current problem was first seen
         self._audio_next_list = 0.0  # no device list before this time (monotonic)
-        # item 33: the same for the MIDI input (what the watchdog saw, in memory only)
-        self._midi_problem: str | None = None  # "lost" | "missing" | "failed" while the controller's port isn't open
-        self._midi_lost: float | None = None
-        self._midi_back: float | None = None
-        self._midi_lost_port: str | None = None
-        self._midi_back_port: str | None = None
-        self._midi_link_key: str | None = None  # what is looked for (the port the two times are about)
-        self._midi_restart = threading.Lock()  # one restart of the MIDI input at a time; closing and opening a port can be slow
+        self._midi_restart = threading.Lock()  # one swap of the MIDI mapping at a time
         self.macros = MacroBank()
         self._restore_macros()
         self.overrides = Overrides()  # Control Desk: manual DMX channel values, saved across restarts
@@ -91,6 +85,9 @@ class Engine:
         self._routes_saved = self.routes.version
         self.midi_routes = MidiRouteHub()  # the MIDI side of the routes (item 59)
         self.midi_routes.on_learned = self._route_learned
+        self.midi_devices = MidiDevices(store)  # owns every MIDI input port; its stream feeds the mapping, the routes and the monitor (item 89)
+        self.midi_routes.device_state = self.midi_devices.route_state
+        self.midi_devices.subscribe(self._midi_message)
 
         self.phase = PhaseTracker()
         self.colors = GroupColors()
@@ -160,6 +157,7 @@ class Engine:
         self.restart_live_input()
         self.restart_audio()
         self.restart_midi()
+        self.midi_devices.sync()
 
     def restart_live_input(self) -> None:
         """Make the Art-Net and DMX inputs match the saved settings (a receiver that didn't change keeps running)."""
@@ -274,8 +272,8 @@ class Engine:
                 log.exception("audio watchdog")
 
     def restart_midi(self) -> None:
-        # Restarts run one after the other (two at once would open the same, exclusive, port twice). The engine lock is
-        # only held to swap ``self.midi``: closing and opening a port is up to the driver and must not stop the frames.
+        """Swap the MIDI mapping (the controller file changed, or another one was chosen). The ports are not touched
+        (item 89): they belong to ``midi_devices``. The old mapping lets go of held buttons."""
         with self._midi_restart:
             with self.lock:
                 old, self.midi = self.midi, None
@@ -283,83 +281,37 @@ class Engine:
                 old.stop()
             if not self.enable_hardware:
                 return
-            new = MidiInput(self.store.controller, self.store.settings.midi_input, self.macros, ignored=self.store.dimmer_unassigned, tap=self.midi_routes.tap)
-            new.start()
+            new = MidiInput(self.store.controller, self.macros, ignored=self.store.dimmer_unassigned)
             with self.lock:
                 self.midi = new
 
+    def _midi_message(self, key: str, name: str, msg) -> None:
+        """Every message of every open MIDI device (the MIDI library's thread): the routes, then the mapping and the
+        monitor."""
+        try:
+            self.midi_routes.handle(key, msg)
+        except Exception:  # noqa: BLE001 - the routes must never stop the mapping
+            log.exception("MIDI routes")
+        midi = self.midi
+        if midi is not None:
+            midi.handle(msg, name)
+
     def midi_status(self, midi: MidiInput | None = None) -> dict | None:
-        """The MIDI input's status, with when the port was lost and came back (``reconnect``, null before any drop)."""
+        """The MIDI mapping's status and monitor, with the devices (item 89). ``connected_devices``: how many enabled devices are open."""
         midi = midi or self.midi
         if midi is None:
             return None
-        st = midi.status()
-        if self._midi_lost is not None or self._midi_back is not None:
-            st["reconnect"] = {
-                "lost": self._midi_lost,
-                "back": self._midi_back,
-                "lost_device": self._midi_lost_port,
-                "back_device": self._midi_back_port,
-            }
-        else:
-            st["reconnect"] = None
-        return st
+        return {**midi.status(), **self.midi_devices.status()}
 
-    def midi_check(self) -> None:
-        """One look of the MIDI watchdog (every ``MIDI_WATCH_S``): the input has no open port, or its port has gone from
-        the system's list (a pulled cable: the open port object doesn't notice) → when the port is listed again, open it.
-        Listing ports cuts nothing (item 27 on real CoreMIDI), so no re-init and nothing else is touched. A listing that
-        fails is not a pulled controller: that look is skipped. Logs once per change."""
-        if not self.enable_hardware:
-            return
-        with self._midi_restart:  # read under the restart lock: a restart in progress has no input yet, that's no drop
-            midi = self.midi
-        if midi is None or midi.controller is None:
-            return
-        key = midi.wanted_name()
-        if key != self._midi_link_key:  # another port or controller was chosen: the old drop is no longer news
-            self._midi_lost = self._midi_back = self._midi_lost_port = self._midi_back_port = None
-            self._midi_problem = None
-            self._midi_link_key = key
-        names = list_midi_inputs_checked()
-        if names is None:
-            return
-        listed = midi.find_port(names)
-        if midi.port is not None:
-            # Pulled only when nothing in the list matches the wanted name: Windows (WinMM) appends the port's index to
-            # every name, so plugging in another device can renumber this one ("LCXL3 1 MIDI In 0" → "… 1"), and a
-            # renamed match is the same controller, still open.
-            if midi.port_name in names or listed is not None:
-                if self._midi_problem is not None:
-                    self._midi_problem = None
-                return
-            # pulled while open: close the dead port (this lets go of held buttons), and look for it again from there
-            lost_port = midi.port_name
-            log.warning("MIDI port '%s' is gone from the system's list; it reconnects by itself when plugged in", lost_port)
-            self.restart_midi()
-            self._midi_problem, self._midi_lost, self._midi_lost_port = "lost", time.time(), lost_port
-            self._midi_back = self._midi_back_port = None
-            return
-        problem = "failed" if midi.error_kind == "open_failed" else "missing"
-        if self._midi_problem is None:
-            self._midi_problem = problem
-            self._midi_lost, self._midi_lost_port = None, None  # missing since the start: no drop time
-            self._midi_back = self._midi_back_port = None
-        if listed is None:
-            return  # still not plugged in
-        with self._midi_restart:
-            if self._stop.is_set() or self.midi is not midi:
-                return  # stopped, or restarted by someone else (Save) while we looked
-            midi.start()  # the same input object: only the port is opened again
-            if midi.port is not None:
-                self._midi_back, self._midi_back_port = time.time(), midi.port_name
-                self._midi_problem = None
-                log.info("MIDI input is back on '%s'", midi.port_name)
+    def midi_routes_status(self) -> dict:
+        """The hub's status for the devices that the routes which listen, or learn, name."""
+        learning = self.midi_routes.learning_route()
+        return self.midi_routes.status(r.midi_device for r in self.routes.all() if r.kind == "midi" and (r.enabled or r.id == learning))
 
     def _midi_watch(self) -> None:
         while not self._stop.wait(MIDI_WATCH_S):
             try:
-                self.midi_check()
+                self.midi_devices.sync()
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
                 log.exception("MIDI watchdog")
 
@@ -547,23 +499,6 @@ class Engine:
         except (KeyError, ValueError):
             log.warning("MIDI Learn: route %s channel %d is gone", route_id, index + 1)
 
-    def sync_midi_routes(self) -> None:
-        """Open the MIDI devices the enabled MIDI routes name, and the one of a route that learns even if it is off (not the
-        controller's: its input hands its messages on)."""
-        learning = self.midi_routes.learning_route()
-        devices = [r.midi_device for r in self.routes.all() if r.kind == "midi" and (r.enabled or r.id == learning)]
-        self.midi_routes.sync(devices, self.midi)
-
-    def _midi_routes_watch(self) -> None:
-        seen, last = -1, 0.0
-        while not self._stop.wait(0.5):
-            try:
-                if self.routes.version != seen or time.monotonic() - last >= MIDI_WATCH_S:
-                    seen, last = self.routes.version, time.monotonic()
-                    self.sync_midi_routes()
-            except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
-                log.exception("MIDI routes watchdog")
-
     def _autosave_routes(self, force: bool = False) -> None:
         """Like the overrides: saved within a second of a change."""
         if self.routes.version == self._routes_saved:
@@ -586,7 +521,6 @@ class Engine:
         if self.enable_hardware:
             threading.Thread(target=self._audio_watch, name="audio-watchdog", daemon=True).start()
             threading.Thread(target=self._midi_watch, name="midi-watchdog", daemon=True).start()
-            threading.Thread(target=self._midi_routes_watch, name="midi-routes", daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -599,7 +533,7 @@ class Engine:
             self.audio.stop()
         if self.midi is not None:
             self.midi.stop()
-        self.midi_routes.stop()
+        self.midi_devices.stop()
         self.live.stop()
         self.outputs.stop()
         restore_resolution()
@@ -663,7 +597,7 @@ class Engine:
     def state(self) -> dict:
         with self.lock:
             midi = self.midi  # read once
-            midi_routes = self.midi_routes.status()
+            midi_routes = self.midi_routes_status()
             fixtures = []
             for fx in self.fixtures:
                 fixtures.append(

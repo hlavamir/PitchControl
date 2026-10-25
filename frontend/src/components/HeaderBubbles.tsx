@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, type DeviceRef, type IoStatus, type Settings } from '../api'
+import { deviceState, midiDot } from '../midiDevices'
 import { IoTracker, PERF_WINDOW_MS, addPerf, midiRow, perfColumns, perfScale, perfSummary, type IoLive, type PerfFrame } from '../bubbles'
 import type { ConnectionTab } from '../pages'
 import { artnetDot, dmxDots } from '../headerDots'
@@ -220,21 +221,17 @@ function AudioBubble({ engine }: { engine: EngineConnection }) {
 function MidiBubble({ engine, live }: { engine: EngineConnection; live: IoLive }) {
   const io = engine.state?.io
   const m = io?.midi
-  const devices = io?.midi_routes?.devices ?? []
+  const devices = m?.devices ?? []
   const recent = (m?.recent ?? []).slice(0, 3)
   return (
     <Bubble title="MIDI" right={m?.received != null ? `${m.received} received` : undefined} click="Connections → MIDI">
-      <IoRow
-        icon="in"
-        ok={m ? Boolean(m.port) : null}
-        active={live.active.midi}
-        name={m?.port ?? (m?.wanted ? `${m.wanted} (not found)` : 'no MIDI controller')}
-        detail={m?.controller ?? undefined}
-        error={m?.error}
-      />
-      {devices.map((d) => (
-        <IoRow key={d.device} icon="in" ok={d.open} active={live.active[`route:${d.device}`]} name={d.device} detail="route" error={d.error} />
-      ))}
+      {devices.length === 0 && <IoRow icon="in" ok={null} name="no MIDI device" detail="plug one in" />}
+      {devices.map((d) => {
+        const st = deviceState(d)
+        return (
+          <IoRow key={d.key} icon="in" ok={d.state === 'connected' ? true : d.state === 'error' ? false : null} active={live.active[`device:${d.key}`]} name={d.name} detail={d.state === 'error' ? undefined : st.text} error={d.state === 'error' ? d.error : null} />
+        )
+      })}
       <IoRow icon="out" ok={null} name="MIDI out" detail="the app sends none" />
       <div className="flex flex-col border-t border-seam pt-1.5">
         <span className="lbl pb-1 text-[10px] text-dim">last messages</span>
@@ -339,7 +336,7 @@ export function HeaderIndicators({ engine, openTab, openEngine, overrides }: { e
         <StatusDot ok={s?.io.audio ? s.io.audio.running : null} label="audio" error={s?.io.audio?.error} tip="Audio input: filled = running, hollow = off, crossed = error. Click: Connections → Audio" onClick={() => openTab('audio')} />
       </Indicator>
       <Indicator label="MIDI" bubble={() => <MidiBubble engine={engine} live={live} />}>
-        <StatusDot ok={s?.io.midi ? Boolean(s.io.midi.port) : null} label="midi" error={s?.io.midi?.error} tip="MIDI controller: filled = connected, hollow = off. Click: Connections → MIDI" onClick={() => openTab('midi')} />
+        <StatusDot ok={midiDot(s?.io.midi).ok} label="midi" error={midiDot(s?.io.midi).error} tip="MIDI devices: filled = at least one device that is switched on is connected, hollow = none. Click: Connections → MIDI" onClick={() => openTab('midi')} />
       </Indicator>
       <Indicator label="DMX over USB" bubble={() => <DmxBubble engine={engine} live={live} />}>
         {/* one dot per USB DMX output interface, the first also for the DMX input; one dot for the input alone */}
