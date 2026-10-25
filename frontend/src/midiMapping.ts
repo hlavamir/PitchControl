@@ -68,6 +68,8 @@ export function learnedMapping(
     shift: learned.shift ? 'on' : base.shift,
     ...(d?.mode ? { mode: d.mode } : {}),
     ...(d?.mode === 'relative' && d.encoder ? { encoder: d.encoder } : {}),
+    // a latching button: every press counts (item 97); any other button turns it off again
+    ...(d && d.latching !== null && d.latching !== undefined ? { latching: d.latching } : {}),
   }
 }
 

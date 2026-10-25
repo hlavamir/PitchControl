@@ -69,6 +69,7 @@ export interface DetectedHardware {
   mode: MidiMode | null
   encoder: MidiMappingEntry['encoder'] | null
   note: string
+  latching: boolean | null // a latching button: every press counts (item 97); null: kept
 }
 
 export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'
@@ -83,6 +84,7 @@ export interface MidiMappingEntry {
   page?: 'general' | 'dimmers' | null // none = on every page
   shift?: 'on' | 'off' | null // none = either way
   invert: boolean
+  latching?: boolean // the controller switches the button itself: every change of value is a press (item 97)
   encoder: 'twos_complement' | 'sign_bit' | 'offset_64'
   sensitivity: number
   note: string

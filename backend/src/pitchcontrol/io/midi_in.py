@@ -154,6 +154,8 @@ class MidiInput:
         self._held: dict[tuple[str, int, int], MidiMapping] = {}
         # controls whose last message was a press (CC above 63, note on): a CC of 0 from one of them is a release
         self._down: set[tuple[str, int, int]] = set()
+        # the last value each control sent: a latching button (item 97) is pressed whenever the value is not the same again
+        self._last_value: dict[tuple[str, int, int], int] = {}
         self._takeover: dict[tuple[str, int, int], _Takeover] = {}  # per physical control: (kind, number, channel)
         self._layer: tuple[str, bool] | None = None  # (control page, shift) the takeover states were last checked against
         self._learn_until = 0.0
@@ -191,6 +193,7 @@ class MidiInput:
                 self.macros.set(m.macro, 1.0 if m.invert else 0.0)
         self.shift_controls.clear()
         self._down.clear()
+        self._last_value.clear()
         self._takeover.clear()
 
     def stop(self) -> None:
@@ -251,8 +254,8 @@ class MidiInput:
         }
         if not self._learn_for_shift:
             macro_def = self.macros.defs.get(self._learn_macro) if self._learn_macro else None
-            mode, encoder, note = fill_for(detection, macro_def.kind if macro_def else None)
-            self.learned["detected"] = {"kind": detection.kind, "label": detection.label, "mode": mode, "encoder": encoder, "note": note}
+            mode, encoder, note, latching = fill_for(detection, macro_def.kind if macro_def else None, self._learn_macro)
+            self.learned["detected"] = {"kind": detection.kind, "label": detection.label, "mode": mode, "encoder": encoder, "note": note, "latching": latching}
         self._learn_until = time.monotonic() + LEARN_GRACE
 
     def _learn_feed(self, key: tuple[str, int, int], value: int, release: bool) -> None:
@@ -322,6 +325,8 @@ class MidiInput:
             entry["note"] = "not a CC or note message"
             return
         key = (kind, number, channel)
+        changed = self._last_value.get(key) != value  # item 97: the first message of a control counts as a change
+        self._last_value[key] = value
         entry["release"] = value == 0 and (kind == "note" or key in self._down)
         if value > (63 if kind == "cc" else 0):
             self._down.add(key)
@@ -379,7 +384,7 @@ class MidiInput:
         if m is None:
             entry["note"] = f"{label} {number} is not mapped on page '{page}'" + (" with shift" if self.shift else "")
             return
-        self._apply(m, key, kind, value, pressed, entry)
+        self._apply(m, key, kind, value, pressed, entry, changed)
         if m.mode == "momentary" and pressed and entry["macro"]:
             self._held[key] = m
 
@@ -393,7 +398,7 @@ class MidiInput:
         ]
         return max(fitting, key=lambda m: (m.shift is not None, m.page is not None), default=None)
 
-    def _apply(self, m: MidiMapping, key: tuple[str, int, int], kind: str, value: int, pressed: bool, entry: dict) -> None:
+    def _apply(self, m: MidiMapping, key: tuple[str, int, int], kind: str, value: int, pressed: bool, entry: dict, changed: bool = True) -> None:
         name = m.macro
         entry["macro"] = name
         if self.ignored(name):
@@ -406,6 +411,9 @@ class MidiInput:
             entry["note"] = f"unknown macro '{name}'"
             return
         flip = (lambda x: 1.0 - x) if m.invert else (lambda x: x)
+        # a latching button (item 97) sends 127 on one press and 0 on the next: every change of value is a press, whichever
+        # way; a repeated identical value is not. A momentary mapping still follows the value (above 63 = on)
+        press = changed if m.latching else pressed
         if m.mode == "absolute":
             self._absolute(m, key, macro_def, flip(value / 127.0))
         elif m.mode == "relative":
@@ -415,9 +423,9 @@ class MidiInput:
         elif m.mode == "momentary":
             self.macros.set(name, 1.0 if pressed != m.invert else 0.0)
         elif m.mode == "toggle":
-            if pressed:
+            if press:
                 self.macros.toggle(name)
-        elif m.mode == "trigger" and pressed:
+        elif m.mode == "trigger" and press:
             self.macros.set(name, 1.0)
 
     # -- macro values

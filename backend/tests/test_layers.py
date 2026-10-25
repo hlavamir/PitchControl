@@ -352,6 +352,21 @@ def test_a_controller_file_with_the_1_4_macro_names_loads_on_the_renamed_macros(
     assert "Preset" not in (layered.controllers_dir / "mine.json").read_text(encoding="utf-8")
 
 
+def test_latching_is_written_to_a_controller_file_only_when_true_and_old_files_load_unchanged(layered):
+    layered.controllers_dir.mkdir(parents=True, exist_ok=True)
+    old = {"name": "mine", "mappings": [{"type": "cc", "number": 37, "macro": "Mask A", "mode": "trigger"}]}
+    (layered.controllers_dir / "mine.json").write_text(json.dumps(old), encoding="utf-8")
+    layered.load_controller("mine")
+    assert layered.controller.mappings[0].latching is False
+    layered.save_controller("mine", layered.controller)
+    assert "latching" not in json.loads((layered.controllers_dir / "mine.json").read_text(encoding="utf-8"))["mappings"][0]  # item 97
+    layered.controller.mappings[0].latching = True
+    layered.save_controller("mine", layered.controller)
+    assert json.loads((layered.controllers_dir / "mine.json").read_text(encoding="utf-8"))["mappings"][0]["latching"] is True
+    layered.load_controller("mine")
+    assert layered.controller.mappings[0].latching is True
+
+
 def test_a_controller_file_with_a_page_knob_gets_a_notice(layered):
     layered.controllers_dir.mkdir(parents=True, exist_ok=True)
     old = {"name": "mine", "page_knob": 13, "pages": {"general": [{"cc": 29, "macro": "Strobo Decay"}]}}

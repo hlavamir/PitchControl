@@ -685,6 +685,7 @@ class MidiMapping(Model):
     page: Literal["general", "dimmers"] | None = None  # only while this control page is active; none = on every page
     shift: Literal["on", "off"] | None = None  # only while shift is held / not held; none = either way
     invert: bool = False
+    latching: bool = False  # the controller switches this button itself (127, then 0 on the next press): every change of value is a press (item 97)
     encoder: Encoder = "twos_complement"  # relative mode: how the controller sends its steps
     sensitivity: float = Field(default=1.0, gt=0)  # relative mode: 1 = 127 steps for the whole range
     note: str = ""
@@ -725,7 +726,7 @@ class MidiMapping(Model):
             log.warning("%s: a note can't be an encoder (relative): used as absolute", where)
             self.mode = "absolute"
         if self.mode == "shift":
-            for field, unset in (("page", None), ("shift", None), ("invert", False)):
+            for field, unset in (("page", None), ("shift", None), ("invert", False), ("latching", False)):
                 if getattr(self, field) != unset:
                     log.warning("%s: the shift button has no '%s' setting: ignored", where, field)
                     setattr(self, field, unset)

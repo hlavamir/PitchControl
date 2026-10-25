@@ -177,6 +177,15 @@ export function MidiMappingRow({
             inv
           </label>
         )}
+        {m && !special && m.mode !== 'absolute' && m.mode !== 'relative' && (
+          <label
+            className="lbl flex items-center gap-1 text-[10px] text-dim"
+            data-tip="The controller switches this button itself: 127 on one press, 0 on the next. With this on, every press counts"
+          >
+            <Check checked={m.latching ?? false} onChange={(v) => i !== null && patch(i, { latching: v })} hint="switch" />
+            latch
+          </label>
+        )}
         {m?.mode === 'relative' && (
           <>
             <select

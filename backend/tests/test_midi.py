@@ -89,6 +89,77 @@ def test_momentary_follows_the_button_and_invert_flips_it():
     assert macros.on("Manual Strobo")
 
 
+# --------------------------------------------------------------------------- latching buttons (item 97)
+
+
+def test_a_latching_trigger_fires_on_every_change_of_value_and_not_on_a_repeat():
+    midi, macros = build(MidiMapping(number=41, macro="Mask A", mode="trigger", latching=True), MidiMapping(number=42, macro="Mask B", mode="trigger", latching=True))
+    cc(midi, 41, 127)
+    assert macros.on("Mask A")
+    cc(midi, 42, 127)  # another mask takes over ...
+    assert macros.on("Mask B") and not macros.on("Mask A")
+    cc(midi, 41, 0)  # ... and the 0 of the next press of the first button counts as a press too
+    assert macros.on("Mask A") and not macros.on("Mask B")
+    cc(midi, 42, 0)  # the first message of a control counts, whichever value it is
+    assert macros.on("Mask B")
+    cc(midi, 42, 0)  # the same value again: not a press
+    cc(midi, 41, 0)
+    assert macros.on("Mask B") and not macros.on("Mask A")
+
+
+def test_a_latching_toggle_flips_on_every_change_of_value():
+    midi, macros = build(MidiMapping(number=6, macro="Swap Colors", mode="toggle", latching=True))
+    for value, expected in ((127, True), (0, False), (127, True), (0, False)):
+        cc(midi, 6, value)
+        assert macros.on("Swap Colors") is expected
+    cc(midi, 6, 0)  # a repeat does nothing
+    assert not macros.on("Swap Colors")
+    cc(midi, 6, 127)
+    cc(midi, 6, 127)
+    assert macros.on("Swap Colors")
+
+
+def test_a_latching_toggle_of_a_note_counts_velocity_changes():
+    midi, macros = build(MidiMapping(type="note", number=36, macro="Swap Colors", mode="toggle", latching=True))
+    note(midi, 36, 127)
+    note(midi, 36, 0)
+    assert not macros.on("Swap Colors")
+    note(midi, 36, 90)
+    assert macros.on("Swap Colors")
+
+
+def test_the_same_toggle_without_latching_flips_on_a_press_only():
+    midi, macros = build(MidiMapping(number=6, macro="Swap Colors", mode="toggle"))
+    cc(midi, 6, 127)
+    cc(midi, 6, 0)
+    assert macros.on("Swap Colors")
+    cc(midi, 6, 127)  # a 127 after a 127 is a press without latching
+    cc(midi, 6, 127)
+    assert macros.on("Swap Colors")
+
+
+def test_a_latching_momentary_still_follows_the_value():
+    midi, macros = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary", latching=True))
+    cc(midi, 6, 127)
+    assert macros.on("Fog Machine")
+    cc(midi, 6, 127)
+    assert macros.on("Fog Machine")
+    cc(midi, 6, 0)
+    assert not macros.on("Fog Machine")
+
+
+def test_every_press_counts_for_a_latching_button_with_shift_and_pages():
+    midi, macros = build(
+        MidiMapping(number=44, mode="shift"),
+        MidiMapping(number=37, macro="Swap Colors", mode="toggle", latching=True, shift="off"),
+    )
+    cc(midi, 37, 127)
+    cc(midi, 37, 0)
+    cc(midi, 37, 127)
+    assert macros.on("Swap Colors")  # three presses
+    assert midi.recent[-1]["macro"] == "Swap Colors"
+
+
 def test_trigger_presses_a_button_macro_and_selects_a_radio():
     midi, macros = build(MidiMapping(number=40, macro="Scene 3 Load", mode="trigger"), MidiMapping(number=41, macro="Mask A", mode="trigger"))
     cc(midi, 40, 127)

@@ -62,7 +62,7 @@ describe('what Learn makes of a row (item 90)', () => {
 
 describe('what Learn sets from the hardware it found (item 93)', () => {
   const found = { kind: 'cc', number: 5, channel: 13, shift: false } as const
-  const detected = (over: Partial<NonNullable<Parameters<typeof learnedMapping>[1]['detected']>>) => ({ kind: 'gate' as const, label: 'gate button', mode: null, encoder: null, note: '', ...over })
+  const detected = (over: Partial<NonNullable<Parameters<typeof learnedMapping>[1]['detected']>>) => ({ kind: 'gate' as const, label: 'gate button', mode: null, encoder: null, note: '', latching: null, ...over })
   it('sets the mode the engine chose', () => {
     expect(learnedMapping(mapping({ mode: 'toggle' }), { ...found, detected: detected({ mode: 'momentary' }) }, 13).mode).toBe('momentary')
   })
@@ -74,6 +74,13 @@ describe('what Learn sets from the hardware it found (item 93)', () => {
   it('keeps the mode the row had when the engine set none, or found nothing', () => {
     expect(learnedMapping(mapping({ mode: 'absolute' }), { ...found, detected: detected({ note: 'a gate button on a fader, mode kept' }) }, 13).mode).toBe('absolute')
     expect(learnedMapping(mapping({ mode: 'trigger' }), found, 13).mode).toBe('trigger')
+  })
+  it('sets latching for a latching button, clears it for any other button and keeps it when the engine said nothing (item 97)', () => {
+    const latching = learnedMapping(mapping({ mode: 'trigger' }), { ...found, detected: detected({ kind: 'latching', label: 'latching button', mode: 'toggle', latching: true }) }, 13)
+    expect(latching).toMatchObject({ mode: 'toggle', latching: true })
+    expect(learnedMapping(latching, { ...found, detected: detected({ mode: 'toggle', latching: false }) }, 13).latching).toBe(false)
+    expect(learnedMapping(mapping({ latching: true }), { ...found, detected: detected({ latching: null }) }, 13).latching).toBe(true)
+    expect(learnedMapping(mapping({}), found, 13).latching).toBeUndefined()
   })
   it('tells the user what was found, and why a mode was kept', () => {
     expect(detectedNote(detected({}))).toBe('detected: gate button')

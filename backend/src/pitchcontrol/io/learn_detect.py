@@ -110,30 +110,36 @@ def classify(kind: str, messages: list[tuple[int, float]]) -> Detection:
     return _undecided("turn")
 
 
-def fill_for(detection: Detection, macro_kind: str | None) -> tuple[str | None, str | None, str]:
-    """What Learn sets on the row for this hardware and this kind of macro: ``(mode, encoder, note)``. A mode of None keeps
-    what the row had (the hardware doesn't fit the macro, or it couldn't be told), and the note says why. ``macro_kind`` is
+def fill_for(detection: Detection, macro_kind: str | None, macro: str | None = None) -> tuple[str | None, str | None, str, bool | None]:
+    """What Learn sets on the row for this hardware and this kind of macro: ``(mode, encoder, note, latching)``. A mode of
+    None keeps what the row had (the hardware doesn't fit the macro, or it couldn't be told), and the note says why;
+    ``latching`` (item 97) is True for a button that switches itself on the controller (every press counts: the mapping
+    reads every change of its value as a press), False for any other button, None when the row keeps it. ``macro_kind`` is
     the macro's ``kind``: a fader is a value, a toggle an on / off switch, a momentary one a hold, a button or radio one
-    that only fires."""
+    that only fires; ``macro`` is its name, for the note."""
     kind = detection.kind
     if kind == "undecided":
-        return None, None, "couldn't tell what it sends, mode kept"
-    if macro_kind is None:
-        return None, None, ""
+        return None, None, "couldn't tell what it sends, mode kept", None
     if macro_kind == "fader":
         if kind == "fader":
-            return "absolute", None, ""
+            return "absolute", None, "", None
         if kind == "encoder":
-            return "relative", detection.encoder, ""
-        return None, None, f"a {detection.label} on a fader, mode kept"
+            return "relative", detection.encoder, "", None
+        return None, None, f"a {detection.label} on a fader, mode kept", None
     if not detection.button:
-        return None, None, f"a {detection.label} on a switch or button, mode kept"
-    if macro_kind in ("toggle", "momentary"):
-        if kind == "latching":
-            return "momentary", None, ""  # the macro follows the button
+        if macro_kind is None:
+            return None, None, "", None
+        return None, None, f"a {detection.label} on a switch or button, mode kept", None
+    latching = kind == "latching"
+    if macro_kind is None:
+        return None, None, "", latching
+    if macro_kind == "toggle":
+        return "toggle", None, "", latching  # a gate or trigger button flips it on every press, a latching one on every change
+    if macro_kind == "momentary":
+        if latching:
+            name = macro or "the macro"
+            return "momentary", None, f"this button latches on the controller: {name} stays on until you press it again. For hold, set it to Gate in the controller's software", True
         if kind == "gate":
-            return ("toggle" if macro_kind == "toggle" else "momentary"), None, ""
-        if macro_kind == "toggle":
-            return "toggle", None, ""
-        return "trigger", None, "the button can't be held, it only fires"
-    return "trigger", None, "fires on every second press only" if kind == "latching" else ""
+            return "momentary", None, "", False
+        return "trigger", None, "the button can't be held, it only fires", False
+    return "trigger", None, "", latching

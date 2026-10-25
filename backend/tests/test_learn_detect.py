@@ -112,7 +112,9 @@ def test_the_labels_say_what_it_is():
         ("gate", "momentary", "momentary"),
         ("gate", "toggle", "toggle"),
         ("latching", "momentary", "momentary"),
-        ("latching", "toggle", "momentary"),
+        ("latching", "toggle", "toggle"),
+        ("latching", "button", "trigger"),
+        ("latching", "radio", "trigger"),
         ("trigger", "toggle", "toggle"),
         ("trigger", "momentary", "trigger"),
         ("gate", "button", "trigger"),
@@ -123,15 +125,42 @@ def test_buttons_get_the_mode_that_fits_the_macro(hardware, macro_kind, mode):
     assert fill_for(Detection(hardware), macro_kind)[0] == mode
 
 
-def test_a_trigger_on_a_hold_macro_says_it_cannot_be_held_and_a_latching_scene_button_says_it_fires_every_second_press():
+def test_a_trigger_on_a_hold_macro_says_it_cannot_be_held_and_a_latching_one_says_it_stays_on_until_pressed_again():
     assert "can't be held" in fill_for(Detection("trigger"), "momentary")[2]
-    assert "every second press" in fill_for(Detection("latching"), "button")[2]
+    note_ = fill_for(Detection("latching"), "momentary", "Fog Machine")[2]
+    assert note_.startswith("this button latches on the controller: Fog Machine stays on until you press it again") and "Gate" in note_
+    assert fill_for(Detection("latching"), "button")[2] == ""  # item 97: no more "every second press only"
     assert fill_for(Detection("gate"), "toggle")[2] == ""
 
 
+@pytest.mark.parametrize(
+    "hardware,macro_kind,latching",
+    [
+        ("latching", "toggle", True),
+        ("latching", "momentary", True),
+        ("latching", "button", True),
+        ("latching", "radio", True),
+        ("latching", None, True),
+        ("gate", "toggle", False),
+        ("gate", "momentary", False),
+        ("trigger", "radio", False),
+        ("trigger", "momentary", False),
+        ("trigger", "button", False),
+        ("gate", None, False),
+        ("latching", "fader", None),  # does not fit: the row is kept
+        ("fader", "fader", None),
+        ("encoder", "fader", None),
+        ("undecided", "toggle", None),
+    ],
+)
+def test_a_latching_button_sets_latching_and_any_other_button_clears_it_item_97(hardware, macro_kind, latching):
+    detection = Detection("undecided", ask="turn") if hardware == "undecided" else Detection(hardware, "twos_complement" if hardware == "encoder" else None)
+    assert fill_for(detection, macro_kind)[3] is latching
+
+
 def test_faders_and_encoders_on_a_value_macro():
-    assert fill_for(Detection("fader"), "fader") == ("absolute", None, "")
-    assert fill_for(Detection("encoder", "offset_64"), "fader") == ("relative", "offset_64", "")
+    assert fill_for(Detection("fader"), "fader") == ("absolute", None, "", None)
+    assert fill_for(Detection("encoder", "offset_64"), "fader") == ("relative", "offset_64", "", None)
 
 
 @pytest.mark.parametrize(
@@ -139,13 +168,13 @@ def test_faders_and_encoders_on_a_value_macro():
     [("gate", "fader"), ("trigger", "fader"), ("latching", "fader"), ("fader", "toggle"), ("encoder", "momentary"), ("fader", "button")],
 )
 def test_hardware_that_does_not_fit_the_macro_keeps_the_mode_and_says_so(hardware, macro_kind):
-    mode, encoder, note_ = fill_for(Detection(hardware, "twos_complement" if hardware == "encoder" else None), macro_kind)
+    mode, encoder, note_, _ = fill_for(Detection(hardware, "twos_complement" if hardware == "encoder" else None), macro_kind)
     assert mode is None and encoder is None and "mode kept" in note_
 
 
 def test_an_undecided_control_and_an_unknown_macro_change_no_mode():
     assert fill_for(Detection("undecided", ask="turn"), "fader")[0] is None
-    assert fill_for(Detection("gate"), None) == (None, None, "")
+    assert fill_for(Detection("gate"), None)[:3] == (None, None, "")
 
 
 # --------------------------------------------------------------------------- Learn
@@ -170,7 +199,7 @@ def test_learn_watches_the_control_and_sets_a_gate_button_on_a_hold_macro_to_mom
     clock.advance(LEARN_WATCH)
     learned = midi.status()["learned"]
     assert (learned["number"], learned["channel"]) == (20, 1)
-    assert detected(midi) == {"kind": "gate", "label": "gate button", "mode": "momentary", "encoder": None, "note": ""}
+    assert detected(midi) == {"kind": "gate", "label": "gate button", "mode": "momentary", "encoder": None, "note": "", "latching": False}
     assert not midi.status()["learning"]
 
 
@@ -202,7 +231,27 @@ def test_a_latching_button_is_known_by_its_second_press_sending_0(clock):
     assert midi.status()["learn_ask"] == "press_again"
     clock.advance(2)
     cc(midi, 20, 0)
-    assert detected(midi)["kind"] == "latching" and detected(midi)["mode"] == "momentary"  # the macro follows the button
+    assert detected(midi)["kind"] == "latching" and detected(midi)["mode"] == "toggle" and detected(midi)["latching"] is True  # item 97
+
+
+def test_a_latching_button_on_a_hold_macro_follows_the_button_and_a_scene_or_mask_fires(clock):
+    for macro, mode in (("Fog Machine", "momentary"), ("Mask A", "trigger"), ("Scene 3 Load", "trigger")):
+        midi = learner(macro, clock)
+        cc(midi, 20, 127)
+        clock.advance(LEARN_WATCH + 0.1)
+        clock.advance(2)
+        cc(midi, 20, 0)
+        assert (detected(midi)["mode"], detected(midi)["latching"]) == (mode, True)
+    assert "stays on until you press it again" in detected(learner_after("Fog Machine", clock))["note"]
+
+
+def learner_after(macro, clock):
+    midi = learner(macro, clock)
+    cc(midi, 20, 127)
+    clock.advance(LEARN_WATCH + 0.1)
+    clock.advance(2)
+    cc(midi, 20, 0)
+    return midi
 
 
 def test_a_trigger_button_on_an_on_off_macro_is_a_toggle(clock):
