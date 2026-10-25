@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { learnHint, midiInputText, newMidiRoute, newRoute, otherUniverses, overlapText, routeLabel, routedChannels, routedCount, sourceState, type MidiChannelState, type RouteState } from './routes'
+import { learnHint, midiInputText, newMidiRoute, newRoute, otherUniverses, overlapText, routeLabel, routedChannels, routedCount, sourceLabel, sourceState, type MidiChannelState, type RouteState } from './routes'
 
 const route = (over: Partial<RouteState> = {}): RouteState => ({
   ...(newRoute(0) as Omit<RouteState, 'id' | 'seen' | 'age' | 'pps'>),
-  midi_device: '',
-  midi_channel: 1,
   channels: [],
   id: 'r1',
   seen: true,
@@ -53,16 +51,16 @@ describe('labels', () => {
   })
 })
 
-const ch = (over: Partial<MidiChannelState>): MidiChannelState => ({ type: 'none', number: 0, value: 0, note_mode: 'velocity', ...over })
+const ch = (over: Partial<MidiChannelState>): MidiChannelState => ({ channel: 1, type: 'none', number: 0, value: 0, note_mode: 'velocity', ...over })
 
 describe('MIDI routes', () => {
   it('describes the input of a channel', () => {
-    expect([ch({}), ch({ type: 'cc', number: 21 }), ch({ type: 'cc14', number: 1 }), ch({ type: 'note', number: 40 }), ch({ type: 'note', number: 41, note_mode: 'onoff' }), ch({ type: 'const', value: 128 })].map(midiInputText)).toEqual([
+    expect([ch({}), ch({ type: 'cc', number: 21 }), ch({ type: 'cc14', number: 1, channel: 5 }), ch({ type: 'note', number: 40 }), ch({ type: 'note', number: 41, note_mode: 'onoff', channel: 16 }), ch({ type: 'const', value: 128 })].map(midiInputText)).toEqual([
       'no input',
-      'CC 21',
-      'CC 1 + 33 (14-bit)',
-      'note 40 (velocity)',
-      'note 41 (on / off)',
+      'CC 21, ch 1',
+      'CC 1 + 33 (14-bit), ch 5',
+      'note 40 (velocity), ch 1',
+      'note 41 (on / off), ch 16',
       '= 128',
     ])
   })
@@ -71,25 +69,26 @@ describe('MIDI routes', () => {
     expect([...routedChannels([midi], 0).keys()]).toEqual([10, 12])
     expect(routedCount([midi])).toBe(2)
   })
-  it('starts a MIDI route off, with a few channels', () => {
-    expect(newMidiRoute(1, 'Pad 1')).toMatchObject({ kind: 'midi', enabled: false, count: 8, universe: 1, midi_device: 'Pad 1', midi_channel: 1 })
+  it('starts a MIDI route on, with a few channels that have no input yet (no device, no route-wide channel)', () => {
+    const r = newMidiRoute(1)
+    expect(r).toMatchObject({ kind: 'midi', enabled: true, count: 8, universe: 1 })
+    expect(r).not.toHaveProperty('midi_device')
+    expect(r).not.toHaveProperty('midi_channel')
   })
-  it('names a MIDI route by its device and channel', () => {
-    expect(routeLabel(route({ kind: 'midi', midi_device: 'LCXL3', midi_channel: 13, universe: 0, first_output: 5 }))).toBe('MIDI LCXL3 ch 13 → 0:5')
+  it('names a MIDI route by its channels, not by a device', () => {
+    expect(routeLabel(route({ kind: 'midi', count: 8, universe: 0, first_output: 5 }))).toBe('MIDI, 8 channels → 0:5')
+    expect(sourceLabel({ kind: 'midi', artnet_universe: 0, count: 1 })).toBe('MIDI, 1 channel')
   })
-  it('says what a MIDI source is doing, a device problem first', () => {
+  it('says what a MIDI source is doing, an input problem first', () => {
     const base = { kind: 'midi' as const, seen: false, age: null, pps: 0 }
-    expect(sourceState({ ...base, midi_open: false })).toEqual({ text: 'choose a MIDI device', level: 'problem' })
-    expect(sourceState({ ...base, midi_open: false, midi_error: 'no MIDI port matches X' })).toEqual({ text: 'no MIDI port matches X', level: 'problem' })
-    expect(sourceState({ ...base, midi_open: true })).toEqual({ text: 'no message yet', level: 'none' })
-    expect(sourceState({ ...base, midi_open: true, seen: true, age: 0.5 })).toEqual({ text: 'receiving', level: 'live' })
-    expect(sourceState({ ...base, midi_open: true, seen: true, age: 90 }).level).toBe('holding')
+    expect(sourceState({ ...base, midi_error: 'no MIDI input is on (Connections → MIDI)' })).toEqual({ text: 'no MIDI input is on (Connections → MIDI)', level: 'problem' })
+    expect(sourceState(base)).toEqual({ text: 'no message yet', level: 'none' })
+    expect(sourceState({ ...base, seen: true, age: 0.5 })).toEqual({ text: 'receiving', level: 'live' })
+    expect(sourceState({ ...base, seen: true, age: 90 }).level).toBe('holding')
   })
-  it('tells where a control was heard when Learn waits for another channel', () => {
-    const learn = { id: 1, route: 'r1', index: 0, channel: 1, seconds: 12.2, heard: null }
-    expect(learnHint(learn)).toBe('Move a knob or press a key on the device (MIDI channel 1) · 13 s')
-    expect(learnHint({ ...learn, heard: { kind: 'cc', number: 21, channel: 5 } })).toContain('heard CC 21 on channel 5: this route listens on channel 1')
-    expect(learnHint({ ...learn, heard: { kind: 'note', number: 40, channel: 1 } })).not.toContain('heard')
+  it('tells Learn waits for any device and channel, and for how long', () => {
+    const learn = { id: 1, route: 'r1', index: 0, seconds: 12.2 }
+    expect(learnHint(learn)).toBe("Move a knob or press a key on any MIDI device that is on: its channel is taken too · 13 s")
   })
 })
 

@@ -1,9 +1,9 @@
 """Routes (Control Desk page, item 58): live input that overrides output channels.
 
 A route copies a block of input channels (an Art-Net universe, or the DMX input) onto a block of output channels:
-source, first input channel, count (1 to 512), output universe, first output channel. A **MIDI** route (item 59) has a
-MIDI device and MIDI channel instead, and each of its output channels has its own input: a CC, a 14-bit CC pair, a
-note, or a constant. Three layers, the later one wins: the app's own output (fixtures, fog) → routes → manual overrides (``Overrides``). A manual value on a routed
+source, first input channel, count (1 to 512), output universe, first output channel. A **MIDI** route (item 59) has no
+source of its own: each of its output channels has its own input, a CC, a 14-bit CC pair, a note or a constant, with its
+own MIDI channel, from any MIDI device that is on (item 91). Three layers, the later one wins: the app's own output (fixtures, fog) → routes → manual overrides (``Overrides``). A manual value on a routed
 channel sits on top and doesn't delete the route; releasing it shows the route's value again.
 
 An overridden channel stays overridden (Miro, 2026-10-22): the input store keeps the last values of a source, so a
@@ -27,7 +27,6 @@ from pydantic import Field, model_validator
 from ..config.loader import write_json
 from ..config.models import Model
 from ..io.live_input import DMX_KEY, LiveInput, artnet_key
-from ..io.midi_in import port_key
 from ..io.midi_routes import MidiRouteHub
 
 log = logging.getLogger(__name__)
@@ -42,9 +41,11 @@ class MidiChannel(Model):
     """The input of one output channel of a MIDI route. ``none``: nothing yet (the fixtures show); ``cc``: a control
     change 0..127 scaled to 0..255; ``cc14``: a pair, ``number`` is the MSB (0 to 31) and ``number + 32`` the LSB;
     ``note``: the velocity while it is held (``velocity``) or 255 while it is held (``onoff``), 0 after; ``const``:
-    ``value`` (the fallback for a channel no control drives)."""
+    ``value`` (the fallback for a channel no control drives). ``channel``: the MIDI channel (1 to 16) the control is
+    on (item 91); the device doesn't matter."""
 
     type: MidiType = "none"
+    channel: int = Field(default=1, ge=1, le=16)
     number: int = Field(default=0, ge=0, le=127)
     value: int = Field(default=0, ge=0, le=255)
     note_mode: Literal["velocity", "onoff"] = "velocity"
@@ -67,9 +68,22 @@ class Route(Model):
     universe: int = Field(default=0, ge=0)  # the output universe (as on the Rig page and in Connections)
     first_output: int = Field(default=1, ge=1, le=512)
     # MIDI routes (item 59)
-    midi_device: str = ""  # a MIDI input port name, as Connections → MIDI lists it
-    midi_channel: int = Field(default=1, ge=1, le=16)
     channels: list[MidiChannel] = Field(default_factory=list)  # one per output channel, in order
+
+    @model_validator(mode="before")
+    @classmethod
+    def _old_midi(cls, data):
+        """A MIDI route saved before item 91 had a device and one MIDI channel for the whole route: the channel goes
+        into each of its channels that has none of its own, the device is dropped."""
+        if isinstance(data, dict) and ("midi_device" in data or "midi_channel" in data):
+            data = dict(data)
+            data.pop("midi_device", None)
+            channel = data.pop("midi_channel", None)
+            if channel is not None and data.get("kind") == "midi":
+                channels = [c.model_dump() if isinstance(c, MidiChannel) else dict(c) for c in data.get("channels") or []]
+                channels += [{} for _ in range(int(data.get("count") or 1) - len(channels))]
+                data["channels"] = [{"channel": channel, **c} for c in channels]
+        return data
 
     @model_validator(mode="after")
     def _fits(self) -> "Route":
@@ -95,7 +109,7 @@ class Route(Model):
 
     def source_label(self) -> str:
         if self.kind == "midi":
-            return f"MIDI {self.midi_device or '?'} ch {self.midi_channel}"
+            return f"MIDI, {self.count} channel{'' if self.count == 1 else 's'}"
         return "DMX input" if self.kind == "dmx" else f"Art-Net {self.artnet_universe}"
 
     def last_output(self) -> int:
@@ -189,7 +203,7 @@ class Routes:
         latest: dict[str, bytes | None] = {}
         for r in routes:
             if r.kind == "midi":
-                if midi is not None and r.midi_device:
+                if midi is not None:
                     self._apply_midi(universes, r, midi)
                 continue
             key = r.source_key
@@ -203,10 +217,9 @@ class Routes:
 
     @staticmethod
     def _apply_midi(universes: dict[int, bytearray], r: Route, midi: MidiRouteHub) -> None:
-        device = port_key(r.midi_device)
         frame = None
         for i, spec in enumerate(r.channels):
-            v = midi.value(device, r.midi_channel, spec)
+            v = midi.value(spec)
             if v is not None:
                 if frame is None:
                     frame = universes.setdefault(r.universe, bytearray(512))
@@ -228,17 +241,17 @@ class Routes:
         raise KeyError(route_id)
 
     # -- what the page shows
-    def status(self, sources: dict[str, dict], midi: dict | None = None) -> list[dict]:
+    def status(self, sources: dict[str, dict], midi: MidiRouteHub | None = None) -> list[dict]:
         """Each route with whether its source has sent, and how long ago (``sources``: the input store's snapshot by
-        key; ``midi``: the MIDI hub's status, for the routes of a MIDI device)."""
-        devices = {port_key(d["device"]): d for d in (midi or {}).get("devices", [])}
+        key; ``midi``: the MIDI hub, for the controls of a MIDI route and whether any MIDI input is open)."""
         out = []
+        open_inputs = midi.open_inputs() if midi is not None else 0
         for r in self.all():
             extra: dict = {}
             if r.kind == "midi":
-                d = devices.get(port_key(r.midi_device))
-                info = {"age": d["age"], "pps": 0.0} if d and d["age"] is not None else None
-                extra = {"midi_open": bool(d and d["open"]), "midi_error": d["error"] if d else None}
+                age = midi.age(r.channels) if midi is not None else None
+                info = {"age": age, "pps": 0.0} if age is not None else None
+                extra = {"midi_open": open_inputs > 0, "midi_error": None if open_inputs else "no MIDI input is on (Connections → MIDI)"}
             else:
                 info = sources.get(r.source_key)
             out.append({**r.model_dump(mode="json"), **extra, "seen": info is not None, "age": info["age"] if info else None, "pps": info["pps"] if info else 0.0})
@@ -246,7 +259,7 @@ class Routes:
 
     def midi_overlaps(self, midi_input) -> list[dict]:
         """CCs and notes of MIDI routes that the app's MIDI mapping uses too, on the same MIDI channel: a warning, not a
-        block (both react). The mapping listens to every device that is on (item 89), so the device doesn't matter.
+        block (both react). Both listen to every device that is on (items 89 and 91), so the device doesn't matter.
         ``midi_input``: the app's ``MidiInput`` (its controller file)."""
         controller = getattr(midi_input, "controller", None)
         if controller is None:
@@ -260,11 +273,11 @@ class Routes:
                     continue
                 kind = "note" if spec.type == "note" else "cc"
                 for number in [spec.number, spec.number + 32] if spec.type == "cc14" else [spec.number]:
-                    macros = sorted({m.macro for m in controller.mappings if m.macro and m.type == kind and m.number == number and (m.channel or controller.channel) == r.midi_channel})
+                    macros = sorted({m.macro for m in controller.mappings if m.macro and m.type == kind and m.number == number and (m.channel or controller.channel) == spec.channel})
                     if macros:
                         label = ("CC" if kind == "cc" else "note") + f" {number}"
-                        text = f"{label} on {r.midi_device} also drives {', '.join(macros)} in the MIDI mapping: both will react"
-                        out.append({"route": r.id, "index": i, "kind": kind, "number": number, "macros": macros, "text": text})
+                        text = f"{label} on channel {spec.channel} also drives {', '.join(macros)} in the MIDI mapping: both will react"
+                        out.append({"route": r.id, "index": i, "kind": kind, "number": number, "channel": spec.channel, "macros": macros, "text": text})
         return out
 
     def overlaps(self) -> list[dict]:

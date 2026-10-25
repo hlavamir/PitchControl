@@ -1,4 +1,7 @@
-"""MIDI routes (item 59): CC and note scaling, Learn per channel, the overlap notice, the constant fallback, the layers."""
+"""MIDI routes (items 59 and 91): CC and note scaling, Learn per channel, the overlap notice, the constant fallback, the layers,
+the MIDI channel of each route channel, and the migration of routes saved with a device."""
+
+import json
 
 import mido
 import pytest
@@ -6,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from pitchcontrol.config.models import Controller, MidiDeviceSetting, MidiMapping
 from pitchcontrol.engine.engine import Engine
-from pitchcontrol.engine.routes import MidiChannel, Route
+from pitchcontrol.engine.routes import MidiChannel, Route, Routes
 from pitchcontrol.io.midi_devices import _Runtime
 from pitchcontrol.io.midi_in import MidiInput, port_key
 from pitchcontrol.io.midi_routes import MidiRouteHub, scale14, scale7
@@ -25,7 +28,7 @@ def note(hub, number, velocity=100, channel=0, device=KEY):
 
 
 def midi_route(*channels: MidiChannel, **fields) -> Route:
-    return Route(kind="midi", midi_device=DEVICE, midi_channel=1, count=len(channels), channels=list(channels), universe=2, first_output=1, **fields)
+    return Route(kind="midi", count=len(channels), channels=list(channels), universe=2, first_output=1, **fields)
 
 
 # -- scaling
@@ -40,46 +43,58 @@ def test_a_cc_a_14_bit_pair_and_a_note():
     hub = MidiRouteHub()
     cc7, cc14 = MidiChannel(type="cc", number=21), MidiChannel(type="cc14", number=1)
     velocity, onoff = MidiChannel(type="note", number=36), MidiChannel(type="note", number=37, note_mode="onoff")
-    assert [hub.value(KEY, 1, s) for s in (cc7, cc14, velocity, onoff)] == [None] * 4  # nothing touched: nothing written
+    assert [hub.value(s) for s in (cc7, cc14, velocity, onoff)] == [None] * 4  # nothing touched: nothing written
 
     cc(hub, 21, 127)
-    assert hub.value(KEY, 1, cc7) == 255
+    assert hub.value(cc7) == 255
     cc(hub, 21, 64)
-    assert hub.value(KEY, 1, cc7) == 129
+    assert hub.value(cc7) == 129
 
     cc(hub, 1, 127)  # the MSB alone
-    assert hub.value(KEY, 1, cc14) == scale14(127, 0)
+    assert hub.value(cc14) == scale14(127, 0)
     cc(hub, 33, 127)  # and its LSB, 32 higher
-    assert hub.value(KEY, 1, cc14) == 255
+    assert hub.value(cc14) == 255
 
     note(hub, 36, 127)
-    assert hub.value(KEY, 1, velocity) == 255
+    assert hub.value(velocity) == 255
     note(hub, 36, 64)
-    assert hub.value(KEY, 1, velocity) == 129  # the velocity of the last note
+    assert hub.value(velocity) == 129  # the velocity of the last note
     note(hub, 36, 0)  # off (a note_off, or a note_on of velocity 0)
-    assert hub.value(KEY, 1, velocity) == 0
+    assert hub.value(velocity) == 0
     note(hub, 37, 30)
-    assert hub.value(KEY, 1, onoff) == 255  # a soft note is still "on"
+    assert hub.value(onoff) == 255  # a soft note is still "on"
     hub.handle(KEY, mido.Message("note_off", channel=0, note=37))
-    assert hub.value(KEY, 1, onoff) == 0
+    assert hub.value(onoff) == 0
 
 
-def test_a_control_keeps_its_last_value_and_is_told_apart_by_device_and_channel():
+def test_a_control_keeps_its_last_value_and_is_told_apart_by_channel_not_by_device():
     hub = MidiRouteHub()
-    spec = MidiChannel(type="cc", number=7)
+    spec, spec2 = MidiChannel(type="cc", number=7), MidiChannel(type="cc", number=7, channel=2)
     cc(hub, 7, 100)
-    assert hub.value(KEY, 1, spec) == scale7(100)  # and keeps it for as long as nothing else comes
-    assert hub.value(KEY, 1, spec) == scale7(100)
-    assert hub.value(KEY, 2, spec) is None  # another MIDI channel
-    assert hub.value(port_key("Other Device 2 MIDI In 0"), 1, spec) is None
+    assert hub.value(spec) == scale7(100)  # and keeps it for as long as nothing else comes
+    assert hub.value(spec) == scale7(100)
+    assert hub.value(spec2) is None  # another MIDI channel
     cc(hub, 7, 5, channel=1)  # the same CC on MIDI channel 2
-    assert hub.value(KEY, 1, spec) == scale7(100) and hub.value(KEY, 2, spec) == scale7(5)
+    assert hub.value(spec) == scale7(100) and hub.value(spec2) == scale7(5)
+
+
+def test_the_values_of_two_devices_reach_the_same_route_channels():
+    hub = MidiRouteHub()
+    other = port_key("Other Device 2 MIDI In 0")
+    knob, key = MidiChannel(type="cc", number=7, channel=3), MidiChannel(type="note", number=60, channel=3, note_mode="onoff")
+    cc(hub, 7, 127, channel=2, device=KEY)
+    assert hub.value(knob) == 255
+    cc(hub, 7, 64, channel=2, device=other)  # another device, the same channel and CC: the latest wins
+    assert hub.value(knob) == scale7(64)
+    note(hub, 60, 90, channel=2, device=other)
+    assert hub.value(key) == 255
+    assert hub.age([knob, key]) is not None and hub.age([MidiChannel(type="cc", number=8)]) is None
 
 
 def test_a_constant_is_the_fallback_for_a_channel_no_control_drives():
     hub = MidiRouteHub()
-    assert hub.value(KEY, 1, MidiChannel(type="const", value=200)) == 200
-    assert hub.value(KEY, 1, MidiChannel(type="none")) is None
+    assert hub.value(MidiChannel(type="const", value=200)) == 200
+    assert hub.value(MidiChannel(type="none")) is None
 
 
 # -- the route model
@@ -91,7 +106,37 @@ def test_a_midi_route_has_one_input_per_output_channel():
     r = Route(kind="midi", count=1, channels=[MidiChannel(type="cc"), MidiChannel(type="note")])
     assert len(r.channels) == 1  # cut to the count
     assert Route(kind="artnet", count=2, channels=[MidiChannel()]).channels == []  # only a MIDI route has them
-    for bad in ({"count": 65}, {"channels": [{"type": "cc14", "number": 40}]}, {"midi_channel": 17}, {"channels": [{"type": "cc", "number": 128}]}):
+    r = Route(kind="midi", count=2)
+    assert [(c.type, c.channel) for c in r.channels] == [("none", 1)] * 2  # a new one: nothing yet
+    assert not hasattr(r, "midi_device") and r.source_label() == "MIDI, 2 channels" and Route(kind="midi", count=1).source_label() == "MIDI, 1 channel"
+
+
+def test_a_route_saved_with_a_device_and_a_midi_channel_moves_the_channel_into_its_channels():
+    old = {
+        "id": "r1", "kind": "midi", "midi_device": DEVICE, "midi_channel": 5, "count": 3, "universe": 2,
+        "channels": [{"type": "cc", "number": 21}, {"type": "note", "number": 40, "channel": 9}],  # one with a channel of its own, one short
+    }
+    r = Route.model_validate(old)
+    assert [(c.type, c.channel) for c in r.channels] == [("cc", 5), ("note", 9), ("none", 5)]
+    assert "midi_device" not in r.model_dump() and "midi_channel" not in r.model_dump()
+    assert Route.model_validate({"kind": "artnet", "midi_device": "x", "midi_channel": 3}).channels == []  # dropped on any route
+    with pytest.raises(ValueError):
+        Route.model_validate({**old, "midi_channel": 17})
+
+
+def test_an_old_routes_file_is_migrated_on_load_and_saved_in_the_new_shape(store):
+    path = store.state_dir / "routes.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"routes": [{"id": "r1", "kind": "midi", "midi_device": DEVICE, "midi_channel": 13, "count": 2, "universe": 2, "channels": [{"type": "cc", "number": 21}, {"type": "const", "value": 7}]}]}), encoding="utf-8")
+    routes = Routes()
+    routes.load(path)
+    (r,) = routes.all()
+    assert [(c.type, c.number, c.channel) for c in r.channels] == [("cc", 21, 13), ("const", 0, 13)]
+    routes.save(path)
+    saved = json.loads(path.read_text(encoding="utf-8"))["routes"][0]
+    assert "midi_device" not in saved and "midi_channel" not in saved and [c["channel"] for c in saved["channels"]] == [13, 13]
+
+    for bad in ({"count": 65}, {"channels": [{"type": "cc14", "number": 40}]}, {"channels": [{"channel": 17}]}, {"channels": [{"channel": 0}]}, {"channels": [{"type": "cc", "number": 128}]}):
         with pytest.raises(ValueError):
             Route(**{"kind": "midi", "count": 2, **bad})
 
@@ -99,25 +144,26 @@ def test_a_midi_route_has_one_input_per_output_channel():
 # -- Learn
 
 
-def test_learn_takes_the_next_control_of_the_device_on_the_route_channel():
+def test_learn_takes_the_next_control_on_any_channel_and_sets_the_route_channels_channel():
     clock = [0.0]
     hub = MidiRouteHub(lambda: clock[0])
     got = []
     hub.on_learned = lambda route, index, spec: got.append((route, index, spec))
-    assert hub.set_learning("r1", DEVICE, 1, 2) == 1
+    assert hub.set_learning("r1", 2) == 1
 
-    cc(hub, 40, 10, channel=4)  # another MIDI channel: heard, not taken
-    cc(hub, 41, 10, device=port_key("Another Port 3 MIDI In 0"))  # another device: ignored
     hub.handle(KEY, mido.Message("note_off", channel=0, note=60))  # a release is no control
     hub.handle(KEY, mido.Message("pitchwheel", channel=0, pitch=100))
     assert got == []
-    assert hub.status()["learn"]["heard"] == {"kind": "cc", "number": 40, "channel": 5}
 
-    cc(hub, 21, 55)
-    assert got == [("r1", 2, {"type": "cc", "number": 21})]
-    assert hub.status()["learn"] is None and hub.status()["learned"]["number"] == 21
+    cc(hub, 40, 10, channel=4)  # on MIDI channel 5, from any device: taken, with its channel
+    assert got == [("r1", 2, {"type": "cc", "number": 40, "channel": 5})]
+    assert hub.status()["learn"] is None and hub.status()["learned"]["channel"] == 5
     cc(hub, 22, 55)
     assert len(got) == 1  # one control per Learn
+
+    hub.set_learning("r1", 0)
+    cc(hub, 41, 10, channel=15, device=port_key("Another Port 3 MIDI In 0"))  # another device
+    assert got[-1] == ("r1", 0, {"type": "cc", "number": 41, "channel": 16})
 
 
 def test_learn_takes_a_note_on_and_ends_by_itself():
@@ -125,17 +171,17 @@ def test_learn_takes_a_note_on_and_ends_by_itself():
     hub = MidiRouteHub(lambda: clock[0])
     got = []
     hub.on_learned = lambda *args: got.append(args)
-    hub.set_learning("r1", DEVICE, 1, 0)
-    note(hub, 48, 90)
-    assert got == [("r1", 0, {"type": "note", "number": 48})]
+    hub.set_learning("r1", 0)
+    note(hub, 48, 90, channel=2)
+    assert got == [("r1", 0, {"type": "note", "number": 48, "channel": 3})]
 
-    hub.set_learning("r1", DEVICE, 1, 1)
+    hub.set_learning("r1", 1)
     clock[0] += 3600  # nobody moves anything
     assert hub.status()["learn"] is None
     cc(hub, 5, 5)
     assert len(got) == 1  # too late
-    hub.set_learning("r1", DEVICE, 1, 1)
-    assert hub.set_learning("r1", DEVICE, 1, 1, on=False) is None  # cancelled
+    hub.set_learning("r1", 1)
+    assert hub.set_learning("r1", 1, on=False) is None  # cancelled
     note(hub, 49, 90)
     assert len(got) == 1
 
@@ -175,7 +221,7 @@ def test_midi_channels_in_the_frame_in_three_layers(engine):
 
 
 def test_a_midi_route_over_a_fixture_leaves_untouched_channels_alone(engine):
-    engine.routes.set_all([Route(kind="midi", midi_device=DEVICE, count=2, universe=0, first_output=100, channels=[MidiChannel(type="cc", number=1), MidiChannel(type="cc", number=2)])])
+    engine.routes.set_all([Route(kind="midi", count=2, universe=0, first_output=100, channels=[MidiChannel(type="cc", number=1), MidiChannel(type="cc", number=2)])])
     engine.tick(1 / 40)
     assert engine.universes[0][99] == 255  # the v3's master at address 100: the app's output
     cc(engine.midi_routes, 1, 10)
@@ -184,19 +230,26 @@ def test_a_midi_route_over_a_fixture_leaves_untouched_channels_alone(engine):
     assert engine.universes[0][100] == 0  # the second channel's control hasn't moved: not written (the fixture's value, 0, shows)
 
 
-def test_a_route_without_a_device_or_switched_off_writes_nothing(engine):
+def test_a_route_switched_off_or_without_inputs_writes_nothing(engine):
     cc(engine.midi_routes, 21, 127)
-    engine.routes.set_all([midi_route(MidiChannel(type="const", value=7), enabled=False), Route(kind="midi", count=1, universe=3, channels=[MidiChannel(type="const", value=9)])])
+    engine.routes.set_all([midi_route(MidiChannel(type="const", value=7), enabled=False), Route(kind="midi", count=2, universe=3)])
     engine.tick(1 / 40)
     assert 2 not in engine.universes and 3 not in engine.universes
+
+
+def test_each_route_channel_listens_on_its_own_midi_channel(engine):
+    engine.routes.set_all([midi_route(MidiChannel(type="cc", number=7, channel=5), MidiChannel(type="cc", number=7, channel=6))])
+    cc(engine.midi_routes, 7, 127, channel=4)
+    engine.tick(1 / 40)
+    assert list(engine.universes[2][:2]) == [255, 0]
 
 
 def test_midi_routes_are_saved_and_restored(store, engine):
     engine.routes.set_all([midi_route(MidiChannel(type="cc14", number=3), MidiChannel(type="note", number=40, note_mode="onoff"), name="Pads")])
     engine._autosave_routes(force=True)
     (r,) = Engine(store, enable_hardware=False).routes.all()
-    assert r.kind == "midi" and r.midi_device == DEVICE and r.name == "Pads"
-    assert [(c.type, c.number, c.note_mode) for c in r.channels] == [("cc14", 3, "velocity"), ("note", 40, "onoff")]
+    assert r.kind == "midi" and r.name == "Pads"
+    assert [(c.type, c.number, c.note_mode, c.channel) for c in r.channels] == [("cc14", 3, "velocity", 1), ("note", 40, "onoff", 1)]
 
 
 # -- the app's MIDI mapping
@@ -206,27 +259,25 @@ def controller() -> Controller:
     return Controller(name="LCXL", port_match="Fake Pad", channel=13, mappings=[MidiMapping(type="cc", number=21, macro="Strobo Decay"), MidiMapping(type="note", number=40, macro="Fog Machine", channel=1)])
 
 
-def test_the_overlap_notice_names_the_macros_the_mapping_drives_by_that_control(engine):
+def test_the_overlap_notice_names_the_macros_the_mapping_drives_by_that_channel_and_control(engine):
     midi = MidiInput(controller(), engine.macros)
     routes = [
-        Route(id="a", kind="midi", midi_device=DEVICE, midi_channel=13, count=3, channels=[MidiChannel(type="cc", number=21), MidiChannel(type="cc", number=22), MidiChannel(type="note", number=40)]),
-        Route(id="b", kind="midi", midi_device=DEVICE, midi_channel=1, count=2, channels=[MidiChannel(type="cc", number=21), MidiChannel(type="note", number=40)]),
-        Route(id="c", kind="midi", midi_device="Another Port 2 MIDI In 0", midi_channel=13, count=1, channels=[MidiChannel(type="cc", number=21)]),
+        Route(id="a", kind="midi", count=3, channels=[MidiChannel(type="cc", number=21, channel=13), MidiChannel(type="cc", number=22, channel=13), MidiChannel(type="note", number=40, channel=1)]),
+        Route(id="b", kind="midi", count=2, channels=[MidiChannel(type="cc", number=21, channel=1), MidiChannel(type="note", number=40, channel=13)]),
     ]
     engine.routes.set_all(routes)
     notices = engine.routes.midi_overlaps(midi)
-    assert [(n["route"], n["index"], n["kind"], n["number"], n["macros"]) for n in notices] == [
-        ("a", 0, "cc", 21, ["Strobo Decay"]),  # channel 13 is the controller's: CC 21 is mapped
-        ("b", 1, "note", 40, ["Fog Machine"]),  # the note is mapped on channel 1 explicitly
-        ("c", 0, "cc", 21, ["Strobo Decay"]),  # the mapping listens to every device (item 89): another device overlaps too
-    ]  # CC 22 isn't mapped, route b's CC 21 is on channel 1 (the mapping is on 13)
-    assert notices[0]["text"] == f"CC 21 on {DEVICE} also drives Strobo Decay in the MIDI mapping: both will react"
+    assert [(n["route"], n["index"], n["kind"], n["number"], n["channel"], n["macros"]) for n in notices] == [
+        ("a", 0, "cc", 21, 13, ["Strobo Decay"]),  # channel 13 is the controller's: CC 21 is mapped
+        ("a", 2, "note", 40, 1, ["Fog Machine"]),  # the note is mapped on channel 1 explicitly
+    ]  # CC 22 isn't mapped; route b's CC 21 is on channel 1 and its note on 13 (the mapping has them on 13 and 1)
+    assert notices[0]["text"] == "CC 21 on channel 13 also drives Strobo Decay in the MIDI mapping: both will react"
     assert engine.routes.midi_overlaps(MidiInput(None, engine.macros)) == []  # no controller: nothing to overlap with
 
 
 def test_a_14_bit_pair_overlaps_with_its_second_half_too(engine):
     midi = MidiInput(controller(), engine.macros)
-    engine.routes.set_all([Route(kind="midi", midi_device=DEVICE, midi_channel=13, count=1, channels=[MidiChannel(type="cc14", number=21)])])
+    engine.routes.set_all([Route(kind="midi", count=1, channels=[MidiChannel(type="cc14", number=21, channel=13)])])
     assert [n["number"] for n in engine.routes.midi_overlaps(midi)] == [21]  # CC 53 isn't mapped
 
 
@@ -239,39 +290,44 @@ def test_the_stream_reaches_the_routes_and_the_mapping_of_the_engine(engine):
     engine.restart_midi()
     engine._midi_message(KEY, DEVICE, mido.Message("control_change", channel=12, control=21, value=64))  # the first message only says where the fader is
     engine._midi_message(KEY, DEVICE, mido.Message("control_change", channel=12, control=21, value=127))
-    assert engine.midi_routes.value(KEY, 13, MidiChannel(type="cc", number=21)) == 255
+    assert engine.midi_routes.value(MidiChannel(type="cc", number=21, channel=13)) == 255
     assert engine.macros.control("Strobo Decay") == 1.0  # and the mapping still works
 
 
-def test_the_status_says_what_the_devices_make_of_the_routes_devices(engine):
-    engine.routes.set_all([midi_route(MidiChannel(type="cc", number=1), id="r1"), Route(kind="midi", id="r2", midi_device="Gone 3 MIDI In 0", midi_channel=1, count=1, channels=[MidiChannel()])])
-    engine.store.settings.midi_devices[KEY] = MidiDeviceSetting(name=DEVICE, input=False)
+def test_the_status_says_whether_any_input_is_open_and_when_a_route_channel_last_heard_something(engine):
+    engine.routes.set_all([midi_route(MidiChannel(type="cc", number=1, channel=2), id="r1"), Route(kind="midi", id="r2", count=1)])
     engine.midi_devices._rt[KEY] = _Runtime(state="off")  # plugged in, In off
-    got = {d["device"]: d for d in engine.midi_routes_status()["devices"]}
-    assert got[DEVICE]["open"] is False and "In switch is off" in got[DEVICE]["error"]
-    assert "no MIDI port matches" in got["Gone 3 MIDI In 0"]["error"]
+    first = engine.routes.status({}, engine.midi_routes)
+    assert first[0]["midi_open"] is False and "no MIDI input is on" in first[0]["midi_error"] and first[0]["seen"] is False
     engine.midi_devices._rt[KEY] = _Runtime(state="connected")
-    engine.store.settings.midi_devices[KEY].input = True
-    cc(engine.midi_routes, 1, 5)
-    got = {d["device"]: d for d in engine.midi_routes_status()["devices"]}
-    assert got[DEVICE]["open"] is True and got[DEVICE]["error"] is None and got[DEVICE]["received"] == 1
-    assert engine.routes.status({}, engine.midi_routes_status())[0]["midi_open"] is True
+    cc(engine.midi_routes, 1, 5, channel=1)
+    got = engine.routes.status({}, engine.midi_routes)
+    assert got[0]["midi_open"] is True and got[0]["midi_error"] is None and got[0]["seen"] is True and got[0]["age"] is not None
+    assert got[1]["seen"] is False  # r2 has no input that was touched
+    assert "devices" not in engine.state()["io"]["midi_routes"]
 
 
 # -- the endpoints
 
 
+def devices_on(engine):
+    engine.store.settings.midi_devices[KEY] = MidiDeviceSetting(name=DEVICE)  # a device with In on, plugged in or not
+
+
 def test_endpoints_for_a_channel_and_for_learn(engine):
     client = TestClient(create_app(engine))
-    rid = client.post("/api/routes", json={"kind": "midi", "midi_device": DEVICE, "count": 3}).json()["routes"][0]["id"]
+    devices_on(engine)
+    rid = client.post("/api/routes", json={"kind": "midi", "midi_device": DEVICE, "count": 3}).json()["routes"][0]["id"]  # an old client's device is ignored
     got = client.get("/api/routes").json()
-    assert [c["type"] for c in got["routes"][0]["channels"]] == ["none"] * 3
+    assert [(c["type"], c["channel"]) for c in got["routes"][0]["channels"]] == [("none", 1)] * 3
+    assert "midi_device" not in got["routes"][0] and "midi_channel" not in got["routes"][0]
     assert got["midi_notices"] == []
 
-    out = client.patch(f"/api/routes/{rid}/channels/1", json={"type": "cc", "number": 21}).json()["routes"][0]["channels"]
-    assert (out[1]["type"], out[1]["number"]) == ("cc", 21) and out[0]["type"] == "none"
+    out = client.patch(f"/api/routes/{rid}/channels/1", json={"type": "cc", "number": 21, "channel": 7}).json()["routes"][0]["channels"]
+    assert (out[1]["type"], out[1]["number"], out[1]["channel"]) == ("cc", 21, 7) and out[0]["type"] == "none"
     assert client.patch(f"/api/routes/{rid}/channels/3", json={"type": "cc"}).status_code == 404
     assert client.patch(f"/api/routes/{rid}/channels/0", json={"type": "cc14", "number": 99}).status_code == 422
+    assert client.patch(f"/api/routes/{rid}/channels/0", json={"channel": 17}).status_code == 422
     assert client.patch(f"/api/routes/{rid}", json={"count": 5}).json()["routes"][0]["channels"][1]["number"] == 21  # a longer route keeps its inputs
     assert len(client.patch(f"/api/routes/{rid}", json={"count": 2}).json()["routes"][0]["channels"]) == 2
 
@@ -280,20 +336,20 @@ def test_endpoints_for_a_channel_and_for_learn(engine):
     assert client.post(f"/api/routes/{rid}/learn", json={"index": 0}).json()["learn_id"] == 1
     state = engine.state()
     assert state["io"]["midi_routes"]["learn"]["route"] == rid
-    cc(engine.midi_routes, 30, 100)  # the controller moves
-    assert engine.routes.all()[0].channels[0].number == 30 and engine.routes.all()[0].channels[0].type == "cc"
+    cc(engine.midi_routes, 30, 100, channel=8)  # a controller moves, on MIDI channel 9
+    first = engine.routes.all()[0].channels[0]
+    assert (first.type, first.number, first.channel) == ("cc", 30, 9)
     assert engine.state()["io"]["midi_routes"]["learn"] is None
     assert client.post(f"/api/routes/{rid}/learn", json={"index": 0, "on": False}).json()["learn_id"] is None
 
     art = client.post("/api/routes", json={"kind": "artnet"}).json()["routes"][1]["id"]
     assert client.post(f"/api/routes/{art}/learn", json={"index": 0}).status_code == 404  # only a MIDI route learns
-    noname = client.post("/api/routes", json={"kind": "midi", "count": 1}).json()["routes"][2]["id"]
-    assert client.post(f"/api/routes/{noname}/learn", json={"index": 0}).status_code == 409
 
 
-def test_learn_refuses_a_device_whose_in_is_off(engine):
+def test_learn_refuses_when_no_device_has_in_switched_on(engine):
     client = TestClient(create_app(engine))
     engine.routes.set_all([midi_route(MidiChannel(), id="r1")])
+    assert client.post("/api/routes/r1/learn", json={"index": 0}).status_code == 409  # no device known at all
     engine.store.settings.midi_devices[KEY] = MidiDeviceSetting(name=DEVICE, input=False)
     assert client.post("/api/routes/r1/learn", json={"index": 0}).status_code == 409
     engine.store.settings.midi_devices[KEY].input = True

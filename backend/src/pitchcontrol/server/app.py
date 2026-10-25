@@ -351,7 +351,7 @@ def create_app(
         """The routes of the Control Desk (item 58) with the state of their sources, the output channels that two
         routes cover, and (item 59) the controls of MIDI routes that the app's MIDI mapping uses too."""
         return {
-            "routes": engine.routes.status(engine.live.sources(), engine.midi_routes_status()),
+            "routes": engine.routes.status(engine.live.sources(), engine.midi_routes),
             "overlaps": engine.routes.overlaps(),
             "midi_notices": engine.routes.midi_overlaps(engine.midi),
         }
@@ -396,16 +396,15 @@ def create_app(
 
     @app.post("/api/routes/{route_id}/learn")
     def learn_route_channel(route_id: str, body: RouteLearn):
-        """Learn for one output channel of a MIDI route: the next CC or note-on of the route's device on its MIDI
-        channel becomes that channel's input (``on`` false cancels). Ends by itself after ``seconds``."""
+        """Learn for one output channel of a MIDI route: the next CC or note-on, on any MIDI channel of any device that
+        is on, becomes that channel's input, MIDI channel included (``on`` false cancels). Ends by itself after
+        ``seconds`` (item 91)."""
         route = next((r for r in engine.routes.all() if r.id == route_id and r.kind == "midi"), None)
         if route is None or not 0 <= body.index < len(route.channels):
             raise HTTPException(404, f"no MIDI route '{route_id}' with channel {body.index + 1}")
-        if body.on and not route.midi_device:
-            raise HTTPException(409, "choose the MIDI device of the route first")
-        if body.on and engine.midi_devices.is_off(route.midi_device):  # an In that is off can't be heard (item 89); a device not plugged in is waited for
-            raise HTTPException(409, f"switch In on for '{route.midi_device}' first (Connections → MIDI)")
-        learn_id = engine.midi_routes.set_learning(route_id, route.midi_device, route.midi_channel, body.index, body.on)
+        if body.on and not engine.midi_devices.any_input_on():  # an In that is off can't be heard (item 89); a device not plugged in is waited for
+            raise HTTPException(409, "switch In on for a MIDI device first (Connections → MIDI)")
+        learn_id = engine.midi_routes.set_learning(route_id, body.index, body.on)
         return {"ok": True, "learn_id": learn_id, "seconds": LEARN_SECONDS}
 
     @app.delete("/api/routes/{route_id}")

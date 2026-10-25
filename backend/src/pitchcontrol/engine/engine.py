@@ -86,7 +86,7 @@ class Engine:
         self.midi_routes = MidiRouteHub()  # the MIDI side of the routes (item 59)
         self.midi_routes.on_learned = self._route_learned
         self.midi_devices = MidiDevices(store)  # owns every MIDI input port; its stream feeds the mapping, the routes and the monitor (item 89)
-        self.midi_routes.device_state = self.midi_devices.route_state
+        self.midi_routes.open_inputs = self.midi_devices.open_count
         self.midi_devices.subscribe(self._midi_message)
 
         self.phase = PhaseTracker()
@@ -302,11 +302,6 @@ class Engine:
         if midi is None:
             return None
         return {**midi.status(), **self.midi_devices.status()}
-
-    def midi_routes_status(self) -> dict:
-        """The hub's status for the devices that the routes which listen, or learn, name."""
-        learning = self.midi_routes.learning_route()
-        return self.midi_routes.status(r.midi_device for r in self.routes.all() if r.kind == "midi" and (r.enabled or r.id == learning))
 
     def _midi_watch(self) -> None:
         # Every look at the MIDI ports happens on this thread, the first one at once (item 92): on macOS CoreMIDI tells a
@@ -602,7 +597,7 @@ class Engine:
     def state(self) -> dict:
         with self.lock:
             midi = self.midi  # read once
-            midi_routes = self.midi_routes_status()
+            midi_routes = self.midi_routes.status()
             fixtures = []
             for fx in self.fixtures:
                 fixtures.append(
@@ -641,7 +636,7 @@ class Engine:
                 "fixtures": fixtures,
                 "fog": self.fog.active,
                 "overrides": self.overrides.snapshot(),
-                "routes": self.routes.status(self.live.sources(), midi_routes),
+                "routes": self.routes.status(self.live.sources(), self.midi_routes),
                 "route_overlaps": self.routes.overlaps(),
                 "route_midi_notices": self.routes.midi_overlaps(midi),
                 "io": {

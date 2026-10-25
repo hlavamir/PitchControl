@@ -260,20 +260,12 @@ class MidiDevices:
         out.sort(key=lambda d: d["name"].lower())
         return {"devices": out, "connected_devices": sum(d["state"] == "connected" for d in out)}
 
-    def is_off(self, device: str) -> bool:
-        """The device is in the list with In switched off."""
+    def open_count(self) -> int:
+        """How many inputs are open (item 91: what a MIDI route listens to)."""
         with self._lock:
-            dev = self._devices.get(port_key(device))
-        return dev is not None and not dev.input
+            return sum(rt.state == "connected" for rt in self._rt.values())
 
-    def route_state(self, device: str) -> tuple[bool, str | None]:
-        """For a route that names ``device``: (is it open, why not)."""
-        key = port_key(device)
+    def any_input_on(self) -> bool:
+        """At least one device of the list has In switched on, plugged in or not (a device not plugged in is waited for)."""
         with self._lock:
-            dev, rt = self._devices.get(key), self._rt.get(key)
-        state = (rt.state if rt is not None else None) or "missing"
-        if dev is None or state == "missing":
-            return False, f"no MIDI port matches '{device}'"
-        if state == "off":
-            return False, "its In switch is off (Connections → MIDI)"
-        return state == "connected", rt.error if rt is not None else None
+            return any(d.input for d in self._devices.values())

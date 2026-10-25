@@ -1,4 +1,4 @@
-// Routes (Control Desk, items 58 and 59): live input copied onto output channels.
+// Routes (Control Desk, items 58, 59 and 91): live input copied onto output channels.
 
 export type RouteKind = 'artnet' | 'dmx' | 'midi'
 
@@ -6,6 +6,7 @@ export type MidiInputType = 'none' | 'cc' | 'cc14' | 'note' | 'const'
 
 /** The input of one output channel of a MIDI route. */
 export interface MidiChannelState {
+  channel: number // the MIDI channel, 1–16: the control is on it, from any device (item 91)
   type: MidiInputType // none: nothing yet; cc: 0..127 scaled to 0..255; cc14: a pair (number and number + 32); note; const: value
   number: number // the CC or note number (cc14: the first of the pair, 0 to 31)
   value: number // const: 0..255
@@ -23,11 +24,9 @@ export interface RouteState {
   count: number // 1–512 (a MIDI route: 1–64)
   universe: number // the output universe
   first_output: number // 1–512
-  midi_device: string // a MIDI route: the port
-  midi_channel: number // 1–16
   channels: MidiChannelState[] // a MIDI route: one input per output channel
-  midi_open?: boolean // a MIDI route: the device is open
-  midi_error?: string | null
+  midi_open?: boolean // a MIDI route: some MIDI input is open
+  midi_error?: string | null // a MIDI route: why not (no MIDI input is on)
   seen: boolean // the source has sent something
   age: number | null // seconds since its last packet
   pps: number // packets per second
@@ -49,15 +48,15 @@ export interface MidiNotice {
   index: number // the route's output channel, from 0
   kind: 'cc' | 'note'
   number: number
+  channel: number // the MIDI channel
   macros: string[]
   text: string
 }
 
-/** The MIDI hub's state: the devices of the routes, and a Learn that waits. */
+/** The MIDI hub's state: a Learn that waits (for any channel of any device), and what the last one took. */
 export interface MidiRoutesStatus {
-  devices: { device: string; open: boolean; error: string | null; received: number; age: number | null }[]
-  learn: { id: number; route: string; index: number; channel: number; seconds: number; heard: { kind: 'cc' | 'note'; number: number; channel: number } | null } | null
-  learned: { id: number; route: string; index: number; type: 'cc' | 'note'; number: number } | null
+  learn: { id: number; route: string; index: number; seconds: number } | null
+  learned: { id: number; route: string; index: number; type: 'cc' | 'note'; number: number; channel: number } | null
   learn_seconds: number
 }
 
@@ -70,12 +69,13 @@ export function newRoute(universe: number): RouteEdit {
   return { name: '', enabled: true, kind: 'artnet', artnet_universe: 0, first_input: 1, count: 512, universe, first_output: 1 }
 }
 
-export function newMidiRoute(universe: number, device: string): RouteEdit {
-  return { name: '', enabled: false, kind: 'midi', midi_device: device, midi_channel: 1, first_input: 1, count: 8, universe, first_output: 1 }
+/** A new MIDI route: its channels start as "no input" (nothing is written), so it can be on at once; Learn sets them (item 91). */
+export function newMidiRoute(universe: number): RouteEdit {
+  return { name: '', enabled: true, kind: 'midi', first_input: 1, count: 8, universe, first_output: 1 }
 }
 
-export function sourceLabel(r: Pick<RouteState, 'kind' | 'artnet_universe' | 'midi_device' | 'midi_channel'>): string {
-  if (r.kind === 'midi') return `MIDI ${r.midi_device || '?'} ch ${r.midi_channel}`
+export function sourceLabel(r: Pick<RouteState, 'kind' | 'artnet_universe' | 'count'>): string {
+  if (r.kind === 'midi') return `MIDI, ${r.count} channel${r.count === 1 ? '' : 's'}`
   return r.kind === 'dmx' ? 'DMX input' : `Art-Net ${r.artnet_universe}`
 }
 
@@ -84,15 +84,15 @@ export function routeLabel(r: RouteState): string {
   return r.name || `${sourceLabel(r)} → ${r.universe}:${r.first_output}`
 }
 
-/** The input of a route channel in a few words: "CC 21", "CC 1 + 33 (14-bit)", "note 40 (on / off)", "= 128", "no input". */
+/** The input of a route channel in a few words: "CC 21, ch 5", "CC 1 + 33 (14-bit), ch 5", "note 40 (on / off), ch 5", "= 128", "no input". */
 export function midiInputText(c: MidiChannelState): string {
   switch (c.type) {
     case 'cc':
-      return `CC ${c.number}`
+      return `CC ${c.number}, ch ${c.channel}`
     case 'cc14':
-      return `CC ${c.number} + ${c.number + 32} (14-bit)`
+      return `CC ${c.number} + ${c.number + 32} (14-bit), ch ${c.channel}`
     case 'note':
-      return `note ${c.number} (${c.note_mode === 'onoff' ? 'on / off' : 'velocity'})`
+      return `note ${c.number} (${c.note_mode === 'onoff' ? 'on / off' : 'velocity'}), ch ${c.channel}`
     case 'const':
       return `= ${c.value}`
     default:
@@ -126,10 +126,9 @@ export function routedCount(routes: RouteState[]): number {
 }
 
 /** What a route's source is doing, in a few words: never sent, receiving, or quiet (the last values are held). */
-export function sourceState(r: Pick<RouteState, 'kind' | 'seen' | 'age' | 'pps' | 'midi_open' | 'midi_error'>): { text: string; level: 'none' | 'live' | 'holding' | 'problem' } {
+export function sourceState(r: Pick<RouteState, 'kind' | 'seen' | 'age' | 'pps' | 'midi_error'>): { text: string; level: 'none' | 'live' | 'holding' | 'problem' } {
   if (r.kind === 'midi') {
-    if (r.midi_error) return { text: r.midi_error, level: 'problem' }
-    if (r.midi_open === false) return { text: 'choose a MIDI device', level: 'problem' }
+    if (r.midi_error) return { text: r.midi_error, level: 'problem' } // no MIDI input is on
     if (!r.seen || r.age == null) return { text: 'no message yet', level: 'none' }
     if (r.age > HOLDING_AFTER_S) return { text: `quiet for ${formatAge(r.age)}: holding the last values`, level: 'holding' }
     return { text: 'receiving', level: 'live' }
@@ -152,11 +151,9 @@ export function overlapText(o: RouteOverlap, routes: RouteState[]): string {
   return `Output ${o.universe}, ${chans}: ${names.join(' and ')}; the last one wins`
 }
 
-/** What a Learn that waits says: move a control, and when it hears one on another MIDI channel, which. */
+/** What a Learn that waits says: move a control on any device that is on, on any MIDI channel. */
 export function learnHint(learn: NonNullable<MidiRoutesStatus['learn']>): string {
-  const base = `Move a knob or press a key on the device (MIDI channel ${learn.channel}) · ${Math.ceil(learn.seconds)} s`
-  const h = learn.heard
-  return h && h.channel !== learn.channel ? `${base} · heard ${h.kind === 'cc' ? 'CC' : 'note'} ${h.number} on channel ${h.channel}: this route listens on channel ${learn.channel}` : base
+  return `Move a knob or press a key on any MIDI device that is on: its channel is taken too · ${Math.ceil(learn.seconds)} s`
 }
 
 /** The routes that write to other universes than ``universe``: how many, and which universes (item 74: the Routes subpage lists one universe). */

@@ -222,7 +222,7 @@ def test_the_stream_reaches_the_mapping_the_routes_and_the_monitor_with_the_devi
     system.port(F1).send(mido.Message("control_change", channel=0, control=7, value=127))  # the mapping listens to every device
     system.port(LC).send(mido.Message("control_change", channel=4, control=9, value=33))
     assert engine.macros.on("Fog Machine")
-    assert engine.midi_routes.value(port_key(LC), 5, MidiChannel(type="cc", number=9)) == scale7(33)
+    assert engine.midi_routes.value(MidiChannel(type="cc", number=9, channel=5)) == scale7(33)
     recent = engine.midi_status()["recent"]  # newest first
     assert [(e["device"], e["macro"]) for e in recent] == [(LC, None), (F1, "Fog Machine")]
     assert recent[0]["note"] == "CC 9 not mapped"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api'
 import {
   MAX_MIDI_COUNT,
@@ -19,12 +19,11 @@ import {
   type RouteOverlap,
   type RouteState,
 } from '../routes'
-import { usePolling } from '../usePolling'
 import { Button, NumberInput, Section, TextInput, Toggle } from './forms'
 import { Icon } from './Icon'
 
 const GRID = 'grid grid-cols-[2.6rem_minmax(7rem,1.2fr)_7.5rem_4.5rem_4.5rem_4.5rem_1.2rem_5.5rem_5rem] items-center gap-x-2'
-const CHANNEL_GRID = 'grid grid-cols-[3.2rem_9rem_5rem_6.5rem_6rem_2.6rem_minmax(0,1fr)] items-center gap-x-2'
+const CHANNEL_GRID = 'grid grid-cols-[3.2rem_9rem_4.5rem_5rem_6.5rem_5rem_2.6rem_minmax(0,1fr)] items-center gap-x-2'
 
 const INPUT_TYPES: { value: MidiInputType; label: string }[] = [
   { value: 'none', label: 'no input' },
@@ -36,7 +35,8 @@ const INPUT_TYPES: { value: MidiInputType; label: string }[] = [
 
 /**
  * The inputs of a MIDI route, one row per output channel (item 59): a CC, a 14-bit CC pair, a note or a constant, each with its
- * own Learn button (click it, move a control on the device, done: no stepping through the channels).
+ * own MIDI channel and Learn button (item 91: click it, move a control on any device, done: no device to choose, no stepping
+ * through the channels; Learn takes the control's MIDI channel too).
  */
 function MidiChannels({
   route,
@@ -54,10 +54,11 @@ function MidiChannels({
   onLearn: (index: number, on: boolean) => void
 }) {
   return (
-    <div className="flex flex-col gap-0.5 border border-edge p-2" data-tip="One input for each output channel of the route. Learn: click it, then move a knob or press a key on the device; the control is taken for that channel">
+    <div className="flex flex-col gap-0.5 border border-edge p-2" data-tip="One input for each output channel of the route, from any MIDI device that is on. Learn: click it, then move a knob or press a key on a device; its MIDI channel and CC or note are taken for that channel">
       <div className={`${CHANNEL_GRID} lbl border-b border-seam pb-1 text-[10px] text-dim`}>
         <span>Out</span>
         <span>Input</span>
+        <span>MIDI ch.</span>
         <span>Number</span>
         <span>Note as</span>
         <span />
@@ -86,6 +87,17 @@ function MidiChannels({
                   </option>
                 ))}
               </select>
+              {c.type === 'none' || c.type === 'const' ? (
+                <span className="text-dim">–</span>
+              ) : (
+                <select value={c.channel} data-tip="The MIDI channel (1–16) the control is on. Learn sets it" onChange={(e) => onPatch(i, { channel: Number(e.target.value) })}>
+                  {Array.from({ length: 16 }, (_, k) => (
+                    <option key={k} value={k + 1}>
+                      ch {k + 1}
+                    </option>
+                  ))}
+                </select>
+              )}
               {c.type === 'const' ? (
                 <NumberInput value={c.value} min={0} max={255} integer className="w-full" tip="The value to send, 0–255" onChange={(v) => onPatch(i, { value: v })} />
               ) : c.type === 'none' ? (
@@ -112,7 +124,7 @@ function MidiChannels({
               <Button
                 primary={waiting}
                 onClick={() => onLearn(i, !waiting)}
-                tip={waiting ? 'Waiting for a control: move a knob or press a key on the device. Click to cancel' : 'Click, then move a knob or press a key on the device: its CC or note is taken for this channel'}
+                tip={waiting ? 'Waiting for a control: move a knob or press a key on any MIDI device. Click to cancel' : 'Click, then move a knob or press a key on any MIDI device that is on: its MIDI channel and CC or note are taken for this channel'}
                 className="px-2"
               >
                 {waiting ? '…' : 'Learn'}
@@ -136,7 +148,7 @@ function MidiChannels({
 }
 
 /**
- * Control Desk → Routes (items 58 and 59). A route copies live input onto output channels: a block of an Art-Net universe or of
+ * Control Desk → Routes (items 58, 59 and 91). A route copies live input onto output channels: a block of an Art-Net universe or of
  * the DMX input, or, for a MIDI route, one CC, note or constant for each channel. Order of the layers, the later one
  * wins: the app's output → routes → manual overrides. The last value of an input stays when it goes quiet; a route lets
  * go when it is switched off or removed. Every change is one request that the server merges and saves.
@@ -164,13 +176,7 @@ export function RoutesSection({
   const overlaps = allOverlaps.filter((o) => o.universe === universe)
   const others = otherUniverses(all, universe)
   const [problem, setProblem] = useState<string | null>(null)
-  const [ports, setPorts] = useState<string[]>([])
   const [folded, setFolded] = useState<Record<string, boolean>>({}) // route id → its channel list is folded away
-  const readPorts = () => api.get<string[]>('/api/devices/midi').then((p) => setPorts((prev) => (JSON.stringify(prev) === JSON.stringify(p) ? prev : p)))
-  useEffect(() => {
-    readPorts().catch(() => undefined)
-  }, [])
-  usePolling(readPorts)
 
   // one request per change, and the server changes only what was sent: quick edits of two fields can't undo each other
   const run = async (request: Promise<unknown>) => {
@@ -184,7 +190,7 @@ export function RoutesSection({
   const edit = (id: string, patch: RouteEdit) => void run(api.patch(`/api/routes/${id}`, patch)) // the server shrinks the count to fit when a first channel moves up
   const remove = (id: string) => void run(api.delete(`/api/routes/${id}`))
   const add = () => void run(api.post('/api/routes', { ...newRoute(universe), enabled: false })) // off until it is set up: a whole universe of zeros would blank the lights
-  const addMidi = () => void run(api.post('/api/routes', newMidiRoute(universe, ports[0] ?? '')))
+  const addMidi = () => void run(api.post('/api/routes', newMidiRoute(universe)))
   const patchChannel = (id: string, i: number, patch: Partial<MidiChannelState>) => void run(api.patch(`/api/routes/${id}/channels/${i}`, patch))
   const learn = (id: string, i: number, on: boolean) => void run(api.post(`/api/routes/${id}/learn`, { index: i, on }))
 
@@ -201,7 +207,7 @@ export function RoutesSection({
       tip="Live input (Art-Net and DMX over USB: set up in Connections → DMX & Art-Net; or MIDI) copied onto output channels. Order of the layers, the later one wins: the app's output, then routes, then manual overrides"
     >
       <p className="text-[11px] leading-snug text-dim">
-        The routes of the universe selected at the top right; a new route goes to it. A route copies live input onto output channels: a block of an Art-Net universe or of the DMX input, up to a whole universe, or, for a MIDI route, one CC, note or fixed value for each channel. It sits over the fixtures and under the manual overrides: a channel you override keeps your value, and the route shows again when you release it. When the input stops, the last values stay; switch a route off or remove it to give the channels back to the fixtures.
+        The routes of the universe selected at the top right; a new route goes to it. A route copies live input onto output channels: a block of an Art-Net universe or of the DMX input, up to a whole universe, or, for a MIDI route, one CC, note or fixed value for each channel, from any MIDI device that is on (Learn takes the control's MIDI channel too). It sits over the fixtures and under the manual overrides: a channel you override keeps your value, and the route shows again when you release it. When the input stops, the last values stay; switch a route off or remove it to give the channels back to the fixtures.
       </p>
       {others.count > 0 && (
         <p className="text-[11px] text-dim" data-tip="Routes are listed by the universe they write to. Choose another universe at the top right to see and edit them">
@@ -217,7 +223,7 @@ export function RoutesSection({
               <Icon name="in" label />
               Source
             </span>
-            <span>Art-Net / MIDI ch.</span>
+            <span>Art-Net</span>
             <span>First in</span>
             <span>Count</span>
             <span />
@@ -243,21 +249,15 @@ export function RoutesSection({
                   />
                   <select
                     value={r.kind}
-                    data-tip="Where the values come from: an Art-Net universe, the DMX input (an Enttec DMX USB Pro that receives), or a MIDI device"
-                    onChange={(e) => edit(r.id, e.target.value === 'midi' ? { kind: 'midi', count: Math.min(r.count, 8), midi_device: r.midi_device || (ports[0] ?? '') } : { kind: e.target.value as RouteKind })}
+                    data-tip="Where the values come from: an Art-Net universe, the DMX input (an Enttec DMX USB Pro that receives), or MIDI (each channel has its own control, from any device that is on)"
+                    onChange={(e) => edit(r.id, e.target.value === 'midi' ? { kind: 'midi', count: Math.min(r.count, 8) } : { kind: e.target.value as RouteKind })}
                   >
                     <option value="artnet">Art-Net</option>
                     <option value="dmx">DMX input</option>
                     <option value="midi">MIDI</option>
                   </select>
                   {isMidi ? (
-                    <select value={r.midi_channel} data-tip="The MIDI channel (1–16) the controls of this route are on" onChange={(e) => edit(r.id, { midi_channel: Number(e.target.value) })}>
-                      {Array.from({ length: 16 }, (_, i) => (
-                        <option key={i} value={i + 1}>
-                          ch {i + 1}
-                        </option>
-                      ))}
-                    </select>
+                    <span className="text-dim">–</span>
                   ) : (
                     <NumberInput
                       value={r.artnet_universe}
@@ -292,14 +292,6 @@ export function RoutesSection({
                 </div>
                 {isMidi && (
                   <div className="flex items-center gap-2 pl-[2.6rem] text-[12px]">
-                    <span className="lbl text-[10px] text-dim">Device</span>
-                    <select className="min-w-[16rem]" value={r.midi_device} data-tip="The MIDI input this route listens to. The controller of the MIDI mapping can be used here too" onChange={(e) => edit(r.id, { midi_device: e.target.value })}>
-                      <option value="">— choose a MIDI device —</option>
-                      {r.midi_device && !ports.includes(r.midi_device) && <option value={r.midi_device}>{r.midi_device} (not found)</option>}
-                      {ports.map((p) => (
-                        <option key={p}>{p}</option>
-                      ))}
-                    </select>
                     <button className="lbl text-[10px] text-dim underline decoration-dotted underline-offset-2" data-tip="Show or hide the inputs of the channels" onClick={() => setFolded((f) => ({ ...f, [r.id]: !f[r.id] }))}>
                       {folded[r.id] ? '▸ show the channels' : '▾ hide the channels'}
                     </button>
