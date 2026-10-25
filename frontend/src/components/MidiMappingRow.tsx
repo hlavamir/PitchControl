@@ -1,4 +1,5 @@
 import type { MacroDef, MidiMappingEntry, MidiMode } from '../api'
+import { macroPlace } from '../macroPlace'
 import { LEARN_ASK, MODE_LABEL, MODE_TIP, defaultMode, modesFor } from '../midiMapping'
 import { Check, NumberInput } from './forms'
 
@@ -53,6 +54,7 @@ export function MidiMappingRow({
 }) {
   const special = m?.mode === 'shift' || template.mode === 'shift'
   const modes = d ? modesFor(d) : []
+  const place = d ? macroPlace(d.name) : null // where the macro sits on its page, to find the same control on the hardware (item 96)
   return (
     <div
       data-tip={hint}
@@ -62,6 +64,11 @@ export function MidiMappingRow({
     >
       <span className="truncate" title={label}>
         {label}
+        {place && (
+          <span className="ml-1.5 text-[10px] text-dim" data-hint="info" data-tip="Where this macro sits on its page, numbered as the page shows it: the same number as the control on the hardware layout">
+            · {place}
+          </span>
+        )}
         {waiting && ask && <span className="ml-1.5 text-[10px] text-ink">{LEARN_ASK[ask]}</span>}
         {detectedText && !waiting && (
           <span className="ml-1.5 text-[10px] text-dim" title={detectedText}>

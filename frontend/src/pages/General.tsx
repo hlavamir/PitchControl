@@ -8,6 +8,7 @@ import { Preview } from '../components/Preview'
 import { Section } from '../components/forms'
 import { BUTTONS, FADERS, MASKS, type SceneInfo } from '../generalControls'
 import { useMacroNav } from '../macroNav'
+import { buttonNumber } from '../macroPlace'
 import type { EngineConnection } from '../useEngine'
 import { useGridNav, type NavGrid, type NavItem } from '../useGridNav'
 
@@ -127,6 +128,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
                   setMacro={setMacro}
                   toggleMacro={toggleMacro}
                   tag={tag}
+                  index={buttonNumber(name) ?? undefined} // numbered 01–16 over both rows, like the faders (item 96)
                   selected={selectedId === name}
                   onSelect={() => select(name)}
                 />
@@ -144,6 +146,7 @@ export function General({ engine, defs }: { engine: EngineConnection; defs: Reco
                   setMacro={setMacro}
                   toggleMacro={toggleMacro}
                   tag={tag}
+                  index={buttonNumber(name) ?? undefined} // numbered 01–16 over both rows, like the faders (item 96)
                   selected={selectedId === name}
                   onSelect={() => select(name)}
                 />

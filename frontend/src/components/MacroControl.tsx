@@ -28,7 +28,8 @@ export function FitLabel({ text, className = '' }: { text: string; className?: s
       const width = el.scrollWidth
       if (width <= room) return
       const base = parseFloat(getComputedStyle(el).fontSize)
-      el.style.fontSize = `${Math.max(MIN_LABEL_PX, (base * room) / width)}px`
+      // a hair under the room: an exact fit still gets an ellipsis from sub-pixel rounding (item 96)
+      el.style.fontSize = `${Math.max(MIN_LABEL_PX, (base * room * 0.97) / width)}px`
     }
     fit()
     const ro = new ResizeObserver(fit)
@@ -114,7 +115,7 @@ interface Props {
   selected?: boolean
   onSelect?: () => void
   tag?: string // small hint on buttons: TGL, HOLD, A…D
-  index?: number // position number shown in the fader head
+  index?: number // position number shown in the fader head, or before a button's label (item 96)
   className?: string
   disabled?: boolean // fader: greyed out, no input (a dimmer no fixture uses)
   name?: string // fader: editable name (Dimmers); double-click the head to rename, '' = macro name
@@ -126,15 +127,16 @@ const TICKS = [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100]
 
 /** One macro: segmented fader, toggle, momentary button or radio button. */
 export function MacroControl(props: Props) {
-  const { def, value, setMacro, toggleMacro, selected, onSelect, tag } = props
+  const { def, value, setMacro, toggleMacro, selected, onSelect, tag, index } = props
   if (def.kind === 'fader') return <Fader {...props} />
 
   const on = value > 0.5
-  const cls = `lbl flex h-10 w-full items-center justify-between gap-1.5 px-2.5 text-left text-[11px] select-none transition-colors ${
+  const cls = `lbl flex h-10 w-full items-center justify-between gap-1.5 ${index !== undefined ? 'px-2' : 'px-2.5'} text-left text-[11px] select-none transition-colors ${
     on ? `bg-ink text-ground ${def.kind === 'momentary' ? 'glow-held' : 'glow-on'}` : 'glow-hover bg-panel text-ink'
   } ${selected ? 'glow-sel' : ''}`
   const content = (
     <>
+      {index !== undefined && <span className="font-mono opacity-60">{String(index).padStart(2, '0')}</span>}
       <FitLabel text={def.label} />
       {tag && <span className="font-mono text-[10px] opacity-70">{tag}</span>}
     </>
