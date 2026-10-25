@@ -7,7 +7,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ## Unreleased
 
 ### Added
-- **A MIDI mapping for the Native Instruments Traktor Kontrol F1** (Miro's, "Kontrol F1"), next to the Launch Control XL 3's: knobs and faders for the strobo, idle, hue and audio macros, pads for Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change and Swap Colors, pads C1–D4 save (page deck A) and load (page deck B) scenes 1–8, the Mute buttons select Mask A–D (latching). It expects the F1 in MIDI mode with the PitchControl! template of NI Controller Editor, every control on channel 13.
+- **A MIDI mapping for the Native Instruments Traktor Kontrol F1** (Miro's, "Kontrol F1"), next to the Launch Control XL 3's: knobs and faders for the strobo, idle, hue and audio macros, pads for Manual Strobo, Fog, Invert Discoball, Vertical Symmetry, Auto Color Change and Swap Colors, pads C1–D4 save (page deck A) and load (page deck B) scenes 1–8, the Mute buttons select Mask A–D (latching). It expects the F1 in MIDI mode with the PitchControl! template of NI Controller Editor, every control on channel 13. The template ships too, as `config/controllers/NativeInstruments_TraktorKontrolF1.nckf1`, to import in Controller Editor.
 - **Check for updates** in Help → About (item 82), next to Releases: when pressed, PitchControl asks GitHub for the newest release and says whether yours is the latest, or shows the new version with its date, release notes and a **Download** button that opens the zip for this computer (macOS arm64, Windows x64) in the browser. Nothing is checked at start, and the app downloads and installs nothing itself; without internet it says it couldn't reach GitHub. `GET /api/update-check`.
 
 ### Changed
