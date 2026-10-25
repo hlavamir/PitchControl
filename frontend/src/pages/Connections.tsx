@@ -43,7 +43,7 @@ const TABS: SubTab<ConnectionTab>[] = [
 /**
  * Connections (item 60): what goes in and out of the app, one subpage tab per topic (Q / E step through them). Every change
  * is written and applied at once (item 88): switches and lists on the click, text and number fields on Enter or when you
- * leave them. The MIDI mapping is a file with its own Save.
+ * leave them. The MIDI mapping is a file and saves at once too (item 90).
  */
 export function Connections({ engine }: { engine: EngineConnection }) {
   // keys (rigKeys.ts, useFieldNav.ts): W S A D move over the controls, ⏎ edits the highlighted one

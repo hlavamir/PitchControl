@@ -587,7 +587,7 @@ export function MidiMappingSection({
           </Button>
         )}
         {selected && isActive && (
-          <Button onClick={stopUsing} tip="Stop listening to this controller and close its MIDI port, so another program can open it (saves the setting)">
+          <Button onClick={stopUsing} tip="No mapping in use: MIDI moves no macros. The devices stay open for the monitor and the routes; switch a device's In off to free it for another program (saves the setting)">
             Stop using it
           </Button>
         )}
