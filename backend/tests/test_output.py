@@ -626,19 +626,25 @@ def test_worker_keeps_a_minimum_gap_between_writes_and_writes_the_newest_frame()
             self.writes: list[tuple[float, object]] = []
 
         def write(self, frame):
-            self.writes.append((real_time.monotonic(), frame))
+            self.writes.append((real_time.perf_counter(), frame))  # the worker's own clock
+
+    def wait_for(n):  # waits for the writes instead of guessing how long they take: a busy machine is slower, not wrong
+        deadline = real_time.monotonic() + 5
+        while len(w.writes) < n and real_time.monotonic() < deadline:
+            real_time.sleep(0.001)
+        assert len(w.writes) >= n
 
     w = Fake()
     w.start()
     try:
         w.submit(0)
-        real_time.sleep(0.02)                    # frame 0 is written; the next may start only 50 ms after it
-        for i in range(1, 6):                    # a burst while the worker waits out the gap
+        wait_for(1)                              # frame 0 is written; the next may start only 50 ms after it
+        for i in range(1, 6):                    # a burst while the worker waits out the gap (well inside 50 ms)
             w.submit(i)
-            real_time.sleep(0.005)
-        real_time.sleep(0.12)
+        wait_for(2)
         w.submit(6)
-        real_time.sleep(0.02)
+        wait_for(3)
+        real_time.sleep(0.06)                    # nothing else may come
     finally:
         w.stop()
     frames = [f for _, f in w.writes]
