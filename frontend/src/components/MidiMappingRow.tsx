@@ -1,5 +1,5 @@
 import type { MacroDef, MidiMappingEntry, MidiMode } from '../api'
-import { MODE_LABEL, MODE_TIP, defaultMode, modesFor } from '../midiMapping'
+import { LEARN_ASK, MODE_LABEL, MODE_TIP, defaultMode, modesFor } from '../midiMapping'
 import { Check, NumberInput } from './forms'
 
 /** One row of the mapping editor: a macro and the control that drives it (or an empty row to take one). */
@@ -12,6 +12,9 @@ export function MidiMappingRow({
   template,
   controllerChannel,
   waiting,
+  ask,
+  watching,
+  detectedText,
   clashes: others,
   deadText,
   highlighted,
@@ -31,6 +34,12 @@ export function MidiMappingRow({
   controllerChannel: number
   /** Learn is waiting for a control for this row */
   waiting: boolean
+  /** Learn caught a control and wants more of it: a second press, or more movement (item 93) */
+  ask: 'press_again' | 'turn' | 'turn_other' | null
+  /** Learn caught a control and is telling what it is */
+  watching: boolean
+  /** what Learn found the hardware to be, until the row is changed (item 93) */
+  detectedText: string | undefined
   /** the labels of the other macros on a control that overlaps this one's */
   clashes: string[] | undefined
   deadText: string | undefined
@@ -53,6 +62,12 @@ export function MidiMappingRow({
     >
       <span className="truncate" title={label}>
         {label}
+        {waiting && ask && <span className="ml-1.5 text-[10px] text-ink">{LEARN_ASK[ask]}</span>}
+        {detectedText && !waiting && (
+          <span className="ml-1.5 text-[10px] text-dim" title={detectedText}>
+            {detectedText}
+          </span>
+        )}
         {deadText && (
           <span className="ml-1.5 text-[10px] text-ink" data-hint="info" data-tip="A shift button always wins on its control, so nothing else mapped to the same CC / note and channel ever fires. Give the macro another control or change the shift button">
             ⚠ {deadText}
@@ -98,10 +113,10 @@ export function MidiMappingRow({
         </select>
         <button
           className={`lbl h-6 px-2 text-[10px] whitespace-nowrap ${waiting ? 'glow-on bg-ink text-ground' : 'glow-hover border border-edge text-ink'}`}
-          data-tip={waiting ? 'Waiting for a message: move or press the control (click again to cancel)' : 'Learn: then move or press the control on the controller'}
+          data-tip={waiting ? 'Waiting for a message: move or press the control (click again to cancel)' : 'Learn: then move or press the control on the controller. It also finds out whether it is a fader, an encoder or a gate, trigger or latching button, and sets the mode'}
           onClick={onLearn}
         >
-          {waiting ? 'move it…' : 'Learn'}
+          {waiting ? (ask ? 'again…' : watching ? 'listening…' : 'move it…') : 'Learn'}
         </button>
       </span>
       {special ? (

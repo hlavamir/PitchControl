@@ -317,12 +317,12 @@ def test_midi_learning_endpoint(layered):
     engine = Engine(layered, enable_hardware=False)
     engine.midi = MidiInput(layered.controller, engine.macros)
     client = TestClient(create_app(engine))
-    res = client.post("/api/midi/learning", json={"on": True, "shifts": [{"type": "cc", "number": 60, "channel": 1}]})
+    res = client.post("/api/midi/learning", json={"on": True, "shifts": [{"type": "cc", "number": 60, "channel": 1}], "macro": "Fog Machine"})
     assert res.status_code == 200
     body = res.json()
     assert body["learn_id"] == engine.midi.learn_id and body["seconds"] == 20.0
     assert engine.midi.learning and engine.midi.status()["learn_seconds"] == body["seconds"]
-    assert engine.midi._learn_shifts == {("cc", 60, 1)}
+    assert engine.midi._learn_shifts == {("cc", 60, 1)} and engine.midi._learn_macro == "Fog Machine"  # item 93
     assert client.post("/api/midi/learning", json={"on": False}).json()["learn_id"] is None
     assert not engine.midi.learning
 

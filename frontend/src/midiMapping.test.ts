@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MacroDef, MidiMappingEntry } from './api'
-import { channelOf, clashes, deadMappings, defaultMode, learnedMapping, modesFor, newMapping, outChannelOf, overlaps } from './midiMapping'
+import { LEARN_ASK, channelOf, clashes, deadMappings, defaultMode, detectedNote, learnedMapping, modesFor, newMapping, outChannelOf, overlaps } from './midiMapping'
 
 // the cases follow backend/tests/test_midi.py: the editor's rules have to agree with the engine's
 
@@ -57,6 +57,34 @@ describe('what Learn makes of a row (item 90)', () => {
   it('a control learned with shift held is the "with shift" row; otherwise the shift setting stays', () => {
     expect(learnedMapping(row, { kind: 'cc', number: 5, channel: 13, shift: true }, 13).shift).toBe('on')
     expect(learnedMapping(mapping({ shift: 'off' }), { kind: 'cc', number: 5, channel: 13, shift: false }, 13).shift).toBe('off')
+  })
+})
+
+describe('what Learn sets from the hardware it found (item 93)', () => {
+  const found = { kind: 'cc', number: 5, channel: 13, shift: false } as const
+  const detected = (over: Partial<NonNullable<Parameters<typeof learnedMapping>[1]['detected']>>) => ({ kind: 'gate' as const, label: 'gate button', mode: null, encoder: null, note: '', ...over })
+  it('sets the mode the engine chose', () => {
+    expect(learnedMapping(mapping({ mode: 'toggle' }), { ...found, detected: detected({ mode: 'momentary' }) }, 13).mode).toBe('momentary')
+  })
+  it('sets the encoder type with relative, and leaves it alone otherwise', () => {
+    const encoder = learnedMapping(mapping({ mode: 'absolute' }), { ...found, detected: detected({ kind: 'encoder', label: 'encoder (offset 64)', mode: 'relative', encoder: 'offset_64' }) }, 13)
+    expect(encoder).toMatchObject({ mode: 'relative', encoder: 'offset_64' })
+    expect(learnedMapping(mapping({ encoder: 'sign_bit' }), { ...found, detected: detected({ mode: 'toggle', encoder: 'offset_64' }) }, 13).encoder).toBe('sign_bit')
+  })
+  it('keeps the mode the row had when the engine set none, or found nothing', () => {
+    expect(learnedMapping(mapping({ mode: 'absolute' }), { ...found, detected: detected({ note: 'a gate button on a fader, mode kept' }) }, 13).mode).toBe('absolute')
+    expect(learnedMapping(mapping({ mode: 'trigger' }), found, 13).mode).toBe('trigger')
+  })
+  it('tells the user what was found, and why a mode was kept', () => {
+    expect(detectedNote(detected({}))).toBe('detected: gate button')
+    expect(detectedNote(detected({ kind: 'encoder', label: 'encoder (offset 64)' }))).toBe('detected: encoder (offset 64)')
+    expect(detectedNote(detected({ kind: 'trigger', label: 'trigger button', note: "the button can't be held, it only fires" }))).toBe("detected: trigger button, the button can't be held, it only fires")
+    expect(detectedNote(detected({ kind: 'undecided', label: 'unclear', note: "couldn't tell what it sends, mode kept" }))).toContain('not sure')
+    expect(detectedNote(undefined)).toBeNull()
+  })
+  it('has words for what Learn asks', () => {
+    expect(LEARN_ASK.press_again).toBe('Press it once more')
+    expect(LEARN_ASK.turn).toBe('Turn it a bit')
   })
 })
 

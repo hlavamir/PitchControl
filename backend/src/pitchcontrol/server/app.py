@@ -94,6 +94,7 @@ class Learning(BaseModel):
     on: bool
     shifts: list[LearnShift] = []  # the shift buttons of the mapping being edited (it may not be saved yet)
     shift_row: bool = False  # the Shift row is learning: it takes a shift button
+    macro: str | None = None  # the macro of the row that learns: the mode Learn sets depends on what it is (item 93)
 
 
 class MidiDeviceSwitches(BaseModel):
@@ -973,12 +974,13 @@ def create_app(
 
     @app.post("/api/midi/learning")
     def midi_learning(body: Learning):
-        """Start or cancel Learn. The input captures the first CC / note itself and reports it in the MIDI status
-        (``learn_id``, ``learned``); until then messages show in the monitor but move nothing. Learn ends by itself
-        after ``seconds``."""
+        """Start or cancel Learn. The input captures the first CC / note itself, watches it a moment to tell what the
+        hardware is, and reports the result in the MIDI status (``learn_id``, ``learned`` with ``detected``; ``learn_ask``
+        while it wants a second press or more movement); until then messages show in the monitor but move nothing. Learn
+        ends by itself after ``seconds``."""
         learn_id = None
         if engine.midi is not None:
-            learn_id = engine.midi.set_learning(body.on, [(s.type, s.number, s.channel) for s in body.shifts], body.shift_row)
+            learn_id = engine.midi.set_learning(body.on, [(s.type, s.number, s.channel) for s in body.shifts], body.shift_row, body.macro)
         return {"ok": True, "learn_id": learn_id, "seconds": LEARN_SECONDS}
 
     @app.get("/api/devices/serial")

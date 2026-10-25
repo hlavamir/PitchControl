@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, byName, type ControllerFile, type MacroDef, type MidiMappingEntry, type Rig } from '../api'
 import type { EngineConnection } from '../useEngine'
-import { clashes as findClashes, channelOf, deadMappings, defaultMode, learnedMapping, newMapping, outChannelOf } from '../midiMapping'
+import { clashes as findClashes, channelOf, deadMappings, defaultMode, detectedNote, learnedMapping, newMapping, outChannelOf } from '../midiMapping'
 import { midiNotice } from '../midiDevices'
 import { createSaveQueue } from '../saveQueue'
 import { unchanged, usePolling } from '../usePolling'
@@ -62,6 +62,8 @@ export function MidiMappingSection({
   // Learn refused because nothing would arrive: what to do about it
   const [learnBlock, setLearnBlock] = useState<{ why: string; fix: 'use' | null } | null>(null)
   const learnSeen = useRef(false) // the state has shown the engine's Learn with this id
+  // what Learn found the hardware of a row to be (item 93), shown on that row until the row is changed; not saved in the file
+  const [detected, setDetected] = useState<{ index: number; text: string } | null>(null)
 
   const midi = engine.state?.io.midi
   const origin = selected && list ? (list.origins[selected] ?? 'user') : 'user'
@@ -123,6 +125,7 @@ export function MidiMappingSection({
     setLearning(null)
     setMoveAsk(null)
     setLearnBlock(null)
+    setDetected(null)
     if (!selected) {
       show(null)
       return
@@ -159,8 +162,12 @@ export function MidiMappingSection({
       reload(name)
     })
   }
-  const patch = (index: number, over: Partial<MidiMappingEntry>) => edit((c) => void Object.assign(c.mappings[index], over))
+  const patch = (index: number, over: Partial<MidiMappingEntry>) => {
+    if (detected?.index === index) setDetected(null)
+    edit((c) => void Object.assign(c.mappings[index], over))
+  }
   const remove = (index: number) => {
+    setDetected(null)
     // Learn remembers its row by index: a row removed above it moves it up, the row itself being removed ends Learn
     if (learning?.index === index) stopLearning()
     else if (learning?.index != null && learning.index > index) setLearning({ ...learning, index: learning.index - 1 })
@@ -212,13 +219,16 @@ export function MidiMappingSection({
     setLearnBlock(block)
     if (block || !draft) return
     setMoveAsk(null)
+    setDetected(null)
     learnSeen.current = false
     setLearning({ ...l, id: null, seconds: 20 }) // waiting for the engine's answer
     // the engine judges what is learnable against the mapping being edited
     const shifts = draft.mappings.filter((m) => m.mode === 'shift').map((m) => ({ type: m.type, number: m.number, channel: channelOf(m, draft.channel) }))
-    const shiftRow = (l.index !== null ? draft.mappings[l.index] : l.template).mode === 'shift'
+    const row = l.index !== null ? draft.mappings[l.index] : l.template
+    const shiftRow = row.mode === 'shift'
     try {
-      const r = await api.post<{ learn_id: number | null; seconds: number }>('/api/midi/learning', { on: true, shifts, shift_row: shiftRow })
+      // the macro of the row: the mode Learn sets depends on what the hardware does on it (item 93)
+      const r = await api.post<{ learn_id: number | null; seconds: number }>('/api/midi/learning', { on: true, shifts, shift_row: shiftRow, macro: row.macro })
       if (r.learn_id === null) throw new Error('Learn: no MIDI input is running')
       setLearning((cur) => (cur && cur.id === null ? { ...cur, id: r.learn_id, seconds: r.seconds } : cur))
     } catch (e) {
@@ -276,7 +286,10 @@ export function MidiMappingSection({
     if (e.id !== learning.id) return
     const base = learning.index !== null ? draft.mappings[learning.index] : learning.template
     if (!base) return
-    // the control and kind, and its own channel only when it isn't the default in channel (item 90); written at once
+    // the control and kind, and its own channel only when it isn't the default in channel (item 90), with the mode and
+    // encoder the engine found from the hardware (item 93); written at once
+    const note = detectedNote(e.detected)
+    setDetected(note ? { index: learning.index ?? draftRef.current?.mappings.length ?? 0, text: note } : null)
     commit(learning.index, learnedMapping(base, e, draft.channel))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [midi?.learn_id, midi?.learned, midi?.learning, learning])
@@ -365,6 +378,9 @@ export function MidiMappingSection({
         template={template}
         controllerChannel={draft?.channel ?? 1}
         waiting={waiting}
+        ask={waiting && midi?.learn_ask ? midi.learn_ask : null}
+        watching={waiting && !!midi?.learn_watching}
+        detectedText={i !== null && detected?.index === i ? detected.text : undefined}
         clashes={i !== null ? clashes.get(i) : undefined}
         deadText={i !== null ? dead.get(i) : undefined}
         highlighted={!!flash && flash === m?.macro}

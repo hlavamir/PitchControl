@@ -59,6 +59,16 @@ export interface LearnedControl {
   number: number
   channel: number // 1-based
   shift: boolean // a shift button was held: the 'with shift' variant
+  detected?: DetectedHardware // what Learn found out about the control (item 93); not for the Shift row
+}
+
+/** What Learn made of the hardware (item 93): the mode and encoder it sets on the row (null: kept), and a note for the row. */
+export interface DetectedHardware {
+  kind: 'gate' | 'trigger' | 'latching' | 'fader' | 'encoder' | 'undecided'
+  label: string // "gate button", "encoder (offset 64)"
+  mode: MidiMode | null
+  encoder: MidiMappingEntry['encoder'] | null
+  note: string
 }
 
 export type MidiMode = 'absolute' | 'relative' | 'toggle' | 'momentary' | 'trigger' | 'shift'
@@ -138,6 +148,8 @@ export interface IoStatus {
   learning?: boolean // Learn is waiting for a control
   learn_id?: number | null // the Learn that was started last
   learned?: LearnedControl | null // what that Learn captured: the engine takes the first control itself
+  learn_ask?: 'press_again' | 'turn' | 'turn_other' | null // Learn watches a control and wants a second press or more movement (item 93)
+  learn_watching?: boolean // Learn caught a control and is telling what it is
   learn_seconds?: number // how long Learn waits
 }
 

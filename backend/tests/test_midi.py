@@ -1,12 +1,14 @@
 import json
 import time
+import types
 
 import mido
 import pytest
 
 from pitchcontrol.config.models import Controller, MidiMapping
 from pitchcontrol.engine.macros import MacroBank
-from pitchcontrol.io.midi_in import MidiInput, decode_step, match_port, port_key, scale
+import pitchcontrol.io.midi_in as midi_module
+from pitchcontrol.io.midi_in import LEARN_SECONDS, MidiInput, decode_step, match_port, port_key, scale
 
 from conftest import SHIPPED_CONFIG
 
@@ -17,6 +19,32 @@ def cc(midi, control, value, channel=0):
 
 def note(midi, number, velocity=127, channel=0):
     midi.handle(mido.Message("note_on" if velocity else "note_off", channel=channel, note=number, velocity=velocity))
+
+
+class Clock:
+    """The time MidiInput sees: Learn watches a control for a moment and ends on the clock (item 93)."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    c = Clock()
+    monkeypatch.setattr(midi_module, "time", types.SimpleNamespace(monotonic=c, time=time.time, sleep=time.sleep))
+    return c
+
+
+def learned_at_the_end(midi, clock):
+    """What Learn ends with when nothing more comes: its time-out takes the control it was watching."""
+    clock.advance(LEARN_SECONDS + 1)
+    return midi.status()["learned"]
 
 
 def build(*mappings, channel=1, **kw):
@@ -505,15 +533,18 @@ def test_learning_shows_messages_without_applying_them():
     assert macros.on("Fog Machine")
 
 
-def test_learn_captures_the_first_control_itself_and_ends():
+def test_learn_captures_the_first_control_itself_and_ends(clock):
     midi, macros = build(MidiMapping(number=6, macro="Fog Machine", mode="momentary"))
     learn_id = midi.set_learning(True)
     status = midi.status()
     assert status["learning"] and status["learn_id"] == learn_id and status["learned"] is None
-    cc(midi, 20, 90)  # the first message is taken ...
+    cc(midi, 20, 127)  # the first message is taken ...
     cc(midi, 21, 90, channel=4)  # ... not the newest
+    cc(midi, 20, 0)
+    assert midi.status()["learned"] is None and midi.status()["learning"]  # watched for a moment first (item 93)
+    clock.advance(1.6)
     status = midi.status()
-    assert status["learned"] == {"id": learn_id, "kind": "cc", "number": 20, "channel": 1, "shift": False}
+    assert {k: v for k, v in status["learned"].items() if k != "detected"} == {"id": learn_id, "kind": "cc", "number": 20, "channel": 1, "shift": False}
     assert not status["learning"]  # waiting is over
     cc(midi, 6, 127)  # the grace: the new control and whatever comes next is still muted until the UI has the result
     assert not macros.on("Fog Machine")
@@ -547,7 +578,7 @@ def test_every_learn_has_its_own_id_and_forgets_the_last_result():
     assert midi.status()["learned"] is None and not midi.status()["learning"] and midi.status()["learn_id"] == third
 
 
-def test_learn_skips_releases_and_the_shift_buttons_of_the_draft():
+def test_learn_skips_releases_and_the_shift_buttons_of_the_draft(clock):
     midi, _ = build(MidiMapping(number=44, mode="shift"))  # the saved shift button is CC 44
     cc(midi, 9, 100)  # a button held from before Learn
     draft_shift = [("cc", 60, 1)]  # the draft has another shift button, not saved yet
@@ -556,24 +587,26 @@ def test_learn_skips_releases_and_the_shift_buttons_of_the_draft():
     cc(midi, 60, 127)  # the draft's shift button
     assert midi.status()["learned"] is None
     cc(midi, 45, 127)  # a real control, with the draft's shift held
-    assert midi.status()["learned"]["number"] == 45 and midi.status()["learned"]["shift"] is True
+    learned = learned_at_the_end(midi, clock)
+    assert learned["number"] == 45 and learned["shift"] is True
 
 
-def test_learn_order_click_then_shift_then_button_gives_with_shift_for_an_unsaved_shift_button():
+def test_learn_order_click_then_shift_then_button_gives_with_shift_for_an_unsaved_shift_button(clock):
     midi, _ = build()  # an empty draft: nothing is saved
     midi.set_learning(True, [("cc", 60, 1)])
     cc(midi, 60, 127)
     cc(midi, 45, 127)
-    assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "cc", "number": 45, "channel": 1, "shift": True}
+    learned = learned_at_the_end(midi, clock)
+    assert (learned["kind"], learned["number"], learned["channel"], learned["shift"]) == ("cc", 45, 1, True)
 
 
-def test_shift_held_before_learn_and_let_go_before_the_press_is_not_with_shift():
+def test_shift_held_before_learn_and_let_go_before_the_press_is_not_with_shift(clock):
     midi, _ = build()
     cc(midi, 60, 127)  # held from before Learn
     midi.set_learning(True, [("cc", 60, 1)])
     cc(midi, 60, 0)
     cc(midi, 45, 127)
-    assert midi.status()["learned"]["shift"] is False
+    assert learned_at_the_end(midi, clock)["shift"] is False
 
 
 def test_the_shift_row_learns_a_shift_button_without_with_shift():
@@ -583,11 +616,14 @@ def test_the_shift_row_learns_a_shift_button_without_with_shift():
     assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "cc", "number": 60, "channel": 1, "shift": False}
 
 
-def test_learn_captures_notes_and_the_channel():
+def test_learn_captures_notes_and_the_channel(clock):
     midi, _ = build()
     midi.set_learning(True)
     note(midi, 36, 100, channel=9)
-    assert midi.status()["learned"] == {"id": midi.learn_id, "kind": "note", "number": 36, "channel": 10, "shift": False}
+    note(midi, 36, 0, channel=9)
+    clock.advance(1.6)
+    learned = midi.status()["learned"]
+    assert (learned["kind"], learned["number"], learned["channel"], learned["shift"]) == ("note", 36, 10, False)
 
 
 # --------------------------------------------------------------------------- files
@@ -656,14 +692,14 @@ def test_changing_the_default_channel_moves_the_rows_on_default_and_not_the_rows
     assert [e["macro"] for e in midi.recent] == ["Strobo", None, "Hue A"]
 
 
-def test_learn_reports_the_channel_of_the_message_so_the_row_can_name_it_or_stay_on_default():
+def test_learn_reports_the_channel_of_the_message_so_the_row_can_name_it_or_stay_on_default(clock):
     midi, _ = build(fader(5), channel=13)
     midi.set_learning(True)
     cc(midi, 20, 90, channel=12)  # the default channel (13): the editor leaves the row on "default"
-    assert midi.status()["learned"]["channel"] == 13
+    assert learned_at_the_end(midi, clock)["channel"] == 13
     midi.set_learning(True)
     cc(midi, 21, 90, channel=4)  # another channel: the row gets its own
-    assert midi.status()["learned"]["channel"] == 5
+    assert learned_at_the_end(midi, clock)["channel"] == 5
 
 
 def test_a_mapping_needs_a_macro_unless_it_is_a_modifier():

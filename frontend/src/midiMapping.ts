@@ -1,4 +1,4 @@
-import type { MacroDef, MidiMappingEntry, MidiMode } from './api'
+import type { DetectedHardware, MacroDef, MidiMappingEntry, MidiMode } from './api'
 
 // The rules of the MIDI mapping editor that must agree with the engine (backend/src/pitchcontrol/io/midi_in.py), kept
 // apart from the component so that they can be tested (midiMapping.test.ts).
@@ -51,8 +51,14 @@ export const channelOf = (m: MidiMappingEntry, controllerChannel: number) => m.c
 export const outChannelOf = (c: { channel: number; channel_out?: number | null }) => c.channel_out ?? c.channel
 
 /** The row Learn makes (item 90): the control and kind that arrived, and its own channel only when the message was not on
- *  the mapping's default in channel (then the row stays on "default"). Everything else of the row is kept. */
-export function learnedMapping(base: MidiMappingEntry, learned: { kind: 'cc' | 'note'; number: number; channel: number; shift: boolean }, defaultChannel: number): MidiMappingEntry {
+ *  the mapping's default in channel (then the row stays on "default"). With what the engine found out about the hardware
+ *  (item 93) also the mode, and for an encoder its type; a mode the engine couldn't set stays as the row had it. */
+export function learnedMapping(
+  base: MidiMappingEntry,
+  learned: { kind: 'cc' | 'note'; number: number; channel: number; shift: boolean; detected?: DetectedHardware },
+  defaultChannel: number,
+): MidiMappingEntry {
+  const d = learned.detected
   return {
     ...base,
     type: learned.kind,
@@ -60,7 +66,23 @@ export function learnedMapping(base: MidiMappingEntry, learned: { kind: 'cc' | '
     channel: learned.channel === defaultChannel ? null : learned.channel,
     // learned while holding the shift button: it is the 'with shift' variant
     shift: learned.shift ? 'on' : base.shift,
+    ...(d?.mode ? { mode: d.mode } : {}),
+    ...(d?.mode === 'relative' && d.encoder ? { encoder: d.encoder } : {}),
   }
+}
+
+/** The note a row shows after Learn: what the hardware was found to be, and what that did to the mode (null: nothing to show). */
+export function detectedNote(d: DetectedHardware | undefined): string | null {
+  if (!d) return null
+  const what = d.kind === 'undecided' ? 'not sure what it is' : d.label
+  return d.note ? `detected: ${what}, ${d.note}` : `detected: ${what}`
+}
+
+/** What the row says while Learn watches a control and wants more from it (item 93). */
+export const LEARN_ASK: Record<'press_again' | 'turn' | 'turn_other', string> = {
+  press_again: 'Press it once more',
+  turn: 'Turn it a bit',
+  turn_other: 'Turn it the other way',
 }
 
 /** Two mappings on the same control (kind, number, channel) whose page and shift settings can both apply at once ("any"
