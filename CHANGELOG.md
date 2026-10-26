@@ -6,6 +6,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **Log frame timing says what else ran** (item 98): every late frame of an Open DMX interface now lists what the app was doing at the time, such as a garbage collection, the audio device lookup, a file write or the MIDI device scan ("meanwhile: gc gen2 1× 84 ms, audio device lookup 1× 1.6 s (running)"). While it is on, the engine also logs its own late frames and a summary every 10 seconds. A frame counts as late from 1.5 times the frame time (was twice), and the summary line counts the full garbage collections. For finding the occasional skipped frame on Windows.
+
 ## 1.8.4 — 2026-10-25
 
 ### Added

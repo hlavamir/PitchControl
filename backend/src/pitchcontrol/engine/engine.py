@@ -15,6 +15,7 @@ import time
 
 import numpy as np
 
+from .. import activity
 from ..config.loader import ConfigStore, load_model, save_model
 from ..config.models import Scene
 from ..io import audio_in
@@ -33,7 +34,7 @@ from .fog import FogController
 from .macros import LATE_MACROS, MacroBank
 from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, curved, mixed_mask
 from .overrides import Overrides
-from .perf import FrameTimes
+from .perf import EngineTimingLog, FrameTimes
 from .routes import Routes
 from .phase import PhaseTracker
 
@@ -109,6 +110,7 @@ class Engine:
         self.fps = 0.0
         self.tick_ms = 0.0
         self.frame_times = FrameTimes()
+        self.timing_log = EngineTimingLog(lambda: 1.0 / max(self.store.settings.fps, 1.0))  # item 98: only while an output logs its frame timing
         self.peaks_total = 0
         self._last_save_version = self.macros.version
         self._last_save_time = time.monotonic()
@@ -309,7 +311,8 @@ class Engine:
         # this thread must be that one, and it runs its run loop while it waits (wait_between_looks).
         while True:
             try:
-                self.midi_devices.sync()
+                with activity.track("midi device scan"):  # item 98
+                    self.midi_devices.sync()
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into
                 log.exception("MIDI watchdog")
             if wait_between_looks(self._stop, MIDI_WATCH_S):
@@ -514,6 +517,7 @@ class Engine:
     # ------------------------------------------------------------------ thread
     def start(self) -> None:
         raise_resolution()  # Windows: 1 ms timers for the frame pacing and the writers (item 35)
+        activity.install_gc_hook()  # item 98: the frame timing logs name the collections that ran meanwhile
         self.start_io()
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="engine", daemon=True)
@@ -536,6 +540,7 @@ class Engine:
         self.midi_devices.stop()
         self.live.stop()
         self.outputs.stop()
+        activity.remove_gc_hook()
         restore_resolution()
 
     def _run(self) -> None:
@@ -553,6 +558,10 @@ class Engine:
             except Exception:  # noqa: BLE001 - keep the show running, but log every failure
                 log.exception("engine tick failed")
             self.frame_times.record(interval * 1000.0, self.tick_ms)  # the FPS bubble's perf meter (item 66)
+            if self.outputs.timing_on():
+                self.timing_log.frame(now, self.tick_ms / 1000.0)  # item 98
+            else:
+                self.timing_log.reset()
             fps_count += 1
             if now - fps_time >= 1.0:
                 self.fps = fps_count / (now - fps_time)

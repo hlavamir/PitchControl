@@ -11,6 +11,8 @@ import threading
 import time
 from typing import TYPE_CHECKING, Callable
 
+from .. import activity
+
 if TYPE_CHECKING:  # not imported at run time: the child that lists the devices (item 32) needs no numpy (about 35 ms of its start)
     import numpy as np
 
@@ -125,12 +127,13 @@ def _run_list_child() -> list[dict] | None:
     started = time.monotonic()
     try:
         try:
-            res = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=LIST_TIMEOUT_S,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
+            with activity.track("audio device lookup"):  # item 98
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=LIST_TIMEOUT_S,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"timed out after {LIST_TIMEOUT_S:g} seconds, the limit") from None
         if res.returncode != 0:
@@ -163,7 +166,7 @@ def reinit_portaudio(saved: str | None = None) -> None:
     if sd is None:
         return
     try:
-        with _PORTAUDIO:
+        with _PORTAUDIO, activity.track("audio re-init"):  # item 98
             sd._terminate()
             sd._initialize()
     except Exception as exc:  # noqa: BLE001

@@ -39,7 +39,7 @@ from typing import Any, Callable, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from .. import __version__
+from .. import __version__, activity
 from .layers import diff, has_machine_keys, merge, split_machine
 from .models import Controller, FixtureType, FogMachine, Rig, Scene, Settings
 
@@ -68,8 +68,9 @@ def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     body = {VERSION_KEY: __version__, **{k: v for k, v in data.items() if k != VERSION_KEY}}
-    tmp.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    with activity.track(f"write {path.name}"):  # item 98: on Windows a write can wait for a virus scanner or the indexer
+        tmp.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.replace(path)
 
 
 def canonical(data: Any) -> str:

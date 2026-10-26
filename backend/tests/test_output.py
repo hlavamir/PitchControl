@@ -427,15 +427,15 @@ def test_frame_timing_log_summary_every_10_seconds(caplog):
 
     caplog.set_level(logging.INFO)
     t = FrameTimingLog("opendmx1", lambda: 0.025)
-    starts = [100.0 + 0.025 * i + (0.020 if i >= 200 else 0.0) for i in range(402)]   # 40 fps, one gap of 45 ms
+    starts = [100.0 + 0.025 * i + (0.010 if i >= 200 else 0.0) for i in range(402)]   # 40 fps, one gap of 35 ms
     for i, start in enumerate(starts):
         t.frame(start, start + (0.012 if i == 100 else 0.005))                          # one write of 12 ms
     summary = _timing_lines(caplog, "timing,")
     assert len(summary) == 1
     assert "opendmx1: timing, last 10.0 s" in summary[0]
     assert "longest write 12.0 ms" in summary[0]
-    assert "largest gap 45.0 ms" in summary[0]
-    assert "late frames 0" in summary[0] and "dropped 0" in summary[0]   # 45 ms is under 2 x 25 ms: not late
+    assert "largest gap 35.0 ms" in summary[0]
+    assert "late frames 0" in summary[0] and "dropped 0" in summary[0]   # 35 ms is under 1.5 x 25 ms: not late
     assert "fps (target 40.0)" in summary[0]
     assert _timing_lines(caplog, "late frame:") == []
 
@@ -470,13 +470,13 @@ def test_frame_timing_log_follows_the_target_frame_rate(caplog):
     from pitchcontrol.io.workers import FrameTimingLog
 
     caplog.set_level(logging.INFO)
-    period = {"s": 0.1}                 # 10 fps: a gap of 150 ms is fine
+    period = {"s": 0.1}                 # 10 fps: a gap of 130 ms is fine
     t = FrameTimingLog("opendmx1", lambda: period["s"])
     t.frame(1.0, 1.001)
-    t.frame(1.15, 1.151)
+    t.frame(1.13, 1.131)
     assert _timing_lines(caplog, "late frame:") == []
     period["s"] = 0.025                 # the frame rate went up to 40: the same gap is late now
-    t.frame(1.30, 1.301)
+    t.frame(1.26, 1.261)
     assert len(_timing_lines(caplog, "late frame:")) == 1
 
 
@@ -565,6 +565,10 @@ def test_log_timing_setting_reaches_only_the_open_dmx_worker(monkeypatch):
     on, off = m.enttec
     assert on.timing is not None and on.timing.target_period() == 0.05
     assert off.timing is None
+    assert m.timing_on() is True                    # the engine logs its late frames too (item 98)
+    off_only = out.OutputManager(OutputSettings.model_validate({"enttec": [{"enabled": True, "type": "open", "device": {"serial_number": "B"}}]}))
+    off_only.start()
+    assert off_only.timing_on() is False
 
 
 def test_open_dmx_timing_target_is_clamped_to_30_fps(monkeypatch, caplog):

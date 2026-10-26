@@ -68,6 +68,10 @@ class OutputManager:
         self._last_v2: bytes | None = None
         self._last_v2_time = 0.0
 
+    def timing_on(self) -> bool:
+        """Whether an output has its frame timing log on (item 98: the engine logs its own late frames then too)."""
+        return any(w is not None and w.timing is not None for w in self.enttec)
+
     def artnet_source_ports(self) -> set[int]:
         """The source port of the Art-Net output's socket: what the Art-Net input uses to know the app's own packets."""
         worker = self.artnet
