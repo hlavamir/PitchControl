@@ -1,6 +1,6 @@
 {
   "app_version": "1.8.3",
-  "name": "Kontrol F1",
+  "name": "Native Instruments Traktor Kontrol F1",
   "author": "Miroslav Hlava",
   "description": "Made for the Traktor Kontrol F1 in MIDI mode with the PitchControl! template of NI Controller Editor (every control on channel 13). Page deck A: the four knobs (CC 2-5) Strobo Decay, Idle Attack, Hue A, Hue B; the four faders (CC 6-9) Strobo Brightness, Idle Brightness, Audio Reactivity, Strobo; pads A1-A4 (CC 10-13) Manual Strobo and Fog Machine (held), Invert Discoball and Vertical Symmetry (toggle); pads B1-B2 (CC 14-15) Auto Color Change, Swap Colors; pads C1-D4 (CC 18-25) save scenes 1-8; the Mute buttons (CC 37-40, latching on the F1) select Mask A-D. Page deck B: pads C1-D4 (CC 59-66) load scenes 1-8.",
   "contact": "pitchcontrol.eu",
