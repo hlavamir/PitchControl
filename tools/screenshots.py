@@ -11,10 +11,13 @@ The state shown:
 - this computer: one USB DMX interface that isn't plugged in and an Art-Net target, amber ink, UI
   scale 1; two Control Desk overrides and three named scenes, unless the copied data brings its own
   scenes (the fog machines are the rig's);
+- an OSC output to 127.0.0.1:7000 (Colors as RGBA) and two routes in universe 0 (an Art-Net universe onto channels
+  101 to 124, two MIDI controls onto 129 and 130), which the Routes subpage shows;
 - the macros at their defaults with Strobo (0.59) and Audio Reactivity (0.3) raised, so the pages
   move (more Audio Reactivity darkens the lights: the peaks map takes over the mask);
 - a synthetic 128 BPM techno loop feeding the audio analysis;
-- 1512 × 915 (the design size) at device scale 2, so the PNGs are 3024 × 1830; no hovered control.
+- 1512 × 915 (the design size) at device scale 2, so the PNGs are 3024 × 1830; no hovered control;
+- the phone layout (390 × 844 at device scale 3, the PNGs are 1170 × 2532): General and Dimmers.
 
 Help → About shows the version of this checkout: run it from a clean checkout of the release
 commit, so it reads the plain version (the script warns otherwise).
@@ -28,6 +31,7 @@ from __future__ import annotations
 import argparse
 import logging
 import math
+import re
 import shutil
 import sys
 import tempfile
@@ -69,6 +73,18 @@ PAGES = [
     ("8", None, "settings"),
     ("9", None, "help"),
 ]
+
+# the pages the website's tour added later (Connections and Control Desk subpages), taken after the ten above so that
+# those stay as they were: key, subpage tab, file name
+SUBPAGES = [
+    ("5", "Audio", "connections-audio"),
+    ("5", "OSC", "connections-osc"),
+    ("5", "Serial", "connections-serial"),
+    ("7", "Routes", "control-desk-routes"),
+]
+
+# the phone layout of the network mode (item 46): a phone-sized screen, opened at the General tab, then its Dimmers tab
+PHONE = {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}
 
 
 # --------------------------------------------------------------------------- the staged data
@@ -120,11 +136,31 @@ def stage(data_src: Path | None, data: Path, machine: Path) -> None:
                     }
                 ],
                 "artnet": {"enabled": False, "targets": [{"universe": 1, "ip": "192.168.1.50"}]},
+                "osc": {"enabled": True, "host": "127.0.0.1", "port": 7000, "file": "Colors as RGBA"},
             },
             "ui": {"ink": "amber", "key_hints": True, "scale": 1.0},
         },
     )
     write_json(machine / "state" / "overrides.json", {"universes": {"0": {"9": 180, "10": 255}}})
+    # Routes subpage: an Art-Net universe onto output channels 101 to 124 and two MIDI controls onto 129 and 130 of
+    # universe 0, on the Control Desk's 3rd and 3rd/4th subpage (channels 1 to 64 are the ones control-desk.png shows)
+    write_json(
+        machine / "state" / "routes.json",
+        {
+            "routes": [
+                {"id": "r1", "name": "Console", "kind": "artnet", "artnet_universe": 0, "first_input": 1, "count": 24, "universe": 0, "first_output": 101},
+                {
+                    "id": "r2",
+                    "name": "Launch Control",
+                    "kind": "midi",
+                    "count": 2,
+                    "universe": 0,
+                    "first_output": 129,
+                    "channels": [{"type": "cc", "channel": 1, "number": 21}, {"type": "note", "channel": 1, "number": 36, "note_mode": "onoff"}],
+                },
+            ]
+        },
+    )
     write_json(machine / "state" / "macros.json", {"name": "screenshots", "values": macro_values(**{"Strobo": 0.59, "Audio Reactivity": 0.3})})
 
 
@@ -232,6 +268,31 @@ def shoot(url: str, out: Path, settle: float, channel: str | None, folders: tupl
             page.evaluate(DISGUISE, list(folders))
             page.screenshot(path=str(out / f"{name}.png"))
             print("  ", out / f"{name}.png")
+        for key, tab, name in SUBPAGES:
+            page.keyboard.press(key)
+            page.get_by_role("tab", name=tab, exact=True).click()
+            page.mouse.move(0, 0)
+            page.wait_for_timeout(500)
+            page.evaluate(NEUTRAL)
+            page.wait_for_timeout(settle * 1000)
+            page.evaluate(DISGUISE, list(folders))
+            page.screenshot(path=str(out / f"{name}.png"))
+            print("  ", out / f"{name}.png")
+        page.close()
+
+        # the phone layout picks itself from the screen size, so it needs a page of its own
+        phone = browser.new_page(**PHONE)
+        phone.goto(f"{url}/#General")
+        phone.wait_for_selector("text=PitchControl!")
+        phone.evaluate("document.fonts.ready")
+        for tab, name in [("General", "phone"), ("Dimmers", "phone-dimmers")]:
+            if tab != "General":
+                phone.get_by_role("button", name=re.compile(rf"^\d?\s*{tab}$")).last.click()
+            phone.wait_for_timeout(500)
+            phone.evaluate(NEUTRAL)
+            phone.wait_for_timeout(settle * 1000)
+            phone.screenshot(path=str(out / f"{name}.png"))
+            print("  ", out / f"{name}.png")
         browser.close()
 
 
@@ -265,6 +326,10 @@ def main() -> None:
         store.notices.clear()  # nothing to report about a staged folder
         engine = Engine(store, enable_hardware=False)
         engine.start()
+        # no hardware is started here, but two things the pages show need one: the OSC output (a UDP socket, nobody has
+        # to listen) and an open MIDI input for the MIDI route (otherwise it says "no MIDI input is on")
+        engine.outputs.restart_osc(store.settings.outputs)
+        engine.midi_routes.open_inputs = lambda: 1
         stop = threading.Event()
         feeder = threading.Thread(target=feed, args=(engine, stop), name="audio", daemon=True)
         feeder.start()
