@@ -993,6 +993,15 @@ def create_app(
         ``list_input_devices_fresh``); the running input isn't touched. A sync endpoint runs off the event loop."""
         return list_input_devices_fresh()
 
+    @app.post("/api/audio/look-again")
+    async def audio_look_again():
+        """Connections → Audio → Look again (item 100): the watchdog looks for a missing saved device for a minute and then
+        stops; this is one more look, and when the device is listed the input restarts on it (the reconnect line shows
+        it). ``found`` is whether it is listed; ``audio`` the audio status after. The list is read by a child process and
+        takes up to ``LIST_TIMEOUT_S``, so it runs in a worker thread."""
+        found = await asyncio.to_thread(engine.audio_look_again)
+        return {"found": found, "audio": engine.audio_status()}
+
     @app.get("/api/devices/midi")
     def midi_ports():
         # the MIDI watchdog's last look: listing here, on a request thread, would see on macOS only the devices of the

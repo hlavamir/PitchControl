@@ -132,8 +132,7 @@ def test_missing_device_uses_the_system_default_with_a_warning(monkeypatch):
     st = inp.status()
     assert st["running"] and st["device"] == "MacBook Pro Microphone" and st["device_missing"]
     assert st["warning"] == (
-        "'Komplete Audio 6' not found: listening to the system default ('MacBook Pro Microphone'). "
-        "It switches back by itself when it's plugged in."
+        "'Komplete Audio 6' not found: listening to the system default ('MacBook Pro Microphone')."
     )
 
 
@@ -585,7 +584,7 @@ def test_a_device_missing_at_the_start_is_switched_to_when_it_appears(monkeypatc
     engine.audio_check()  # not plugged in: nothing is touched
     assert fake.calls == [] and engine.audio.device == "MacBook Pro Microphone"
 
-    assert engine._audio_next_list > time.monotonic()  # it looks again in two seconds, not at once
+    assert engine._audio_next_list > time.monotonic()  # it looks again in five seconds, not at once
     engine._audio_next_list = 0.0  # ... which is now
     fake.devices.append(INTERFACE)
     engine.audio_check()
@@ -611,7 +610,7 @@ def test_a_dead_stream_shows_stopped_and_runs_again_when_the_device_is_back(monk
     assert fake.calls == [] and not engine.audio_status()["running"]
 
     fake.devices.append(INTERFACE)  # plugged in
-    engine._audio_next_list = 0.0  # the next look, two seconds later
+    engine._audio_next_list = 0.0  # the next lookup, five seconds later
     engine.audio_check()
     st = engine.audio_status()
     assert st["running"] and st["device"] == "Komplete Audio 6" and st["error"] is None
@@ -728,50 +727,241 @@ def test_a_stall_that_recovered_while_the_list_was_read_costs_no_reinit(monkeypa
     engine.audio.stop()
 
 
-def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkeypatch, store):
-    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start: the stand-in runs
-    # A whole number, so that adding 2.0 and 10.0 is exact: from the real clock's value (seconds since boot, with
-    # fractions) the sums round differently near a power of two (4194200.987 + 10.0 against five times + 2.0 differ by
-    # 5e-10), and "every 10 s" came out as 9.9999999995 on a runner with such a clock.
+def fake_clock(monkeypatch):
+    """A clock the test moves. A whole number, so that adding 1.0, 5.0 and 10.0 is exact: from the real clock's value
+    (seconds since boot, with fractions) the sums round differently near a power of two (4194200.987 + 10.0 against ten
+    times + 1.0 differ by 5e-10), and "every 10 s" came out as 9.9999999995 on a runner with such a clock."""
     clock = [float(round(time.monotonic()))]
     monkeypatch.setattr(time, "monotonic", lambda: clock[0])
-    engine.audio.last_callback = clock[0]  # the stand-in is alive on the fake clock
-    lists: list[float] = []
+    return clock
+
+
+def count_lookups(monkeypatch, clock):
+    """The fake clock's time of each device lookup (a child process in the real app)."""
+    lookups: list[float] = []
     real = audio_in.list_input_devices_fresh
 
     def counted():
-        lists.append(clock[0])
+        lookups.append(clock[0])
         return real()
 
     monkeypatch.setattr(audio_in, "list_input_devices_fresh", counted)
-    t0 = clock[0]
-    for _ in range(90):  # 180 s of looks, one every two seconds
-        engine.audio._callback(np.zeros((4, 1), dtype="float32"), 4, None, None)  # the stand-in keeps running
+    return lookups
+
+
+def watch(engine, clock, seconds, step=1.0):
+    """The watchdog's looks over ``seconds`` of the fake clock; a stand-in (the device is missing) keeps delivering blocks."""
+    for _ in range(int(seconds / step)):
+        if engine.audio is not None and engine.audio.device_missing:
+            engine.audio._callback(np.zeros((4, 1), dtype="float32"), 4, None, None)
         engine.audio_check()
-        clock[0] += 2.0
-    early = [t for t in lists if t - t0 < 60]
-    late = [t for t in lists if t - t0 >= 60]
-    assert len(early) >= 29  # about every 2 s
-    assert 2 <= len(late) <= 3  # about once a minute over the next 120 s (item 99)
-    assert all(b - a >= 60 for a, b in zip(late, late[1:]))
-    fake.devices.append(INTERFACE)  # plugged in after all: found at the next look, however slow
-    clock[0] += 60.0
-    engine.audio_check()
-    assert engine.audio_status()["device"] == "Komplete Audio 6"
+        clock[0] += step
+
+
+def test_a_missing_device_is_looked_for_every_five_seconds_for_a_minute_and_then_not_at_all(monkeypatch, store):
+    from pitchcontrol.engine.engine import AUDIO_FAST_PHASE_S, AUDIO_LOOK_EVERY_S
+
+    assert (AUDIO_LOOK_EVERY_S, AUDIO_FAST_PHASE_S) == (5.0, 60.0)
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start: the stand-in runs
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    lookups = count_lookups(monkeypatch, clock)
+    t0 = clock[0]
+    watch(engine, clock, 30)
+    st = engine.audio_status()
+    assert st["looking"] is True and st["stopped_looking"] is False
+    watch(engine, clock, 30)  # the minute is over
+    assert [t - t0 for t in lookups] == [float(t) for t in range(0, 60, 5)]  # 12 looks, 5 s apart
+    st = engine.audio_status()
+    assert st["looking"] is False and st["stopped_looking"] is True
+    assert st["device_missing"] and st["device"] == "MacBook Pro Microphone" and st["reconnect"] is None  # the others as before
+    watch(engine, clock, 1000)  # many looks of the watchdog later: still no child
+    assert len(lookups) == 12 and engine.audio_status()["stopped_looking"] is True
     engine.audio.stop()
 
 
-def test_after_the_first_minute_the_next_lookup_is_a_minute_away(monkeypatch, store):
-    from pitchcontrol.engine.engine import AUDIO_FAST_PHASE_S, AUDIO_SLOW_WATCH_S
+def test_the_watchdog_wakes_for_a_lookup_that_is_due_before_its_next_look(monkeypatch, store):
+    from pitchcontrol.engine.engine import AUDIO_WATCH_S
 
-    engine, _ = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start
-    engine.audio_check()  # in the first minute: the next look is two seconds away
-    assert engine._audio_next_list - time.monotonic() < 3
-    engine._audio_problem_since -= AUDIO_FAST_PHASE_S + 1  # it has been away for over a minute
+    engine, _ = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
     engine._audio_next_list = 0.0
+    assert engine._audio_wait_s() == AUDIO_WATCH_S  # nothing scheduled: the usual look
+    engine._audio_next_list = clock[0] + 1.0
+    assert engine._audio_wait_s() == 1.0  # due in a second: it wakes then, so that the lookups stay 5 s apart
+    engine._audio_next_list = clock[0] + 5.0
+    assert engine._audio_wait_s() == AUDIO_WATCH_S
+    engine.audio.stop()
+
+
+def test_a_new_drop_starts_a_new_minute(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    clock = fake_clock(monkeypatch)
+    lookups = count_lookups(monkeypatch, clock)
+    engine.audio.got_block, engine.audio.last_callback = True, clock[0] - 5  # the cable is pulled
+    fake.devices.remove(INTERFACE)
+    watch(engine, clock, 90)
+    assert len(lookups) == 12 and engine.audio_status()["stopped_looking"] is True
+
+    engine.audio._callback(np.zeros((4, 2), dtype="float32"), 4, None, None)  # it came back by itself: no lookup
     engine.audio_check()
-    assert AUDIO_SLOW_WATCH_S == 60.0
-    assert AUDIO_SLOW_WATCH_S - 2 < engine._audio_next_list - time.monotonic() <= AUDIO_SLOW_WATCH_S
+    st = engine.audio_status()
+    assert st["running"] and not st["looking"] and not st["stopped_looking"] and st["reconnect"]["back"] is not None
+    assert len(lookups) == 12
+
+    engine.audio.last_callback = clock[0] - 5  # and is pulled again
+    watch(engine, clock, 20)
+    st = engine.audio_status()
+    assert st["looking"] is True and st["stopped_looking"] is False
+    assert len(lookups) == 12 + 4  # a new minute of looks
+    engine.audio.stop()
+
+
+def test_saving_another_device_starts_a_new_minute(monkeypatch, store):
+    engine, _ = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    lookups = count_lookups(monkeypatch, clock)
+    watch(engine, clock, 90)
+    assert len(lookups) == 12 and engine.audio_status()["stopped_looking"] is True
+    store.settings.audio.device = "Scarlett"  # the user picks another one that isn't there either, and saves
+    engine.restart_audio(reinit=True)
+    assert not engine.audio_status()["stopped_looking"]  # it is another device: no word about the old one
+    watch(engine, clock, 30)
+    assert len(lookups) == 12 + 6 and engine.audio_status()["looking"] is True
+    engine.audio.stop()
+
+
+def test_a_failed_reconnect_is_tried_again_within_the_same_minute_only(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.got_block, engine.audio.last_callback = True, clock[0] - 5
+    fake.fail = True  # the device is listed but busy
+    fake.calls.clear()
+    watch(engine, clock, 200)
+    assert fake.calls.count("initialize") == 6  # at 0, 10 … 50 s (AUDIO_RETRY_S); at 60 s the minute is over
+    assert not engine.audio_status()["running"] and engine.audio_status()["stopped_looking"] is True
+    engine.audio.stop()
+
+
+def test_look_again_restarts_on_a_device_that_was_missing_at_the_start(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    watch(engine, clock, 90)
+    assert engine.audio_status()["stopped_looking"] is True
+    fake.devices.append(INTERFACE)  # plugged in after the watchdog gave up: it does not see it
+    watch(engine, clock, 30)
+    assert engine.audio_status()["device_missing"]
+
+    fake.calls.clear()
+    assert engine.audio_look_again() is True
+    st = engine.audio_status()
+    assert st["running"] and st["device"] == "Komplete Audio 6" and not st["device_missing"]
+    assert fake.calls == ["terminate", "initialize"]
+    assert st["reconnect"]["lost"] is None and st["reconnect"]["back"] is not None  # "not found at start · connected …"
+    assert st["looking"] is False and st["stopped_looking"] is False
+    engine.audio.stop()
+
+
+def test_look_again_keeps_the_line_about_the_drop(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.got_block, engine.audio.last_callback = True, clock[0] - 5
+    fake.devices.remove(INTERFACE)
+    watch(engine, clock, 90)
+    st = engine.audio_status()
+    assert st["stopped_looking"] is True and st["reconnect"]["lost"] is not None and st["reconnect"]["back"] is None
+    lost = st["reconnect"]["lost"]
+    fake.devices.append(INTERFACE)
+    assert engine.audio_look_again() is True
+    st = engine.audio_status()
+    assert st["running"] and st["device"] == "Komplete Audio 6" and st["error"] is None
+    assert st["reconnect"]["lost"] == lost and st["reconnect"]["back"] >= lost  # "lost 21:13:58 · back 21:14:05"
+    assert st["reconnect"]["lost_device"] == st["reconnect"]["back_device"] == "Komplete Audio 6"
+    engine.audio.stop()
+
+
+def test_look_again_that_finds_nothing_says_so_and_restarts_nothing(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    watch(engine, clock, 90)
+    fake.calls.clear()
+    streams = len(fake.streams)
+    assert engine.audio_look_again() is False
+    assert fake.calls == [] and len(fake.streams) == streams  # the running stand-in isn't touched
+    st = engine.audio_status()
+    assert st["device_missing"] and st["reconnect"] is None and st["stopped_looking"] is True
+    engine.audio.stop()
+
+
+def test_look_again_with_the_device_running_restarts_nothing(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    fake.calls.clear()
+    assert engine.audio_look_again() is True  # it is listed, and it runs: no re-init cut for nothing
+    assert fake.calls == [] and engine.audio_status()["reconnect"] is None
+    engine.audio.stop()
+
+
+def test_look_again_that_finds_a_device_that_wont_open_says_it_is_found(monkeypatch, store):
+    engine, fake = watched_engine(monkeypatch, store, [MIC, INTERFACE], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.got_block, engine.audio.last_callback = True, clock[0] - 5
+    fake.devices.remove(INTERFACE)
+    watch(engine, clock, 90)
+    fake.devices.append(INTERFACE)
+    fake.fail = True
+    assert engine.audio_look_again() is True
+    st = engine.audio_status()
+    assert not st["running"] and st["reconnect"]["back"] is None and st["stopped_looking"] is True
+    fake.fail = False  # the other program let go
+    engine._audio_retry_at = 0.0
+    assert engine.audio_look_again() is True and engine.audio_status()["running"]
+    engine.audio.stop()
+
+
+def test_look_again_endpoint(monkeypatch, store):
+    from fastapi.testclient import TestClient
+
+    import pitchcontrol.server.app as app_module
+
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    watch(engine, clock, 90)
+    client = TestClient(app_module.create_app(engine))
+
+    res = client.post("/api/audio/look-again")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["found"] is False and body["audio"]["stopped_looking"] is True and body["audio"]["reconnect"] is None
+
+    fake.devices.append(INTERFACE)
+    body = client.post("/api/audio/look-again").json()
+    assert body["found"] is True and body["audio"]["running"] and body["audio"]["device"] == "Komplete Audio 6"
+    assert body["audio"]["reconnect"]["back"] is not None and body["audio"]["stopped_looking"] is False
+    engine.audio.stop()
+
+
+def test_opening_the_audio_tab_does_not_reconnect(monkeypatch, store):
+    """Connections reads the device list every two seconds while the tab is open; that must not hide the problem."""
+    from fastapi.testclient import TestClient
+
+    import pitchcontrol.server.app as app_module
+
+    engine, fake = watched_engine(monkeypatch, store, [MIC], "Komplete")
+    clock = fake_clock(monkeypatch)
+    engine.audio.last_callback = clock[0]
+    watch(engine, clock, 90)
+    fake.devices.append(INTERFACE)
+    fake.calls.clear()
+    monkeypatch.setattr(app_module, "list_input_devices_fresh", audio_in.list_input_devices_fresh)
+    client = TestClient(app_module.create_app(engine))
+    for _ in range(3):
+        assert any("Komplete" in d["label"] for d in client.get("/api/devices/audio").json())
+    st = engine.audio_status()
+    assert fake.calls == [] and st["device_missing"] and st["reconnect"] is None and st["stopped_looking"] is True
     engine.audio.stop()
 
 

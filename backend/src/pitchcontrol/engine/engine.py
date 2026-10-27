@@ -43,12 +43,14 @@ log = logging.getLogger(__name__)
 PREVIEW_SIZE = 256
 AUDIO_WATCH_S = 2.0  # how often the audio input is looked at when it isn't on the saved device (item 30)
 # The device list is read by starting a child process (0.3 s on the Mac; on Windows 0.3–1.6 s, sometimes several seconds,
-# and each lookup can delay the output's frames: item 99). A cable stepped on is plugged back within seconds, so the
-# first minute is looked at every AUDIO_WATCH_S; a device that has been away longer (the interface left at home, the
-# stand-in running all night) is looked for every AUDIO_SLOW_WATCH_S only.
+# and each lookup can delay the output's frames: items 99, 100). A cable stepped on is plugged back within seconds, so a
+# saved device that is missing, dead or won't open is looked for every AUDIO_LOOK_EVERY_S during the first
+# AUDIO_FAST_PHASE_S after the problem started, and then not at all (the interface left at home, the stand-in running all
+# night): Connections → Audio says so and offers Look again (``Engine.audio_look_again``). The cheap status look every
+# AUDIO_WATCH_S goes on: it starts no child, and notices a stream that came back by itself.
 MIDI_WATCH_S = 2.0  # how often the MIDI devices are looked at (listing the ports is cheap and cuts nothing: items 33, 89)
+AUDIO_LOOK_EVERY_S = 5.0
 AUDIO_FAST_PHASE_S = 60.0
-AUDIO_SLOW_WATCH_S = 60.0
 AUDIO_RETRY_S = 10.0  # after a reconnect that didn't work (the device is listed but won't open), wait this long
 
 
@@ -199,6 +201,13 @@ class Engine:
             "back_device": self._audio_back_device,
         }
         st["reconnect"] = link if link["lost"] is not None or link["back"] is not None else None
+        # item 100: while the saved device isn't running the watchdog looks for it for a minute (``looking``) and then
+        # stops (``stopped_looking``: Connections offers Look again); neither while it runs, or with no device saved
+        saved = self.store.settings.audio.device
+        away = time.monotonic() - self._audio_problem_since
+        waiting = self._audio_problem is not None and bool(saved) and saved == self._audio_link_device
+        st["looking"] = waiting and away < AUDIO_FAST_PHASE_S
+        st["stopped_looking"] = waiting and away >= AUDIO_FAST_PHASE_S
         return st
 
     def audio_check(self) -> None:
@@ -242,33 +251,62 @@ class Engine:
                 "missing": f"saved audio device '{saved}' not found, listening to '{st['device']}'",
                 "failed": f"audio input could not be opened: {st['error']}",
             }[problem]
-            log.warning("%s; it reconnects by itself when the device is there", what)
+            log.warning("%s; it looks for the device for a minute, then Look again in Connections → Audio", what)
         now = time.monotonic()
+        if saved and now - self._audio_problem_since >= AUDIO_FAST_PHASE_S:
+            return  # a minute of looking is over (item 100); the user presses Look again
         if now < self._audio_retry_at or now < self._audio_next_list:
             return
         if saved and audio_in.match_device(saved, audio_in.list_input_devices_fresh()) is None:
-            # still not plugged in: look again soon for a minute, then every few seconds only (see AUDIO_FAST_PHASE_S)
-            away = time.monotonic() - self._audio_problem_since
-            self._audio_next_list = time.monotonic() + (AUDIO_WATCH_S if away < AUDIO_FAST_PHASE_S else AUDIO_SLOW_WATCH_S)
+            self._audio_next_list = time.monotonic() + AUDIO_LOOK_EVERY_S  # still not plugged in
             return
+        self._audio_restart_on(audio, saved)
+
+    def _audio_restart_on(self, audio: AudioInput, saved: str | None) -> bool | None:
+        """Restart the audio input on the saved device, which is there (listed, or no device saved: the system default),
+        and note when it came back. Shared by the watchdog and Look again. True: running again; False: it didn't open (the
+        next try is ``AUDIO_RETRY_S`` away); None: nothing done, as ``audio`` isn't the running input any more or it came
+        back by itself."""
         with self._audio_restart:
             if self._stop.is_set() or self.audio is not audio or self.store.settings.audio.device != saved:
-                return  # stopped, restarted by someone else or another device saved while the list was read
+                return None  # stopped, restarted by someone else or another device saved while the list was read
             cur = audio.status()
             if cur["running"] and not cur["device_missing"]:
-                return  # it came back by itself while the list was read: no re-init cut for nothing
+                return None  # it came back by itself while the list was read: no re-init cut for nothing
             log.info("audio input: %s again, restarting on it", f"'{saved}' is listed" if saved else "restarting")
             self.restart_audio(reinit=True)
             new = self.audio.status() if self.audio else None
             if new is None or not new["running"] or new["device_missing"]:
                 self._audio_retry_at = time.monotonic() + AUDIO_RETRY_S
-            else:
-                self._audio_back, self._audio_back_device = time.time(), new["device"]
-                self._audio_problem = None
-                log.info("audio input is back on '%s'", new["device"])
+                return False
+            self._audio_back, self._audio_back_device = time.time(), new["device"]
+            self._audio_problem = None
+            log.info("audio input is back on '%s'", new["device"])
+            return True
+
+    def audio_look_again(self) -> bool:
+        """The Look again button (item 100): one look at the real device list; when the saved device is listed, restart on
+        it as the watchdog does (the reconnect line shows it). True when it is listed. Blocks up to
+        ``audio_in.LIST_TIMEOUT_S``: never from the event loop."""
+        if not self.enable_hardware:
+            return False
+        with self._audio_restart:
+            audio, saved = self.audio, self.store.settings.audio.device
+        if audio is None:
+            return False
+        if saved and audio_in.match_device(saved, audio_in.list_input_devices_fresh()) is None:
+            return False
+        self._audio_restart_on(audio, saved)
+        return True
+
+    def _audio_wait_s(self) -> float:
+        """How long the watchdog sleeps: its look every ``AUDIO_WATCH_S``, shorter when the next device lookup is due
+        before that, so that the lookups are ``AUDIO_LOOK_EVERY_S`` apart and not rounded up to the next look."""
+        due = self._audio_next_list - time.monotonic()
+        return AUDIO_WATCH_S if due <= 0 else min(AUDIO_WATCH_S, max(0.1, due))
 
     def _audio_watch(self) -> None:
-        while not self._stop.wait(AUDIO_WATCH_S):
+        while not self._stop.wait(self._audio_wait_s()):
             try:
                 self.audio_check()
             except Exception:  # noqa: BLE001 - the watchdog must outlive whatever one look runs into

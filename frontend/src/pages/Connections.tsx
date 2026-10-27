@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { api, type AudioDevice, type OscStatus, type SerialDevice } from '../api'
+import { api, type AudioDevice, type LookAgainResult, type OscStatus, type SerialDevice } from '../api'
 import { LiveBandMeter } from '../components/LiveBandMeter'
 import { ArtnetInputSection, DmxInputSection, useLiveInput } from '../components/LiveInputSection'
 import { MidiDevicesSection } from '../components/MidiDevicesSection'
@@ -8,7 +8,7 @@ import { OutputMonitor } from '../components/OutputMonitor'
 import { SubTabs, useSubTab, type SubTab } from '../components/SubTabs'
 import { ARTNET_UNIVERSES, Button, DevicePicker, NumberInput, Row, Section, StatusDot, TextInput, Toggle, UniverseSelect, deviceKey, useSettings } from '../components/forms'
 import { CONNECTION_TABS, type ConnectionTab } from '../pages'
-import { reconnectLine } from '../reconnect'
+import { lookingLine, reconnectLine, type LookAgain } from '../reconnect'
 import { unchanged, usePolling } from '../usePolling'
 import type { EngineConnection } from '../useEngine'
 import { useFieldNav } from '../useFieldNav'
@@ -129,6 +129,23 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
   const live = io?.audio?.running && io.audio.device_inputs ? io.audio : null
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const audioLine = reconnectLine(io?.audio)
+  // item 100: the watchdog stops looking for the saved device after a minute; Look again is one more look (opening this
+  // tab reconnects nothing, so that the problem stays visible)
+  const [look, setLook] = useState<LookAgain>(null)
+  const lookLine = lookingLine(io?.audio, a.device, look)
+  useEffect(() => {
+    if (!io?.audio?.stopped_looking) setLook(null) // found (or it came back by itself), or a new problem: start clean
+  }, [io?.audio?.stopped_looking])
+  const lookAgain = () => {
+    setLook('searching')
+    api
+      .post<LookAgainResult>('/api/audio/look-again')
+      .then((r) => {
+        // running again: "searching…" stays until the status says so (the effect above), with no flash of the old line
+        if (!(r.found && r.audio?.running)) setLook({ found: r.found, at: Date.now() / 1000 })
+      })
+      .catch(() => setLook({ found: false, at: Date.now() / 1000 }))
+  }
   // no blocks arrive: the lights hold the look they had (item 30), so the bands below are the held ones, not live
   const bandsHeld = !!io?.audio && !io.audio.running
   const inputsNote = live
@@ -188,6 +205,16 @@ function AudioTab({ engine, settingsApi, audioDevices }: { engine: EngineConnect
               ! {io.audio.warning}
             </div>
           ) : null}
+          {lookLine && (
+            <div className="my-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-[11px] text-dim" role="status">
+              <span>{lookLine.text}</span>
+              {lookLine.stoppedLooking && (
+                <Button onClick={lookAgain} disabled={look === 'searching'} tip="Look for the saved audio device once more; the input restarts on it when it is there">
+                  Look again
+                </Button>
+              )}
+            </div>
+          )}
           {audioLine && (
             <div className="my-1 px-2 text-[11px] text-dim" role="status">
               {audioLine}

@@ -124,6 +124,12 @@ export interface MidiDevice {
   reconnect: { lost: number | null; back: number | null } | null // it came back by itself (lost null: not found at the start)
 }
 
+/** POST /api/audio/look-again: whether the saved audio device is listed, and the audio status after. */
+export interface LookAgainResult {
+  found: boolean
+  audio: IoStatus | null
+}
+
 export interface IoStatus {
   connected?: boolean
   running?: boolean
@@ -138,6 +144,10 @@ export interface IoStatus {
   // audio input: when it dropped and came back by itself (epoch seconds; lost null = missing since the start), with the
   // devices it was on; null before any drop (item 30)
   reconnect?: { lost: number | null; back: number | null; lost_device?: string | null; back_device?: string | null } | null
+  // audio input, with a saved device that isn't running: the watchdog looks for it for a minute (looking), then stops
+  // (stopped_looking) and Connections offers Look again (item 100)
+  looking?: boolean
+  stopped_looking?: boolean
   kind?: 'pro' | 'open' // USB DMX interface: the type the app uses for it
   max_fps?: number // an Open DMX: the most frames per second it is sent, whatever the engine runs at (item 35)
   devices?: MidiDevice[] // MIDI input: every MIDI device of this computer (item 89)

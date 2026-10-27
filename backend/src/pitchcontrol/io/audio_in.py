@@ -276,9 +276,8 @@ class AudioInput:
             if self.device_name and index is None:
                 self.device_missing = True
                 warnings.append(
-                    f"'{self.device_name}' not found: listening to the system default ('{actual}'). "
-                    "It switches back by itself when it's plugged in."
-                )
+                    f"'{self.device_name}' not found: listening to the system default ('{actual}')."
+                )  # whether it is still looked for is the line below it in Connections → Audio (item 100)
             if fallback:
                 wanted = ", ".join(map(str, self.channels))
                 valid = "1" if inputs == 1 else "1 or 2" if inputs == 2 else f"1 to {inputs}"

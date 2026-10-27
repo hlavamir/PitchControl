@@ -21,3 +21,30 @@ export function reconnectLine(status: Pick<IoStatus, 'reconnect'> | null | undef
   }
   return `lost ${clock(r.lost)} · back ${clock(r.back)}`
 }
+
+/** Look again in Connections → Audio: searching now, or what the last press found (``at``: epoch seconds, ``found``: listed). */
+export type LookAgain = 'searching' | { found: boolean; at: number } | null
+
+/**
+ * The dim line about the saved audio device that isn't running (item 100): the watchdog is still looking for it, or
+ * it has stopped after a minute and Look again is the way on (``stoppedLooking``: show the button). After a press it
+ * says it is searching, or what the look found: still not found, or listed but it won't open. Nothing while the
+ * device runs, or with no device saved.
+ */
+export function lookingLine(
+  status: Pick<IoStatus, 'looking' | 'stopped_looking' | 'device_missing'> | null | undefined,
+  device: string | null | undefined,
+  look: LookAgain = null,
+): { text: string; stoppedLooking: boolean } | null {
+  if (!device) return null
+  // missing: not in the device list; otherwise listed but its stream died or won't open
+  const gone = status?.device_missing ? 'not found' : "isn't running"
+  if (status?.looking) return { text: `'${device}' ${gone} · looking for it…`, stoppedLooking: false }
+  if (!status?.stopped_looking) return null
+  if (look === 'searching') return { text: `'${device}' ${gone} · searching…`, stoppedLooking: true }
+  if (look) {
+    const what = look.found ? "found, but it won't open" : 'still not found'
+    return { text: `'${device}' ${what} · looked ${clock(look.at)}`, stoppedLooking: true }
+  }
+  return { text: `'${device}' ${gone} · stopped looking after a minute`, stoppedLooking: true }
+}

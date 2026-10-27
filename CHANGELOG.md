@@ -6,6 +6,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Changed
+- **A missing audio device is looked for for one minute, then Look again** (item 100): while the saved audio device is missing or has stopped delivering, PitchControl looks for it every 5 seconds for one minute, and then stops (item 99 of 1.8.5 went on once a minute, which could still delay the light output). Connections → Audio then says "not found · stopped looking after a minute" and shows a **Look again** button: it looks once more, and when the device is there the input restarts on it. The line "lost … · back …" stays after that too. A stream that comes back by itself is still noticed at any time, and opening the Audio tab doesn't reconnect it.
+
 ## 1.8.5 — 2026-10-27
 
 ### Changed
