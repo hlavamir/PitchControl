@@ -341,7 +341,7 @@ def main() -> None:
             while True:
                 for cc, value in MIDI_ROUTE_CCS.items():
                     engine.midi_routes.handle("screenshots", mido.Message("control_change", channel=0, control=cc, value=value))
-                if stop.wait(5.0):
+                if stop.wait(0.5):
                     return
 
         threading.Thread(target=faders, name="midi", daemon=True).start()
