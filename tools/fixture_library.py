@@ -10,7 +10,7 @@ from its manual (``tools/fixture_sources/``) and goes through the same conversio
 are kept in ``tools/fixture_sources/ofl/`` (MIT, see the notice), so the types can be rebuilt offline and the tests can
 check that each type still holds its OFL fixture exactly. Run it again to add a fixture or move to a newer OFL commit:
 change ``OFL_COMMIT``, run with ``--refresh`` (and read the report, OFL's files are community-written), then
-run ``tools/shipped_config_history.py`` once the files are committed (see "Releasing a version" in the README).
+run ``tools/shipped_config_history.py`` once the files are committed (see "Releasing a version" in docs/development.md).
 
 OFL is MIT licensed (https://github.com/OpenLightingProject/open-fixture-library, LICENSE): the notice is shipped in
 ``config/fixtures/Open Fixture Library notice.txt`` and each type's description names it as the source.

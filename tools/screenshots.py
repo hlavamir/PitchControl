@@ -1,4 +1,4 @@
-"""Retake the screenshots of the README and the website, the same way every time.
+"""Retake the screenshots of the README, the docs/ pages and the website, the same way every time.
 
     backend/.venv/bin/python tools/screenshots.py                 # into screenshots/
     backend/.venv/bin/python tools/screenshots.py --data ~/Documents/PitchControl --out /tmp/shots

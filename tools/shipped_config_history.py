@@ -8,7 +8,7 @@ into ``backend/src/pitchcontrol/config/shipped_history.py``, keeping the hashes 
     python tools/shipped_config_history.py                       # this repo, config/
     python tools/shipped_config_history.py --repo ../PitchPlease --prefix pitch_control/config
 
-Run it as part of every release that changes a default (see "Releasing a version" in the README).
+Run it as part of every release that changes a default (see "Releasing a version" in docs/development.md).
 """
 
 from __future__ import annotations
