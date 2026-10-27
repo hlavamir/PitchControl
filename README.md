@@ -60,6 +60,8 @@ The rig: the fixtures of one event and everything that differs per fixture.
 
 ### 5 · Connections
 
+![Connections page, Audio tab](screenshots/connections-audio.png)
+
 ![Connections page, MIDI tab](screenshots/connections-midi.png)
 
 Everything that goes in and out of the app, one subpage tab per topic: **Audio · MIDI · DMX & Art-Net · OSC · Serial** (the row starts at the page row's left edge; Q / E step through the tabs and wrap around at the ends, the keys are in the footer; the page remembers its tab, also across restarts). The status indicators in the header (audio, midi, dmx, art-net) open their tab; the mouse over one, or the keyboard focus on it, shows its details (see [Using the UI](#using-the-ui)). The section headers carry an arrow: **→]** an input (into the app), **[→** an output (out of the app); the Control Desk's routes have them on Source and First out. Every change on these tabs is written and applied at once, with no Save button (item 88): a switch, list or button when it changes, a text or number field on Enter or when you leave it (Esc puts the saved value back); only the input or output that changed restarts. No tab needs scrolling at 1512 × 915.
@@ -80,7 +82,12 @@ Everything that goes in and out of the app, one subpage tab per topic: **Audio �
 
 ![Connections page, DMX & Art-Net tab](screenshots/connections-dmx.png)
 
+![Connections page, Serial tab](screenshots/connections-serial.png)
+
 #### OSC output
+
+![Connections page, OSC tab](screenshots/connections-osc.png)
+
 The OSC tab of Connections sends the **base colours A and B** over OSC (UDP) to one IP address and port, for example to a video mapping program: the colours as the Hue / Saturation faders or Auto Color Change make them (Swap Colors applied), before strobo, brightness, masks, dimmers and gamma. Switch it on with **Enabled**, give the **IP address** (a broadcast address works) and **Port**, and choose a file under **Messages**. The status dot says *sending*, *no file*, *nothing to send*, *file problem* or *not sending* (with the reason in the footer).
 
 What is sent is described by a JSON file in the `osc/` folder of your data folder (next to `controllers/`; the app ships three examples that are always listed). A file is an array of entries with three keys:
@@ -122,6 +129,8 @@ The fog machines of the active rig, one panel each: a timer ("every 60 s for 4 s
 ![Control Desk page](screenshots/control-desk.png)
 
 Every DMX output channel as a slider: pick a subpage of 64 channels in the tab row, and a universe (0–3) with the Universe selector at the right of that row; the last subpage is **Routes**, set apart from the channel subpages by a gap (Q / E step through all nine and wrap around, so Q from 1–64 goes to Routes). The faders take the full height of the page. The faint bar is what the channel sends now, and the footer names the fixture using it. Dragging a channel, or switching it on, overrides it with the slider value; the switch releases it. Overrides survive restarts. While any are active, the header shows "N overrides", and "Reset all" releases them all after a confirmation.
+
+![Control Desk page, Routes subpage](screenshots/control-desk-routes.png)
 
 **Routes** (the last subpage; the Universe selector, the override and routed counts and Reset all stay in the row above) are **per universe**: the page lists the routes whose output is the universe chosen with the Universe selector, a new route goes to that universe (there is no output-universe field; the route still stores it), and a line counts the routes of the other universes ("3 more routes on other universes (1, 2)"). They copy live input onto output channels: a block of an Art-Net universe (or of the DMX input; both are set up in Connections → DMX & Art-Net) goes to output channels, from one channel up to a whole universe. A route is its source (Art-Net with its raw port address, or the DMX input), the first input channel, the count (1–512) and the first output channel; each can be switched on and off and named. **Three layers, the later one wins:** the app's own output (fixtures, fog), then the routes, then the manual overrides: a channel you override keeps your value, the route stays underneath and shows again when you release the override. **An input that stops keeps its last values** on the routed channels; a route lets go when it is switched off or removed. A new route starts off. Routed channels are drawn in blue (apart from the overrides in the ink) and the header counts them ("N overrides · M routed"); when two routes write the same output channel, the one lower in the list wins and the page names the overlap. Routes are saved across restarts (`state/routes.json`); the values of the input are not, so after a restart the fixtures show until the first packet arrives. The API: `GET`/`PUT /api/routes`, `POST /api/routes`, `PATCH`/`DELETE /api/routes/{id}`.
 
@@ -207,7 +216,7 @@ App options (for example from a terminal) are the same as for the backend (`--da
 Versions follow semantic versioning (see [CHANGELOG.md](CHANGELOG.md)). The number lives only in `backend/src/pitchcontrol/__init__.py`.
 1. Set `__version__`, and move the changelog's "Unreleased" notes under a `## X.Y.Z — date` heading.
 2. If a default in `config/` changed since the last release, commit it, then record it: `backend/.venv/bin/python tools/shipped_config_history.py` (it adds every committed version of the shipped files to `config/shipped_history.py`, so a later migration recognises untouched copies) and commit that too.
-3. If the UI changed since the last release (`frontend/src`), retake the screenshots from a clean checkout of the release commit, so Help → About shows the plain version: build the frontend, then run `tools/screenshots.py` (see its header for the setup). Check the PNGs in `screenshots/`, then commit.
+3. If the UI or the screenshot script changed since the last release (`frontend/src`, `tools/screenshots.py`), retake the screenshots from a clean checkout of the release commit, so Help → About shows the plain version: build the frontend, then run `tools/screenshots.py` (see its header for the setup). Check the PNGs in `screenshots/`, then commit.
 4. Commit, then tag and push: `git tag -a vX.Y.Z -m "PitchControl X.Y.Z"` and `git push origin vX.Y.Z`.
 5. The "PitchControl app" workflow checks that the tag matches `__version__`, builds macOS and Windows, and creates a **draft** release with that version's changelog section. Check it on GitHub, then publish it.
 
@@ -262,6 +271,8 @@ The UI is a web page, so a phone or an iPad on the same wifi (or cable network) 
 - **What a device can't do:** change the network settings, or open folders, the browser or full screen on this computer; those work from the computer that runs PitchControl only.
 - The switch, port and PIN are per computer (`machine.json`, key `network`).
 - **On a phone** the UI has a layout of its own: the General page's macros (as sideways sliders, 01–16 as on the computer), the scenes (load, save and delete), the function and mask buttons, and the Dimmers page; two tabs at the bottom switch between them (in landscape, in the top bar). The scene preview and the audio meters are not on the phone, and the rest (Fixtures, Rig, Connections, Fog, the Control Desk, Settings) stays on the computer: **Full UI on this phone**, at the end of each page, shows the whole UI there too (the **Phone layout** button goes back). A phone is a screen whose shorter side is below 600 px; an iPad gets the full UI. Drag a slider sideways anywhere on its row (a swipe up or down scrolls the page); renaming a dimmer and switching the controller's page work from the computer only.
+
+<p><img src="screenshots/phone.png" alt="Phone layout, General" width="300"> <img src="screenshots/phone-dimmers.png" alt="Phone layout, Dimmers" width="300"></p>
 
 To try it with a phone: turn the switch on, connect the phone to the same wifi as the computer, scan the QR code, and enter the PIN if there is one. If the page doesn't open, the computer's firewall probably blocks the port: allow PitchControl (Windows asks once, "Allow access"; on macOS, System Settings → Network → Firewall).
 

@@ -11,8 +11,9 @@ The state shown:
 - this computer: one USB DMX interface that isn't plugged in and an Art-Net target, amber ink, UI
   scale 1; two Control Desk overrides and three named scenes, unless the copied data brings its own
   scenes (the fog machines are the rig's);
-- an OSC output to 127.0.0.1:7000 (Colors as RGBA) and two routes in universe 0 (an Art-Net universe onto channels
-  101 to 124, two MIDI controls onto 129 and 130), which the Routes subpage shows;
+- an OSC output to 127.0.0.1:7000 (Colors as RGBA) and two routes in universe 0, which the Routes subpage shows: an
+  Art-Net universe onto channels 101 to 124, and four MIDI faders (CC 21 to 24, moved to set values) onto 15 to 18,
+  an RGBW par on the free channels of the Control Desk's first subpage;
 - the macros at their defaults with Strobo (0.59) and Audio Reactivity (0.3) raised, so the pages
   move (more Audio Reactivity darkens the lights: the peaks map takes over the mask);
 - a synthetic 128 BPM techno loop feeding the audio analysis;
@@ -40,6 +41,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+import mido
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +99,8 @@ def macro_values(**changes: float) -> dict[str, float]:
     return values | changes
 
 
+MIDI_ROUTE_CCS = {21: 127, 22: 40, 23: 0, 24: 90}  # the RGBW par's route: CC → value, a warm orange with some white
+
 # The machine's own audio devices must not end up on the website: the UI is shown with this one.
 DEVICES = [
     {
@@ -142,8 +146,9 @@ def stage(data_src: Path | None, data: Path, machine: Path) -> None:
         },
     )
     write_json(machine / "state" / "overrides.json", {"universes": {"0": {"9": 180, "10": 255}}})
-    # Routes subpage: an Art-Net universe onto output channels 101 to 124 and two MIDI controls onto 129 and 130 of
-    # universe 0, on the Control Desk's 3rd and 3rd/4th subpage (channels 1 to 64 are the ones control-desk.png shows)
+    # Routes subpage: an Art-Net universe onto output channels 101 to 124 of universe 0 (over the second LED strip, the
+    # Control Desk's 2nd subpage) and four MIDI faders onto 15 to 18, the free channels between Light B2 and the first
+    # LED strip, so that control-desk.png (channels 1 to 64) shows routed channels too
     write_json(
         machine / "state" / "routes.json",
         {
@@ -151,12 +156,12 @@ def stage(data_src: Path | None, data: Path, machine: Path) -> None:
                 {"id": "r1", "name": "Console", "kind": "artnet", "artnet_universe": 0, "first_input": 1, "count": 24, "universe": 0, "first_output": 101},
                 {
                     "id": "r2",
-                    "name": "Launch Control",
+                    "name": "RGBW par",
                     "kind": "midi",
-                    "count": 2,
+                    "count": 4,
                     "universe": 0,
-                    "first_output": 129,
-                    "channels": [{"type": "cc", "channel": 1, "number": 21}, {"type": "note", "channel": 1, "number": 36, "note_mode": "onoff"}],
+                    "first_output": 15,
+                    "channels": [{"type": "cc", "channel": 1, "number": n} for n in MIDI_ROUTE_CCS],
                 },
             ]
         },
@@ -331,6 +336,15 @@ def main() -> None:
         engine.outputs.restart_osc(store.settings.outputs)
         engine.midi_routes.open_inputs = lambda: 1
         stop = threading.Event()
+
+        def faders() -> None:  # the RGBW par's route: its faders, sent now and then so the route never reads "quiet"
+            while True:
+                for cc, value in MIDI_ROUTE_CCS.items():
+                    engine.midi_routes.handle("screenshots", mido.Message("control_change", channel=0, control=cc, value=value))
+                if stop.wait(5.0):
+                    return
+
+        threading.Thread(target=faders, name="midi", daemon=True).start()
         feeder = threading.Thread(target=feed, args=(engine, stop), name="audio", daemon=True)
         feeder.start()
         app = create_app(engine, static_dir=ROOT / "frontend" / "dist")
