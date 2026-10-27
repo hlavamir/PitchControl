@@ -18,6 +18,30 @@ if TYPE_CHECKING:  # not imported at run time: the child that lists the devices 
 
 log = logging.getLogger(__name__)
 
+LIST_FLAG = "--list-audio-devices"
+
+
+def _lower_own_priority() -> None:
+    """Make the child run in the background (item 99): on Windows the background mode lowers CPU, I/O and memory priority
+    (the parent's below-normal class only lowers the CPU), elsewhere the nice value. Whatever fails is ignored: the
+    listing must work all the same."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00100000)  # PROCESS_MODE_BACKGROUND_BEGIN
+        else:
+            os.nice(10)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# The child lowers its priority before sounddevice is imported: the import starts PortAudio, which is where the devices
+# are enumerated (every WDM-KS and Bluetooth hands-free device on Windows), so later would be too late (item 99).
+if LIST_FLAG in sys.argv:
+    _lower_own_priority()
+
 # ASIO support in sounddevice's bundled PortAudio on Windows must be enabled before import
 os.environ.setdefault("SD_ENABLE_ASIO", "1")
 
@@ -70,7 +94,6 @@ def match_device(name: str | None, devices: list[dict]) -> dict | None:
     return next((d for d in devices if name.lower() in d["label"].lower()), None)
 
 
-LIST_FLAG = "--list-audio-devices"
 # The child needs about 0.3 s on the Mac (item 32), but on the owner's Windows laptop 2 s was not enough, four times in a
 # log: the frozen exe has to start, and PortAudio then enumerates every WDM-KS and Bluetooth hands-free device, which can
 # take several seconds. The callers (the Audio tab's endpoint, the audio watchdog) are not the light engine's thread, so a
@@ -132,7 +155,9 @@ def _run_list_child() -> list[dict] | None:
                     cmd,
                     capture_output=True,
                     timeout=LIST_TIMEOUT_S,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    # below normal priority on Windows: the lookup takes up to seconds and must not delay the output's frames (item 99)
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
                 )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"timed out after {LIST_TIMEOUT_S:g} seconds, the limit") from None

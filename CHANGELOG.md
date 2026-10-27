@@ -9,6 +9,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Changed
 - **The shipped MIDI mappings are named alike**: manufacturer and model, in the list and in the file name. The Kontrol F1's is now "Native Instruments Traktor Kontrol F1" (`NativeInstruments_TraktorKontrolF1.json`), like "Novation Launch Control XL 3" (`Novation_LaunchControlXL3.json`). Your own copy of the F1 mapping keeps the name it has.
 - **Log frame timing says what else ran** (item 98): every late frame of an Open DMX interface now lists what the app was doing at the time, such as a garbage collection, the audio device lookup, a file write or the MIDI device scan ("meanwhile: gc gen2 1× 84 ms, audio device lookup 1× 1.6 s (running)"). While it is on, the engine also logs its own late frames and a summary every 10 seconds. A frame counts as late from 1.5 times the frame time (was twice), and the summary line counts the full garbage collections. For finding the occasional skipped frame on Windows.
+- **A missing audio device is looked for less often, and at low priority** (item 99): while the saved audio device is missing, PitchControl looks for it every 2 seconds for the first minute, then once a minute (was every 10 seconds). The lookup runs at low priority, so it can't delay the light output. This was the cause of the occasional skipped frames on Windows, found with Log frame timing.
 
 ## 1.8.4 — 2026-10-25
 

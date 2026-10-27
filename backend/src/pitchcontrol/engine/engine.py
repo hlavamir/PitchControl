@@ -42,12 +42,13 @@ log = logging.getLogger(__name__)
 
 PREVIEW_SIZE = 256
 AUDIO_WATCH_S = 2.0  # how often the audio input is looked at when it isn't on the saved device (item 30)
-# The device list is read by starting a child process (0.3 s on the Mac, unmeasured on Windows). A cable stepped on is
-# plugged back within seconds, so the first minute is looked at every AUDIO_WATCH_S; a device that has been away longer
-# (the interface left at home, the stand-in running all night) is looked for every AUDIO_SLOW_WATCH_S only.
+# The device list is read by starting a child process (0.3 s on the Mac; on Windows 0.3–1.6 s, sometimes several seconds,
+# and each lookup can delay the output's frames: item 99). A cable stepped on is plugged back within seconds, so the
+# first minute is looked at every AUDIO_WATCH_S; a device that has been away longer (the interface left at home, the
+# stand-in running all night) is looked for every AUDIO_SLOW_WATCH_S only.
 MIDI_WATCH_S = 2.0  # how often the MIDI devices are looked at (listing the ports is cheap and cuts nothing: items 33, 89)
 AUDIO_FAST_PHASE_S = 60.0
-AUDIO_SLOW_WATCH_S = 10.0
+AUDIO_SLOW_WATCH_S = 60.0
 AUDIO_RETRY_S = 10.0  # after a reconnect that didn't work (the device is listed but won't open), wait this long
 
 

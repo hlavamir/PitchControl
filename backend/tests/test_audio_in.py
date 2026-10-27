@@ -1,6 +1,7 @@
 """AudioInput on devices with fewer inputs than the configured channels (item 25)."""
 
 import json
+import sys
 import threading
 import time
 
@@ -338,6 +339,54 @@ def test_fresh_list_falls_back_when_the_child_fails(monkeypatch):
 
     monkeypatch.setattr(audio_in.subprocess, "run", lambda *a, **k: Failed())
     assert [d["label"] for d in audio_in.list_input_devices_fresh()] == ["MacBook Pro Microphone (Core Audio)"]
+
+
+def test_the_child_starts_below_normal_priority_where_the_os_has_that_class(monkeypatch):
+    seen = {}
+
+    class Done:
+        returncode = 0
+        stdout = b"[]"
+        stderr = b""
+
+    def run(cmd, **kwargs):
+        seen.update(kwargs)
+        return Done()
+
+    monkeypatch.setattr(audio_in.subprocess, "run", run)
+    monkeypatch.setattr(audio_in.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(audio_in.subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0x00004000, raising=False)
+    assert audio_in._run_list_child() == []
+    assert seen["creationflags"] == 0x08000000 | 0x00004000  # item 99
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="checks the nice value; Windows takes the background-mode path")
+def test_the_child_lowers_its_priority_before_portaudio_starts():
+    """Importing sounddevice starts PortAudio, which enumerates the devices: the child must already run at low priority
+    then (item 99), so the priority is lowered when ``audio_in`` is imported with the flag, not in ``list_devices_main``."""
+    import subprocess
+
+    code = (
+        "import os, sys; sys.argv.append('--list-audio-devices'); base = os.nice(0); "
+        "import builtins; seen = []; real = builtins.__import__\n"
+        "def imp(name, *a, **k):\n"
+        "    if name == 'sounddevice' and not seen: seen.append(os.nice(0))\n"
+        "    return real(name, *a, **k)\n"
+        "builtins.__import__ = imp\n"
+        "import pitchcontrol.io.audio_in\n"
+        "print(seen[0] - base if seen else 'no sounddevice import')"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30)
+    assert out.stdout.strip() == "10", out.stderr
+
+
+def test_lowering_the_priority_never_fails_the_child(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("not allowed")
+
+    monkeypatch.setattr(audio_in.sys, "platform", "linux")  # the os.nice path, whatever the computer this runs on
+    monkeypatch.setattr(audio_in.os, "nice", boom, raising=False)
+    audio_in._lower_own_priority()  # no exception
 
 
 class _Child:
@@ -703,12 +752,26 @@ def test_a_device_that_stays_away_is_looked_for_less_often_after_a_minute(monkey
     early = [t for t in lists if t - t0 < 60]
     late = [t for t in lists if t - t0 >= 60]
     assert len(early) >= 29  # about every 2 s
-    assert 10 <= len(late) <= 13  # about every 10 s over the next 120 s
-    assert all(b - a >= 10 for a, b in zip(late, late[1:]))
+    assert 2 <= len(late) <= 3  # about once a minute over the next 120 s (item 99)
+    assert all(b - a >= 60 for a, b in zip(late, late[1:]))
     fake.devices.append(INTERFACE)  # plugged in after all: found at the next look, however slow
-    clock[0] += 10.0
+    clock[0] += 60.0
     engine.audio_check()
     assert engine.audio_status()["device"] == "Komplete Audio 6"
+    engine.audio.stop()
+
+
+def test_after_the_first_minute_the_next_lookup_is_a_minute_away(monkeypatch, store):
+    from pitchcontrol.engine.engine import AUDIO_FAST_PHASE_S, AUDIO_SLOW_WATCH_S
+
+    engine, _ = watched_engine(monkeypatch, store, [MIC], "Komplete")  # missing at the start
+    engine.audio_check()  # in the first minute: the next look is two seconds away
+    assert engine._audio_next_list - time.monotonic() < 3
+    engine._audio_problem_since -= AUDIO_FAST_PHASE_S + 1  # it has been away for over a minute
+    engine._audio_next_list = 0.0
+    engine.audio_check()
+    assert AUDIO_SLOW_WATCH_S == 60.0
+    assert AUDIO_SLOW_WATCH_S - 2 < engine._audio_next_list - time.monotonic() <= AUDIO_SLOW_WATCH_S
     engine.audio.stop()
 
 
