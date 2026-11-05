@@ -814,3 +814,208 @@ def test_timer_resolution_failure_only_logs(monkeypatch, caplog):
         tr.restore_resolution()                # nothing was raised: no end call
     assert winmm.calls == [("begin", 1)]
     assert "could not set the Windows timer resolution" in caplog.text
+
+
+# -- the PitchPlease v2 output reads the Arduino's status lines (item 101)
+
+class _V2Port:
+    """A serial port that talks back: what the Arduino printed waits in `incoming` until it is read."""
+
+    instances: list = []
+    fail_read = False  # the next port that opens raises a SerialException in in_waiting
+
+    def __init__(self, path, baud, **kw):
+        self.path, self.kw = path, kw
+        self.incoming = bytearray()
+        self.written, self.reads, self.closed = [], [], False
+        self.broken = _V2Port.fail_read
+        _V2Port.fail_read = False
+        _V2Port.instances.append(self)
+
+    @property
+    def in_waiting(self):
+        if self.broken:
+            import serial
+            raise serial.SerialException("device reports readiness to read but returned no data")
+        return len(self.incoming)
+
+    def read(self, n=1):
+        data = bytes(self.incoming[:n])
+        del self.incoming[:n]
+        self.reads.append(n)
+        return data
+
+    def write(self, data):
+        self.written.append(bytes(data))
+
+    def close(self):
+        self.closed = True
+
+
+def _v2_worker(monkeypatch):
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    _V2Port.instances, _V2Port.fail_read = [], False
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(workers.serial, "Serial", _V2Port)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
+    monkeypatch.setattr(workers.time, "monotonic", lambda: clock["t"])
+    w = workers.PitchplsV2Worker(DeviceRef(), 921600, "pitchpls_v2")
+    w.open()
+    w.clock = clock
+    return w, _V2Port.instances[0]
+
+
+def _arduino_lines(caplog):
+    return [r.getMessage() for r in caplog.records if "the Arduino says" in r.getMessage()]
+
+
+def test_v2_worker_drains_what_the_arduino_sent_after_a_write(monkeypatch):
+    w, port = _v2_worker(monkeypatch)
+    text = b"fps 38.2/ LED 1450/ Current 0.82\r\n"
+    port.incoming += text
+    w.write(b"\x01\x02")
+    assert port.written == [b"\x01\x02"]
+    assert port.incoming == b"" and port.reads == [len(text)]   # read what was waiting, no more
+    w.write(b"\x03")                                            # nothing waiting: no read call at all
+    assert port.reads == [len(text)]
+
+
+def test_v2_worker_joins_a_line_split_over_two_reads(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    port.incoming += b"fps 38.2/ LED 14"
+    w.write(b"x")
+    assert _arduino_lines(caplog) == [] and w.status()["firmware"] is None   # no complete line yet
+    port.incoming += b"50/ Current 0.82\r\nfps 3"
+    w.write(b"x")
+    assert _arduino_lines(caplog) == ["pitchpls_v2: the Arduino says: fps 38.2/ LED 1450/ Current 0.82"]
+    port.incoming += b"9.0/ LED 1/ Current 0\r\n"
+    w.clock["t"] += 2
+    w.write(b"x")
+    assert w.status()["firmware"] == {"line": "fps 39.0/ LED 1/ Current 0", "age": 0.0}
+
+
+def test_v2_worker_logs_the_first_line_then_once_a_minute(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    for n in range(1, 31):                                     # a line every 2 s for a minute
+        port.incoming += f"fps {n}\r\n".encode()
+        w.write(b"x")
+        if n == 29:
+            assert _arduino_lines(caplog) == ["pitchpls_v2: the Arduino says: fps 1"]  # the first one only, until now
+        w.clock["t"] += 2
+    # the clock is at 1060 now, 60 s after the first log line: the next line logs again
+    port.incoming += b"fps 31\r\n"
+    w.write(b"x")
+    assert _arduino_lines(caplog) == ["pitchpls_v2: the Arduino says: fps 1", "pitchpls_v2: the Arduino says: fps 31"]
+    port.incoming += b"fps 32\r\n"
+    w.clock["t"] += 2
+    w.write(b"x")
+    assert len(_arduino_lines(caplog)) == 2                    # not again within the 60 s
+    assert w.status()["firmware"]["line"] == "fps 32"
+
+
+def test_v2_worker_logs_again_after_the_port_is_reopened(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    port.incoming += b"fps 1\r\n"
+    w.write(b"x")
+    w.close()
+    w.open()
+    assert w.status()["firmware"] is None                      # a line of the old connection says nothing now
+    _V2Port.instances[1].incoming += b"fps 2\r\n"
+    w.write(b"x")
+    assert len(_arduino_lines(caplog)) == 2
+
+
+def test_v2_worker_caps_the_buffer_when_no_line_ends(monkeypatch, caplog):
+    import logging
+
+    from pitchcontrol.io import workers
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    for _ in range(5):
+        port.incoming += b"\xff" * 700                         # garbage, no newline
+        w.write(b"x")
+        assert len(w._rx) <= workers.V2_LINE_BUFFER
+    assert len(w._rx) == workers.V2_LINE_BUFFER
+    assert _arduino_lines(caplog) == []
+    port.incoming += b"ok\r\n"                                 # the next line end gives a line (undecodable bytes replaced)
+    w.write(b"x")
+    assert _arduino_lines(caplog)[0].endswith("ok") and "�" in _arduino_lines(caplog)[0]
+    assert w._rx == b""
+
+
+def test_v2_worker_status_keeps_its_keys_and_adds_the_firmware_line(monkeypatch):
+    w, port = _v2_worker(monkeypatch)
+    assert w.status() == {"connected": True, "error": None, "frames": 0, "firmware": None}
+    port.incoming += b"fps 40\r\n"
+    w.write(b"x")
+    w.clock["t"] += 3.5
+    assert w.status()["firmware"] == {"line": "fps 40", "age": 3.5}
+
+
+def test_v2_worker_reconnects_after_a_read_error_like_after_a_write_error(monkeypatch, caplog):
+    import logging
+    import time as real_time
+
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    caplog.set_level(logging.WARNING)
+    _V2Port.instances, _V2Port.fail_read = [], True            # the first port fails when it is read
+    real_sleep = real_time.sleep
+    monkeypatch.setattr(workers.serial, "Serial", _V2Port)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
+    monkeypatch.setattr(workers.time, "sleep", lambda s: real_sleep(0.001))   # the 1 s retry pause
+    w = workers.PitchplsV2Worker(DeviceRef(), 921600, "pitchpls_v2")
+    w.start()
+    try:
+        for _ in range(500):
+            w.submit(b"\x01")
+            real_sleep(0.01)
+            if len(_V2Port.instances) >= 2 and w.frames_sent >= 1:
+                break
+    finally:
+        w.stop()
+    assert len(_V2Port.instances) >= 2 and _V2Port.instances[0].closed   # closed and opened again
+    assert w.frames_sent >= 1
+    assert "device reports readiness to read" in caplog.text           # logged by the worker's loop, as a write error would be
+
+
+def test_open_dmx_worker_does_not_read_the_port(monkeypatch):
+    def boom(self):
+        raise AssertionError("the Open DMX worker must not read")
+
+    monkeypatch.setattr(_FakePort, "in_waiting", property(boom), raising=False)
+    monkeypatch.setattr(_FakePort, "read", boom, raising=False)
+    w, port = _open_dmx(monkeypatch, "baud")
+    w.write(bytes(512))
+    assert any(e[0] == "write" for e in port.events)
+
+
+def test_output_manager_uses_the_reading_worker_for_the_v2_output(monkeypatch):
+    from pitchcontrol.config.models import OutputSettings
+    from pitchcontrol.io import outputs as out
+    from pitchcontrol.io import workers
+
+    monkeypatch.setattr(workers.serial, "Serial", _V2Port)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: None)   # no device: the thread only retries
+    s = OutputSettings.model_validate({"pitchpls_v2": {"enabled": True}})
+    m = out.OutputManager(s)
+    m.start()
+    try:
+        assert isinstance(m.v2, workers.PitchplsV2Worker)
+        assert m.status()["pitchpls_v2"]["firmware"] is None
+    finally:
+        m.stop()
+    assert not any(isinstance(w, workers.PitchplsV2Worker) for w in m.enttec if w is not None)

@@ -204,6 +204,60 @@ class SerialWorker(LatestFrameWorker):
         self.connected = False
 
 
+V2_LINE_BUFFER = 1024  # bytes of the Arduino's text kept while no line end has come (item 101)
+V2_LOG_EVERY_S = 60.0  # the Arduino's status line goes to the log the first time after the port opens, then at most this often (item 101)
+
+
+class PitchplsV2Worker(SerialWorker):
+    """The PitchPlease v2 strips (an Arduino R4, 921600 baud). The firmware prints a status line every 2 s
+    ("fps 38.5/ LED 1450/ Current 0.82", ends in CR LF). Unread, that text fills the USB buffers (the Arduino's
+    and the PC's) and after a few minutes the strips drop out and stay blue, with no write error (item 101).
+    So after every write this worker reads what the Arduino sent and throws it away, and keeps the last line:
+    it goes to the log about once a minute, which also shows that the Arduino is alive. A read error is handled
+    like a write error: it propagates, and the worker's loop logs it and reconnects. Only for this output: the
+    Enttec and Open DMX interfaces send nothing, so SerialWorker (and OpenDmxWorker) stay write-only."""
+
+    def __init__(self, ref: DeviceRef, baudrate: int, name: str) -> None:
+        super().__init__(ref, baudrate, name)
+        self._rx = bytearray()  # the bytes of a line that has not ended yet
+        self._line: str | None = None  # the last complete line the Arduino sent
+        self._line_time = 0.0  # time.monotonic() of that line
+        self._logged_at: float | None = None  # time.monotonic() of the last log line; None: not since the port opened
+
+    def open(self) -> None:
+        super().open()
+        self._rx.clear()
+        self._line = None
+        self._logged_at = None
+
+    def write(self, frame: object) -> None:
+        super().write(frame)
+        self._drain()
+
+    def _drain(self) -> None:
+        port = self.port
+        assert port is not None
+        waiting = port.in_waiting  # non-blocking, also with timeout=0; a read is never asked for more than is there
+        if waiting <= 0:
+            return
+        self._rx += port.read(waiting)
+        *lines, rest = bytes(self._rx).split(b"\n")
+        # no line end for a KB: not the firmware's text (or a different baud rate); keep the newest bytes, drop the oldest
+        self._rx[:] = rest[-V2_LINE_BUFFER:]
+        complete = [text for text in (raw.decode("utf-8", errors="replace").strip() for raw in lines) if text]  # strip(): the CR of CR LF
+        if not complete:
+            return
+        now = time.monotonic()
+        self._line, self._line_time = complete[-1], now
+        if self._logged_at is None or now - self._logged_at >= V2_LOG_EVERY_S:
+            self._logged_at = now
+            log.info("%s: the Arduino says: %s", self.name, self._line)
+
+    def status(self) -> dict:
+        firmware = None if self._line is None else {"line": self._line, "age": time.monotonic() - self._line_time}
+        return {**super().status(), "firmware": firmware}
+
+
 DMX_BAUD = 250000
 OPEN_DMX_MAX_FPS = 30  # a 512-slot frame is 22.6 ms on the wire, plus the break and the driver's calls: at 40 fps the next break came while the FTDI chip still sent the end of the last frame (the "31 ms a write" logged on Windows was rounded to its 15.6 ms clock steps, item 35)
 DMX_BYTE_S = 11 / DMX_BAUD  # one slot on the wire: start bit, 8 data bits, 2 stop bits at 250 kbaud (44 us)

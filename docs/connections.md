@@ -71,4 +71,4 @@ Everything else is ignored (and counted in the section: "2 ignored: …"). A mes
 
 ![Connections page, Serial tab](../screenshots/connections-serial.png)
 
-The PitchPlease V2 serial output (device, baud rate, mirror mode).
+The PitchPlease V2 serial output (device, baud rate, mirror mode). The Arduino prints a status line every 2 seconds; PitchControl reads these messages (an unread one would pile up in the USB buffers and the strips would stop after a few minutes) and writes the latest one to the log about once a minute, as "pitchpls_v2: the Arduino says: …", which also shows that the Arduino is alive.

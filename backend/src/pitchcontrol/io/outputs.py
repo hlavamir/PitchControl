@@ -12,7 +12,7 @@ from ..config.models import ARTNET_PORT, OutputSettings
 from .devices import detect_dmx_type
 from .osc import OscOutput
 from .protocols import artdmx_packet, enttec_pro_packet, pitchpls_v2_packet
-from .workers import OPEN_DMX_MAX_FPS, FrameTimingLog, LatestFrameWorker, OpenDmxWorker, SerialWorker
+from .workers import OPEN_DMX_MAX_FPS, FrameTimingLog, LatestFrameWorker, OpenDmxWorker, PitchplsV2Worker, SerialWorker
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class OutputManager:
         self._enttec_errors: dict[int, str] = {}  # interfaces that were not started, and why
         self._enttec_kinds: list[str] = []  # "pro" / "open" per interface, parallel to enttec
         self.artnet: ArtNetWorker | None = None
-        self.v2: SerialWorker | None = None
+        self.v2: PitchplsV2Worker | None = None
         self._sequence = 0
         self._last_v2: bytes | None = None
         self._last_v2_time = 0.0
@@ -113,7 +113,7 @@ class OutputManager:
             self.artnet = ArtNetWorker()
             self.artnet.start()
         if s.pitchpls_v2.enabled:
-            self.v2 = SerialWorker(s.pitchpls_v2.device, s.pitchpls_v2.baudrate, "pitchpls_v2")
+            self.v2 = PitchplsV2Worker(s.pitchpls_v2.device, s.pitchpls_v2.baudrate, "pitchpls_v2")  # reads the Arduino's status lines (item 101)
             self.v2.start()
         self._start_osc()
 

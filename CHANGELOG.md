@@ -6,6 +6,9 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Fixed
+- **The PitchPls v2 strips over USB serial could stop after a few minutes** (item 101): the Arduino prints a status message every 2 seconds, and PitchControl never read it; the unread messages most likely piled up until the strips went blue and stayed there, with no error in the log. PitchControl now reads the Arduino's messages and throws them away, and writes the Arduino's latest status line to the log about once a minute ("pitchpls_v2: the Arduino says: fps … / LED … / Current …"), which also shows that the Arduino is alive. No firmware change is needed.
+
 ## 1.8.6 — 2026-10-27
 
 ### Changed
