@@ -71,4 +71,4 @@ Everything else is ignored (and counted in the section: "2 ignored: …"). A mes
 
 ![Connections page, Serial tab](../screenshots/connections-serial.png)
 
-The PitchPlease V2 serial output (device, baud rate, mirror mode). The Arduino prints a status line every 2 seconds; PitchControl reads these messages (an unread one would pile up in the USB buffers and the strips would stop after a few minutes) and writes the latest one to the log about once a minute, as "pitchpls_v2: the Arduino says: …", which also shows that the Arduino is alive.
+The PitchPlease V2 serial output (device, baud rate, mirror mode). The Arduino prints a status line every 2 seconds; PitchControl reads these messages (an unread one would pile up in the USB buffers and the strips would stop after a few minutes) and writes the latest one to the log about once a minute, as "pitchpls_v2: the Arduino says: …", which also shows that the Arduino is alive. The port is opened with DTR and RTS off, like the old vvvv patch did (item 102), so the Arduino may send no status line at all; the log then says so once, 30 seconds after the port opened.

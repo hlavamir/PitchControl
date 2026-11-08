@@ -824,13 +824,24 @@ class _V2Port:
     instances: list = []
     fail_read = False  # the next port that opens raises a SerialException in in_waiting
 
-    def __init__(self, path, baud, **kw):
+    def __init__(self, path=None, baud=None, **kw):
+        # built unopened (no arguments) by the v2 worker, with them by the others (item 102): `log` is every
+        # attribute assignment and the open() call, in order
         self.path, self.kw = path, kw
+        self.log = []
         self.incoming = bytearray()
         self.written, self.reads, self.closed = [], [], False
         self.broken = _V2Port.fail_read
         _V2Port.fail_read = False
         _V2Port.instances.append(self)
+
+    def __setattr__(self, name, value):
+        if name in ("port", "baudrate", "timeout", "write_timeout", "dtr", "rts"):
+            self.__dict__.setdefault("log", []).append((name, value))
+        object.__setattr__(self, name, value)
+
+    def open(self):
+        self.log.append(("open",))
 
     @property
     def in_waiting(self):
@@ -1019,3 +1030,104 @@ def test_output_manager_uses_the_reading_worker_for_the_v2_output(monkeypatch):
     finally:
         m.stop()
     assert not any(isinstance(w, workers.PitchplsV2Worker) for w in m.enttec if w is not None)
+
+
+# -- the PitchPlease v2 output opens its port with DTR and RTS off, like the vvvv patch (item 102)
+
+def test_v2_worker_sets_dtr_and_rts_off_before_it_opens_the_port(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    assert port.log[-1] == ("open",)                                      # the last thing done
+    before = dict(port.log[:-1])                                          # all of it before open()
+    assert before["dtr"] is False and before["rts"] is False
+    assert [n for n, *_ in port.log].count("open") == 1
+    assert port.dtr is False and port.rts is False
+    assert w.connected and w.port is port
+    assert "pitchpls_v2: opened /dev/fake at 921600 baud, DTR / RTS off" in caplog.text
+
+
+def test_v2_worker_keeps_the_baud_rate_and_the_timeouts(monkeypatch):
+    w, port = _v2_worker(monkeypatch)
+    assert dict(port.log[:-1]) == {"port": "/dev/fake", "baudrate": 921600, "timeout": 0, "write_timeout": 1, "dtr": False, "rts": False}
+
+
+def test_v2_worker_with_no_device_still_raises_the_same_error(monkeypatch):
+    import pytest
+
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    _V2Port.instances = []
+    monkeypatch.setattr(workers.serial, "Serial", _V2Port)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: None)
+    w = workers.PitchplsV2Worker(DeviceRef(), 921600, "pitchpls_v2")
+    with pytest.raises(ConnectionError, match="device not found"):
+        w.open()
+    assert _V2Port.instances == [] and not w.connected
+
+
+def test_other_serial_workers_still_open_the_port_in_one_call_with_the_lines_up(monkeypatch, caplog):
+    import logging
+
+    from pitchcontrol.config.models import DeviceRef
+    from pitchcontrol.io import workers
+
+    caplog.set_level(logging.INFO)
+    made = []
+
+    class Port:
+        def __init__(self, *args, **kw):
+            made.append((args, kw))
+
+    monkeypatch.setattr(workers.serial, "Serial", Port)
+    monkeypatch.setattr(workers, "resolve_port", lambda ref: "/dev/fake")
+    w = workers.SerialWorker(DeviceRef(), 250000, "enttec")
+    w.open()
+    assert made == [(("/dev/fake", 250000), {"timeout": 0, "write_timeout": 1})]   # as before: opened by the constructor, DTR / RTS left at pyserial's default
+    assert w.connected and w.last_error is None
+    assert "enttec: opened /dev/fake at 250000 baud" in caplog.text and "DTR" not in caplog.text
+
+
+def test_open_dmx_worker_opens_and_sets_the_lines_as_before(monkeypatch):
+    w, port = _open_dmx(monkeypatch, "baud")
+    assert port.path == "/dev/fake" and port.events[0] == ("open", 250000)
+    assert port.kw["timeout"] == 0 and port.kw["write_timeout"] == 1
+    assert port.rts is False and port.dtr is False                       # set after the open, deliberately (OpenDmxWorker)
+
+
+def test_v2_worker_logs_once_that_the_arduino_sends_nothing_back(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    quiet = lambda: [r.getMessage() for r in caplog.records if "no status line" in r.getMessage()]  # noqa: E731
+    w.clock["t"] += 29.9
+    w.write(b"x")
+    assert quiet() == []                                                  # not yet
+    w.clock["t"] += 0.1
+    w.write(b"x")
+    assert len(quiet()) == 1 and "expected" in quiet()[0] and quiet()[0].startswith("pitchpls_v2:")
+    for _ in range(5):
+        w.clock["t"] += 60
+        w.write(b"x")
+    assert len(quiet()) == 1                                              # once per open, not repeatedly
+    w.close()
+    w.open()                                                              # a new open: once more
+    w.clock["t"] += 30
+    w.write(b"x")
+    w.write(b"x")
+    assert len(quiet()) == 2
+
+
+def test_v2_worker_does_not_log_the_silence_when_the_arduino_did_talk(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    w, port = _v2_worker(monkeypatch)
+    port.incoming += b"fps 38\r\n"
+    w.write(b"x")
+    w.clock["t"] += 120
+    w.write(b"x")
+    assert "no status line" not in caplog.text

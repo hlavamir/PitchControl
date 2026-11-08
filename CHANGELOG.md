@@ -8,6 +8,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ### Fixed
 - **The PitchPls v2 strips over USB serial could stop after a few minutes** (item 101): the Arduino prints a status message every 2 seconds, and PitchControl never read it; the unread messages most likely piled up until the strips went blue and stayed there, with no error in the log. PitchControl now reads the Arduino's messages and throws them away, and writes the Arduino's latest status line to the log about once a minute ("pitchpls_v2: the Arduino says: fps … / LED … / Current …"), which also shows that the Arduino is alive. No firmware change is needed.
+- **The PitchPls v2 strips' serial port is now opened like the old vvvv patch did, with DTR and RTS off** (item 102): the strips still dropped back to the Arduino's idle mode every couple of hours on a Windows laptop (the app said connected, no error in the log, only replugging the cable helped), which the vvvv patch never did on the same hardware. PitchControl used to open the port with those two lines on, which is the serial library's default; vvvv leaves them off. Only the PitchPls v2 output changed; the Enttec Pro and Open DMX outputs open their ports as before. With this, the Arduino's status line may no longer appear in the log: if none has come 30 seconds after the port opened, the log says once that the Arduino sends nothing back, which is expected.
 
 ## 1.8.6 — 2026-10-27
 

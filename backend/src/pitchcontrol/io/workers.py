@@ -185,10 +185,15 @@ class SerialWorker(LatestFrameWorker):
         path = resolve_port(self.ref)
         if not path:
             raise ConnectionError("device not found (check Connections)")
-        self.port = serial.Serial(path, self.baudrate, timeout=0, write_timeout=1)
+        self.port = self._make_port(path)
         self.connected = True
         self.last_error = None
-        log.info("%s: opened %s at %d baud", self.name, path, self.baudrate)
+        log.info("%s: opened %s at %d baud%s", self.name, path, self.baudrate, self._open_note)
+
+    _open_note = ""  # added to the "opened" log line
+
+    def _make_port(self, path: str) -> serial.Serial:
+        return serial.Serial(path, self.baudrate, timeout=0, write_timeout=1)
 
     def write(self, frame: object) -> None:
         assert self.port is not None and isinstance(frame, (bytes, bytearray))
@@ -205,6 +210,7 @@ class SerialWorker(LatestFrameWorker):
 
 
 V2_LINE_BUFFER = 1024  # bytes of the Arduino's text kept while no line end has come (item 101)
+V2_SILENT_AFTER_S = 30.0  # no line from the Arduino this long after the port opened: log once that it sends nothing back (item 102)
 V2_LOG_EVERY_S = 60.0  # the Arduino's status line goes to the log the first time after the port opens, then at most this often (item 101)
 
 
@@ -215,24 +221,51 @@ class PitchplsV2Worker(SerialWorker):
     So after every write this worker reads what the Arduino sent and throws it away, and keeps the last line:
     it goes to the log about once a minute, which also shows that the Arduino is alive. A read error is handled
     like a write error: it propagates, and the worker's loop logs it and reconnects. Only for this output: the
-    Enttec and Open DMX interfaces send nothing, so SerialWorker (and OpenDmxWorker) stay write-only."""
+    Enttec and Open DMX interfaces send nothing, so SerialWorker (and OpenDmxWorker) stay write-only.
+
+    Item 102: the port is opened with DTR and RTS off, like the old vvvv patch did (its SerialPort node leaves both
+    off, .NET's default), not on like pyserial's default. The board's USB goes through the UNO R4 WiFi's ESP32-S3
+    bridge, which sees DTR / RTS, and on the owner's Windows laptop the strips still fell back to the firmware's idle
+    mode every couple of hours (the app said connected, no write error), which the vvvv patch never did."""
+
+    _open_note = ", DTR / RTS off"
 
     def __init__(self, ref: DeviceRef, baudrate: int, name: str) -> None:
         super().__init__(ref, baudrate, name)
+        self._opened_at = 0.0  # time.monotonic() of the last open
+        self._silence_logged = False  # the "sends nothing back" line is logged once per open
         self._rx = bytearray()  # the bytes of a line that has not ended yet
         self._line: str | None = None  # the last complete line the Arduino sent
         self._line_time = 0.0  # time.monotonic() of that line
         self._logged_at: float | None = None  # time.monotonic() of the last log line; None: not since the port opened
+
+    def _make_port(self, path: str) -> serial.Serial:
+        # DTR and RTS are set on the closed port: pyserial applies them when it opens (Windows: in the DCB it passes to
+        # SetCommState; POSIX: right after the open), so they are never switched on first (item 102)
+        port = serial.Serial()
+        port.port = path
+        port.baudrate = self.baudrate
+        port.timeout = 0
+        port.write_timeout = 1
+        port.dtr = False
+        port.rts = False
+        port.open()
+        return port
 
     def open(self) -> None:
         super().open()
         self._rx.clear()
         self._line = None
         self._logged_at = None
+        self._opened_at = time.monotonic()
+        self._silence_logged = False
 
     def write(self, frame: object) -> None:
         super().write(frame)
         self._drain()
+        if self._line is None and not self._silence_logged and time.monotonic() - self._opened_at >= V2_SILENT_AFTER_S:
+            self._silence_logged = True
+            log.info("%s: no status line from the Arduino %d s after opening; with DTR off the USB bridge may not forward it, which is expected", self.name, V2_SILENT_AFTER_S)
 
     def _drain(self) -> None:
         port = self.port
