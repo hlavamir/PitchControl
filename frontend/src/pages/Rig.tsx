@@ -45,7 +45,7 @@ export const OPEN_TYPE_KEY = 'pitchcontrol.openFixtureType'
 
 const WHITE: HSB = { h: 0, s: 0, b: 1 }
 
-const LIST_TIP = `The lights of the rig: group, name and universe:address. Click one to edit it, or move with W S / ↑ ↓; Shift + click or Shift + a key selects a range, ${MOD_NAME} + click or Space adds or removes one, D / → goes into the details (⏎ edits a field, Esc / A comes back)`
+const LIST_TIP = `The lights of the rig: group, name and universe:address. Click one to edit it, or move with W S / ↑ ↓; Shift + click or Shift + a key selects a range, ${MOD_NAME} + click or Space adds or removes one, P pings the selected fixture (it flashes), D / → goes into the details (⏎ edits a field, Esc / A comes back)`
 
 /**
  * The rig of one event: the rig file, the fixtures in it and everything that differs per fixture.
@@ -120,10 +120,16 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
   // Keys (rigKeys.ts, useFieldNav.ts): the fixture list like files in Finder / Explorer, the details field by field
   const current = cursor != null && rig && cursor < rig.fixtures.length ? cursor : (sel[0] ?? null)
   const footerLabel = rig ? (sel.length > 1 ? `${sel.length} fixtures` : (rig.fixtures[current ?? -1]?.name ?? '')) : ''
+  // Ping (item 104): the selected fixture flashes three times, to find it in the rig; P does the same
+  const pingable = fxs.length === 1 && fxs[0].enabled && !!types[fxs[0].type]
+  const ping = () => {
+    if (pingable) api.post('/api/rig/ping', { name: fxs[0].name }).catch((e) => setProblems([String(e)]))
+  }
   useFieldNav({
     root: pageRef,
     list: listRef,
     entry: editorRef,
+    onPing: ping,
     onListAction: (action) => {
       if (!rig) return
       const from = { selected: sel, anchor: anchor.current, cursor: current }
@@ -348,7 +354,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
           <p className="lbl mt-2 text-[10px] text-dim">
             Shift + click: select a range · {MOD_NAME} + click: add / remove one
           </p>
-          <p className="lbl mt-1 text-[10px] text-dim">W S ↑ ↓: move (+ Shift: range) · Space: add / remove · D →: details · Esc A: back</p>
+          <p className="lbl mt-1 text-[10px] text-dim">W S ↑ ↓: move (+ Shift: range) · Space: add / remove · P: ping · D →: details · Esc A: back</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Button onClick={() => addFixture()} tip="Add a new fixture to the rig (first fixture type, default placement)">
               Add
@@ -358,6 +364,13 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
             </Button>
             <Button onClick={removeFixture} disabled={!fx || multi} tip="Remove the selected fixture from the rig (written to the file with the rig's Save)">
               Remove
+            </Button>
+            <Button
+              onClick={ping}
+              disabled={!pingable}
+              tip="Flash the selected fixture three times in a second, above everything the rig sends, to see which light it is (key P). A fixture with many pixels flashes its first tenth, so you see which end is the first"
+            >
+              Ping
             </Button>
           </div>
         </Section>

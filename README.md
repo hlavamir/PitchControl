@@ -70,7 +70,7 @@ More: [docs/fixtures.md](docs/fixtures.md)
 
 ![Rig page](screenshots/rig.png)
 
-A rig is the list of lights for one event. For each light you set its type, its DMX address, its group (A or B) and its place in the room, and the place decides what the masks do to it. Save one rig for each venue and load it when you arrive.
+A rig is the list of lights for one event. For each light you set its type, its DMX address, its group (A or B) and its place in the room, and the place decides what the masks do to it. Save one rig for each venue and load it when you arrive. To find out which light is which, select it and press **Ping**: it flashes three times.
 
 More: [docs/rig.md](docs/rig.md)
 

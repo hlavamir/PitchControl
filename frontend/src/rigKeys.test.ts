@@ -65,6 +65,25 @@ describe('rigKeyAction, on the list', () => {
   })
 })
 
+describe('rigKeyAction, P pings (item 104)', () => {
+  it('P is a ping on the list and in the details, with either case', () => {
+    expect(act('p')).toEqual({ kind: 'ping' })
+    expect(act('P', { shiftKey: true })).toEqual({ kind: 'ping' })
+    expect(inDetails('p')).toEqual({ kind: 'ping' })
+  })
+
+  it('a held key does not ping again and again, and a field takes it as text', () => {
+    expect(act('p', { repeat: true })).toBeNull()
+    expect(act('p', {}, typing)).toBeNull()
+    expect(inDetails('p', {}, { ...typing, inDetails: true })).toBeNull()
+  })
+
+  it('Ctrl / Cmd / Alt + P is not ours, and a page without a list has no ping', () => {
+    for (const mod of ['ctrlKey', 'metaKey', 'altKey'] as const) expect(act('p', { [mod]: true })).toBeNull()
+    expect(act('p', {}, { hasList: false })).toBeNull()
+  })
+})
+
 describe('rigKeyAction, editing a field', () => {
   it('W A S D and Space are text', () => {
     for (const k of ['w', 'a', 's', 'd', 'W', 'D', ' ']) {

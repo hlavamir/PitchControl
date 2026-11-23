@@ -19,6 +19,7 @@ export type RigKeyAction =
   | { kind: 'edit' } // in the details: ⏎ starts editing the highlighted field
   | { kind: 'stop' } // in a field of the details: ⏎ / Esc stops editing
   | { kind: 'list' } // Esc (in the details, or out of a field elsewhere), A: back to the list
+  | { kind: 'ping' } // P (list or details): flash the selected fixture (item 104); only a page that has a ping reacts
 
 export interface KeyContext {
   typing: boolean // the focus is in a text field or a select, where keys are text
@@ -45,6 +46,7 @@ export function rigKeyAction(e: KeyInfo, ctx: KeyContext): RigKeyAction | null {
   }
   if (e.key === 'Escape') return { kind: 'list' }
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+  if (key === 'p' && ctx.hasList !== false) return e.repeat ? null : { kind: 'ping' }
   if (ctx.zone === 'details') {
     if (key === 'w' || key === 'ArrowUp') return { kind: 'field', dir: 'up' }
     if (key === 's' || key === 'ArrowDown') return { kind: 'field', dir: 'down' }

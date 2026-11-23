@@ -102,6 +102,10 @@ class MidiDeviceSwitches(BaseModel):
     output: bool | None = None
 
 
+class PingFixture(BaseModel):
+    name: str
+
+
 class DimmerName(BaseModel):
     macro: str
     name: str
@@ -771,6 +775,14 @@ def create_app(
             save_model(store.rig_path(store.rig.name), saved)
             problems = store.validate_rig()
         return {"ok": True, "problems": problems}
+
+    @app.post("/api/rig/ping")
+    def ping_fixture(body: PingFixture):
+        """Rig page "Ping" (item 104): the fixture flashes three times in a second, on top of everything, to find it in the
+        rig. Another ping of the same fixture restarts it. A fixture that is switched off (or has no type) sends nothing."""
+        if not engine.ping(body.name):
+            raise HTTPException(404, f"'{body.name}' is not a fixture that is sending (disabled, or no such fixture)")
+        return {"ok": True}
 
     @app.post("/api/rig/dimmer-name")
     def dimmer_name(body: DimmerName):

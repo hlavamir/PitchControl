@@ -68,7 +68,7 @@ export const HINT_KEYS: Record<HintKind, Keys> = {
   channel: [['DRAG ↕', 'override'], ['↑ ↓', 'override'], ['SHIFT', 'fine'], ['⏎', 'override on / off'], ['Q E', 'subpage'], ...MOVE],
   list: [['CLICK', 'select'], ['W S ↑ ↓', 'move'], ['D →', 'details']],
   // the Rig page's fixture list: the keys move like files in Finder / Explorer (rigKeys.ts)
-  'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'range'], [`${MOD} CLICK`, 'add / remove'], ['W S ↑ ↓', 'move'], ['SHIFT W S', 'range'], ['SPACE', 'add / remove'], ['D →', 'details']],
+  'list-multi': [['CLICK', 'select'], ['SHIFT CLICK', 'range'], [`${MOD} CLICK`, 'add / remove'], ['W S ↑ ↓', 'move'], ['SHIFT W S', 'range'], ['SPACE', 'add / remove'], ['P', 'ping'], ['D →', 'details']],
   // the Rig page's details: the keys move from field to field, ⏎ starts editing (rigKeys.ts)
   'nav-edit': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'edit'], ['ESC', 'list']],
   'nav-open': [['W S ↑ ↓', 'field'], ['A D', 'across'], ['⏎', 'open'], ['ESC', 'list']],

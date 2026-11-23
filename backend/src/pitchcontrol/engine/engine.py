@@ -34,6 +34,7 @@ from .fog import FogController
 from .macros import LATE_MACROS, MacroBank
 from .masks import PRESET_NAMES, MaskGenerator, MaskParams, PeaksMap, curved, mixed_mask
 from .overrides import Overrides
+from .ping import Pings, flash_pixels
 from .perf import EngineTimingLog, FrameTimes
 from .routes import Routes
 from .phase import PhaseTracker
@@ -84,6 +85,7 @@ class Engine:
         self.overrides = Overrides()  # Control Desk: manual DMX channel values, saved across restarts
         self.overrides.load(self.store.state_dir / "overrides.json")
         self._overrides_saved = self.overrides.version
+        self.pings = Pings()  # Rig page: a fixture flashing to be identified (item 104), on top of everything
         self.routes = Routes()  # Control Desk: live input copied onto output channels (item 58), saved across restarts
         self.routes.load(self.store.state_dir / "routes.json")
         self._routes_saved = self.routes.version
@@ -416,8 +418,12 @@ class Engine:
             }
             universes: dict[int, bytearray] = {}
             v2_strips: list[list[int]] = []
+            flashing: list[tuple[Fixture, int, list[int]]] = []  # the fixtures in a flash of their ping, with what they write
             for i, fx in enumerate(self.fixtures):
                 fx.update(mask[self._offsets[i] : self._offsets[i + 1]], self.phase.phase, self.colors, groups[fx.inst.group], m)
+                lit = self.pings.lit(fx.inst.name)
+                if lit:
+                    fx.flash(flash_pixels(fx.pixels))
                 if fx.ftype.transport == "pitchpls_v2":
                     fx.last_output = fx.pixel_bytes("RGB")
                     v2_strips.append(fx.last_output)
@@ -428,9 +434,17 @@ class Engine:
                 start = fx.inst.address - 1
                 end = min(start + len(data), 512)
                 uni[start:end] = bytes(data[: end - start])
+                if lit:
+                    flashing.append((fx, start, data))
             self.fog.update(dt, self.store.rig.fog_machines, m, universes)
             self.routes.apply(universes, self.live, self.midi_routes)  # after the fixtures and fog: live input wins over the app's own output
-            self.overrides.apply(universes)  # last: manual overrides win
+            self.overrides.apply(universes)  # manual overrides win over the routes
+            for fx, start, data in flashing:  # a ping wins over everything: written last, the first pixels only
+                uni = universes[fx.inst.universe]
+                for offset, length in fx.flash_spans(flash_pixels(fx.pixels)):
+                    a, b = start + offset, min(start + offset + length, 512)
+                    if a < b:  # what a fixture at the end of its universe has no room for isn't sent
+                        uni[a:b] = bytes(data[offset : offset + b - a])
             self.universes, self.v2_strips = universes, v2_strips
 
             self._preview_inputs = (params, symmetry, curve)
@@ -444,6 +458,14 @@ class Engine:
         self._autosave_routes()
         self.frame += 1
         self.tick_ms = (time.perf_counter() - t0) * 1000.0
+
+    def ping(self, name: str) -> bool:
+        """Flash the fixture called ``name`` (a second press restarts it); False when no enabled fixture has that name."""
+        with self.lock:
+            if not any(fx.inst.name == name for fx in self.fixtures):
+                return False
+            self.pings.start(name)
+            return True
 
     def base_colors(self) -> dict[str, tuple[float, float, float]]:
         """The group colours A and B as RGB (floats 0..1), as the Hue / Saturation macros or Auto Color Change make

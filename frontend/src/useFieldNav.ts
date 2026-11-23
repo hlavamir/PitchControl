@@ -49,6 +49,8 @@ export interface FieldNavOptions {
   entry?: RefObject<HTMLElement | null>
   /** W / S / ↑ / ↓ and Space on the list; false when a plain move found no fixture further on (the keys then leave the list). */
   onListAction?: (action: Extract<RigKeyAction, { kind: 'move' | 'toggle' }>) => boolean | void
+  /** P: ping the selected fixture (the Rig page); a page without it leaves the key alone. */
+  onPing?: () => void
   /** What the footer says while the keys are on the list. */
   listFooter?: FooterSelection | null
 }
@@ -58,7 +60,7 @@ export interface FieldNavOptions {
  * a highlight (an attribute, not the focus) over the controls of ``root``, ⏎ starts editing the highlighted one and
  * ⏎ / Esc stops. Never a key press changes a value without ⏎ first. With a ``list`` the keys start on the list.
  */
-export function useFieldNav({ root, list, entry, onListAction, listFooter }: FieldNavOptions) {
+export function useFieldNav({ root, list, entry, onListAction, onPing, listFooter }: FieldNavOptions) {
   const hasList = !!list
   const [nav, setNav] = useState<NavState>({ zone: 'list', index: 0 })
   const controlsOf = () =>
@@ -86,6 +88,11 @@ export function useFieldNav({ root, list, entry, onListAction, listFooter }: Fie
       multiline: t?.tagName === 'TEXTAREA',
     })
     if (!action) return
+    if (action.kind === 'ping') {
+      if (!onPing) return
+      e.preventDefault()
+      return onPing()
+    }
     e.preventDefault()
     const els = controlsOf()
     if (action.kind === 'move' || action.kind === 'toggle') {

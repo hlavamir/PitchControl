@@ -159,3 +159,25 @@ class Fixture:
                 use = self.inst.real_strobo and self.strobe_trigger
                 out.append(ch.shutter.strobo if use else ch.shutter.open)
         return out
+
+    # -- ping (item 104)
+    def flash(self, count: int) -> None:
+        """White at full on the first ``count`` pixels of this frame (the next ``update`` computes the colours again)."""
+        self.rgb[:count] = 1.0
+
+    def flash_spans(self, count: int) -> list[tuple[int, int]]:
+        """Where the first ``count`` pixels of each pixel channel sit in ``dmx_bytes``: ``(offset, length)`` pairs.
+
+        The same walk over the channels as ``dmx_bytes``; the bytes of the other channels (constants, macros, the
+        shutter) are not part of a flash.
+        """
+        spans: list[tuple[int, int]] = []
+        pos = 0
+        for ch in self.mode.channels:
+            if ch.pixels:
+                size = len(self.pixel_bytes(ch.pixels))
+                spans.append((pos, size // self.pixels * min(count, self.pixels)))
+                pos += size
+            elif ch.value is not None or ch.macro or ch.shutter:
+                pos += 1
+        return spans
