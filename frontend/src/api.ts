@@ -1,6 +1,7 @@
 // Types and helpers for the PitchControl backend API.
 
 import type { LiveInputStatus } from './liveInput'
+import { pixelSources } from './pixelOrder'
 import type { MidiNotice, MidiRoutesStatus, RouteOverlap, RouteState } from './routes'
 
 export type MacroKind = 'fader' | 'toggle' | 'button' | 'momentary' | 'radio'
@@ -26,6 +27,7 @@ export interface MacroDef {
 export interface FixtureState {
   name: string
   type: string
+  mode?: string // the id of the channel mode it runs in (the monitor names the channels by it)
   group: 'A' | 'B'
   transport: 'dmx' | 'pitchpls_v2'
   universe: number
@@ -320,13 +322,14 @@ export interface Override<T> {
   value: T
 }
 
-export type PixelFormat = 'I' | 'RGB' | 'RGBW'
+/** The short forms of a pixel block (item 103); a custom order is a list of channel sources instead (pixelOrder.ts). */
+export type PixelFormat = 'I' | 'RGB' | 'GRB' | 'RGBW'
 
 /** One slot of a fixture profile: exactly one of value / pixels / macro / shutter. */
 export interface ChannelSlot {
   name?: string | null
   value?: number | null // constant 0–255
-  pixels?: PixelFormat | null // the pixel block
+  pixels?: PixelFormat | string[] | null // the pixel block: a preset, or one channel source per channel ('RGB.green', 'HSB.hue', …)
   macro?: string | null // a macro's value scaled to 0–255
   shutter?: { open: number; strobo: number } | null
 }
@@ -373,7 +376,7 @@ export const modeOf = (t: FixtureType, id?: string | null): ChannelMode =>
 
 /** Number of DMX channels of a mode (the pixel block counts pixels × format length). */
 export const modeChannelCount = (m: ChannelMode) =>
-  m.channels.reduce((n, s) => n + (s.pixels ? m.pixels * s.pixels.length : 1), 0)
+  m.channels.reduce((n, s) => n + (s.pixels ? m.pixels * pixelSources(s.pixels).length : 1), 0)
 
 /** Number of DMX channels a fixture takes in a mode (none: the type's default mode). */
 export const channelCount = (t: FixtureType, modeId?: string | null) => modeChannelCount(modeOf(t, modeId))

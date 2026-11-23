@@ -8,7 +8,7 @@
  *
  * The mapping:
  * - every OFL mode becomes a channel mode with its own pixel count (the number of pixels or pixel groups its matrix block repeats for; 1 for a mode without one);
- * - colour channels that form R G B (W) become the `pixels` block, per pixel when OFL repeats them over a matrix; a warm or cold white counts as W;
+ * - colour channels that form R G B (W), in any order, become the `pixels` block (a preset like `GRB`, or a list of channel sources), per pixel when OFL repeats them over a matrix; a warm or cold white counts as W;
  * - a strobe / shutter channel becomes `shutter`, with the open value and the fastest plain strobe value read from its capabilities;
  * - the master dimmer is held at 255 when the mode mixes colours itself, an `I` pixel (it follows the brightness) when the mode has no colour channels;
  * - everything else (amber, UV, programs, speed, sound, delay, mode select, fine channels) is a named constant at its OFL default value, 0 unless OFL says otherwise; a colour preset that is a mode's only colour source is held at its "White" preset;
@@ -23,9 +23,14 @@
 
 /** A white channel next to RGB is the W of an RGBW block. */
 const WHITES = new Set(['White', 'Warm White', 'Cold White']);
-const FORMATS = new Map([
-  ['Red|Green|Blue|White', 'RGBW'],
-  ['Red|Green|Blue', 'RGB'],
+/** The colour sets a pixel block can have, in any order (item 103). */
+const COLOUR_SETS = new Set(['Blue|Green|Red', 'Blue|Green|Red|White']);
+/** The short forms of PitchControl's type file (`PIXEL_PRESETS` of its `config/models.py`): a list of sources that spells one is the preset. */
+const PRESETS = new Map([
+  ['HSB.brightness', 'I'],
+  ['RGB.red|RGB.green|RGB.blue', 'RGB'],
+  ['RGB.green|RGB.red|RGB.blue', 'GRB'],
+  ['RGBW.red|RGBW.green|RGBW.blue|RGBW.white', 'RGBW'],
 ]);
 const PIXEL_KEY = '$pixelKey';
 /** How deep a matrix's `pixelKeys` are nested: planes, rows, keys. */
@@ -370,11 +375,25 @@ function flatten(fixtureData, mode) {
 }
 
 /**
- * @param {string[]} colours - The colours of a run of colour channels.
- * @returns {string | undefined} `RGB` or `RGBW` when they form one.
+ * @param {string[]} colours - The colours of a run of colour channels, in the order OFL lists them.
+ * @returns {string | string[] | undefined} The pixel block when they are red, green and blue in any order, with a white among them for RGBW: a preset name like `GRB` where there is one, else a list of channel sources.
  */
 function formatOf(colours) {
-  return FORMATS.get(colours.map((colour) => (WHITES.has(colour) ? 'White' : colour)).join('|'));
+  const names = colours.map((colour) => (WHITES.has(colour) ? 'White' : colour));
+  if (new Set(names).size !== names.length || !COLOUR_SETS.has([...names].sort().join('|'))) {
+    return undefined;
+  }
+  const prefix = names.length === 4 ? 'RGBW.' : 'RGB.';
+  const sources = names.map((name) => `${prefix}${name.toLowerCase()}`);
+  return PRESETS.get(sources.join('|')) ?? sources;
+}
+
+/**
+ * @param {string | string[]} pixels - A pixel block.
+ * @returns {string} The preset's name, or the colour order (`BGR`), for a mode's description.
+ */
+function pixelLabel(pixels) {
+  return typeof pixels === 'string' ? pixels : pixels.map((source) => source.split('.')[1][0].toUpperCase()).join('');
 }
 
 /**
@@ -455,7 +474,7 @@ function findColourRun(expanded) {
       return { format, block };
     }
   }
-  throw new ConversionError('colour channels that don\'t start with R G B');
+  throw new ConversionError('colour channels that aren\'t a run of red, green and blue (with a white)');
 }
 
 /**
@@ -550,7 +569,8 @@ export function modeId(name) {
 function describe(mode) {
   const parts = mode.channels.map((slot) => {
     if ('pixels' in slot && slot.pixels !== 'I') {
-      return mode.pixels > 1 ? `${mode.pixels} × ${slot.pixels}` : slot.pixels;
+      const label = pixelLabel(slot.pixels);
+      return mode.pixels > 1 ? `${mode.pixels} × ${label}` : label;
     }
     if ('pixels' in slot) {
       return `${slot.name} (follows the brightness)`;
@@ -565,9 +585,9 @@ function describe(mode) {
   });
   let text = parts.join(', ');
   text = `${text.slice(0, 1).toUpperCase()}${text.slice(1)}.`;
-  const kinds = new Set(mode.channels.map((slot) => slot.pixels));
-  if (!kinds.has('RGB') && !kinds.has('RGBW')) {
-    text += kinds.has('I')
+  const kinds = mode.channels.filter((slot) => 'pixels' in slot).map((slot) => slot.pixels);
+  if (!kinds.some((kind) => kind !== 'I')) {
+    text += kinds.includes('I')
       ? ' No colour mixing in this mode: only the brightness follows PitchControl.'
       : ' PitchControl can\'t change the light in this mode (no colour or dimmer channel); it is listed for addressing.';
   }

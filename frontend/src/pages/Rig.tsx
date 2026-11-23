@@ -10,6 +10,7 @@ import { useElementWidth } from '../useElementWidth'
 import { MOD_NAME } from '../hints'
 import { clickSelection } from '../listSelection'
 import { stepSelection, toggleCurrent } from '../rigKeys'
+import { pixelLabel } from '../pixelOrder'
 import { useFieldNav } from '../useFieldNav'
 import { useSaveAction } from '../leaveGuard'
 
@@ -430,7 +431,7 @@ export function Rig({ engine, defs }: { engine: EngineConnection; defs: Record<s
                 {ftype && (
                   <Row label="" plain>
                     <span className="lbl text-[10px] text-dim">
-                      {fmode ? `${fmode.pixels} px ${fmode.channels.find((c) => c.pixels)?.pixels ?? 'RGB'}` : 'pixels differ by mode'} ·{' '}
+                      {fmode ? `${fmode.pixels} px ${pixelLabel(fmode.channels.find((c) => c.pixels)?.pixels ?? 'RGB')}` : 'pixels differ by mode'} ·{' '}
                       {ftype.transport === 'pitchpls_v2' ? 'v2 serial' : fmode ? `${channelCount(ftype, fmode.id)} DMX ch` : 'channels differ by mode'}
                     </span>
                     <a href="#Fixtures" data-hint="button" data-tip="Open this fixture type on the Fixtures page" className="lbl text-[10px] text-ink hover:underline" onClick={() => openType(ftype.name)}>

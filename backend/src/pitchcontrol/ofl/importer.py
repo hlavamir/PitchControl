@@ -60,6 +60,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..config.models import pixel_sources
 from .convert import Converted, convert_fixture, short_reason
 
 CONVERTER_VERSION = 1  # bump with the mapping in convert.py / this file, and with item 55's export.js
@@ -177,7 +178,7 @@ def _maker_hint(data: dict) -> str | None:
 
 
 def _channel_count(mode: dict) -> int:
-    return sum(mode["pixels"] * len(slot["pixels"]) if "pixels" in slot and slot["pixels"] else 1 for slot in mode["channels"])
+    return sum(mode["pixels"] * len(pixel_sources(slot["pixels"])) if "pixels" in slot and slot["pixels"] else 1 for slot in mode["channels"])
 
 
 def _assumptions(converted: Converted) -> list[str]:

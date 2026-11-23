@@ -62,7 +62,7 @@ More: [docs/dimmers.md](docs/dimmers.md)
 
 ![Fixtures page](screenshots/fixtures.png)
 
-A fixture type describes one model of light: how many DMX channels it uses and what each channel does. Ready-made types of common lights come with the app, and you can import more from the Open Fixture Library or QLC+, or write your own. You come here when your light is not in the list.
+A fixture type describes one model of light: how many DMX channels it uses and what each channel does. Ready-made types of common lights come with the app, and you can import more from the Open Fixture Library or QLC+, or write your own. You come here when your light is not in the list, or when your LED strips want their colours in another order (green first, or blue first): each channel of a pixel has a dropdown for what goes into it.
 
 More: [docs/fixtures.md](docs/fixtures.md)
 

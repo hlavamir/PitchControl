@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..config.models import HSB, ChannelMode, FixtureInstance, FixtureType
-from .colors import GroupColors, hsv_to_rgb
+from ..config.models import HSB, ChannelMode, FixtureInstance, FixtureType, pixel_sources
+from .colors import GroupColors, hsv_to_rgb, rgb_to_hue_saturation
 from .phase import map_clamp
 
 
@@ -130,20 +130,36 @@ class Fixture:
         self.rgb = hsv_to_rgb(h, s, np.clip(value, 0.0, 1.0))
 
     # -- output
-    def pixel_bytes(self, fmt: str) -> list[int]:
-        # the same for every transport (DMX, Art-Net, serial): perceptual -> device values per
-        # channel, before the white of RGBW is taken out (light adds up in PWM duty, not perceptually)
+    def pixel_bytes(self, fmt: "str | list[str]") -> list[int]:
+        """The bytes of every pixel for a pixel block: ``fmt`` is a preset name or a list of channel sources, one per
+        channel of a pixel (item 103). The same for every transport (DMX, Art-Net, serial)."""
+        sources = pixel_sources(fmt)
+        # perceptual -> device values per channel, before the white of RGBW is taken out (light adds up in PWM
+        # duty, not perceptually); the gamma is for light, so hue and saturation come from the colour as it is
         rgb = np.clip(self.rgb, 0.0, 1.0)
-        if self.gamma != 1.0:
-            rgb = rgb**self.gamma
-        if fmt == "RGB":
-            data = rgb
-        elif fmt == "RGBW":
-            w = rgb.min(axis=1, keepdims=True)
-            data = np.hstack([rgb - w, w])
-        else:  # "I": one brightness channel per pixel
-            data = rgb.max(axis=1, keepdims=True)
+        light = rgb**self.gamma if self.gamma != 1.0 else rgb
+        cache: dict[str, np.ndarray] = {}
+
+        def source(name: str) -> np.ndarray:
+            if name not in cache:
+                cache[name] = self._source_values(name, rgb, light)
+            return cache[name]
+
+        data = np.stack([source(name) for name in sources], axis=1)
         return [int(round(x * 255)) for x in data.reshape(-1)]
+
+    @staticmethod
+    def _source_values(name: str, rgb: np.ndarray, light: np.ndarray) -> np.ndarray:
+        """One channel source of every pixel, 0..1: ``rgb`` is the colour, ``light`` the same with the gamma applied."""
+        if name.startswith("RGB."):
+            return light[:, "rgb".index(name[4])]
+        if name.startswith("RGBW."):
+            white = light.min(axis=1)
+            return white if name == "RGBW.white" else light[:, "rgb".index(name[5])] - white
+        if name == "HSB.brightness":
+            return light.max(axis=1)
+        hue, saturation = rgb_to_hue_saturation(rgb)
+        return hue if name == "HSB.hue" else saturation
 
     def dmx_bytes(self, macros) -> list[int]:
         out: list[int] = []

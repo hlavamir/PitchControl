@@ -80,8 +80,62 @@ class HSB(Model):
 
 # --------------------------------------------------------------------------- fixture types
 
-# "I": one brightness value per pixel (the brightest of its R, G, B), for any single-colour light. Called "R" up to 1.6.
-PixelFormat = Literal["I", "RGB", "RGBW"]
+# What a pixel channel can carry (item 103). ``RGB.*`` is the colour as it is; ``RGBW.*`` is the same colour with the
+# white taken out (white = min(R, G, B), the colours lose it); ``HSB.*`` is the colour as hue / saturation / brightness.
+# The gamma applies to light (RGB, RGBW, HSB.brightness), not to HSB.hue and HSB.saturation.
+PIXEL_SOURCES: tuple[str, ...] = (
+    "RGB.red",
+    "RGB.green",
+    "RGB.blue",
+    "RGBW.red",
+    "RGBW.green",
+    "RGBW.blue",
+    "RGBW.white",
+    "HSB.hue",
+    "HSB.saturation",
+    "HSB.brightness",
+)
+
+# The short forms of a type file: a pixel block is one of these names or a list of sources. "I" is one brightness
+# value per pixel (the brightest of its R, G, B), for any single-colour light; it was called "R" up to 1.6.
+PIXEL_PRESETS: dict[str, tuple[str, ...]] = {
+    "I": ("HSB.brightness",),
+    "RGB": ("RGB.red", "RGB.green", "RGB.blue"),
+    "GRB": ("RGB.green", "RGB.red", "RGB.blue"),  # WS2812-type strips
+    "RGBW": ("RGBW.red", "RGBW.green", "RGBW.blue", "RGBW.white"),
+}
+PixelFormat = Literal["I", "RGB", "GRB", "RGBW"]
+PIXEL_CHANNEL_COUNTS = (1, 3, 4)
+
+
+def pixel_sources(pixels: "str | list[str] | tuple[str, ...]") -> tuple[str, ...]:
+    """The channel sources of a pixel block, from a preset name or a list of sources."""
+    return PIXEL_PRESETS[pixels] if isinstance(pixels, str) else tuple(pixels)
+
+
+def normalise_pixels(v: Any) -> Any:
+    """A pixel block as the file keeps it: a preset name, or a list of sources that is not a preset. ``R`` was ``I``
+    until 1.6; names are case-insensitive; a list that spells a preset is the preset."""
+    if isinstance(v, str):
+        key = "I" if v.strip() == "R" else v.strip().upper()
+        if key not in PIXEL_PRESETS:
+            raise ValueError(f"unknown pixel format {v!r}; use one of {', '.join(PIXEL_PRESETS)} or a list of channel sources")
+        return key
+    if isinstance(v, (list, tuple)):
+        by_lower = {name.lower(): name for name in PIXEL_SOURCES}
+        sources: list[str] = []
+        for item in v:
+            name = by_lower.get(item.strip().lower()) if isinstance(item, str) else None
+            if name is None:
+                raise ValueError(f"unknown pixel channel source {item!r}; use one of {', '.join(PIXEL_SOURCES)}")
+            sources.append(name)
+        if len(sources) not in PIXEL_CHANNEL_COUNTS:
+            raise ValueError("a pixel has 1, 3 or 4 channels")
+        for preset, spelled in PIXEL_PRESETS.items():
+            if tuple(sources) == spelled:
+                return preset
+        return sources
+    return v
 
 
 class Shutter(Model):
@@ -100,7 +154,7 @@ class ChannelSlot(Model):
 
     name: str | None = None
     value: int | None = Field(default=None, ge=0, le=255)
-    pixels: PixelFormat | None = None
+    pixels: str | list[str] | None = None  # a preset (PIXEL_PRESETS) or a list of PIXEL_SOURCES
     macro: str | None = None
     shutter: Shutter | None = None
 
@@ -111,8 +165,13 @@ class ChannelSlot(Model):
 
     @field_validator("pixels", mode="before")
     @classmethod
-    def _renamed_format(cls, v: Any) -> Any:
-        return "I" if v == "R" else v  # the single-channel format was called R until 1.6
+    def _pixel_format(cls, v: Any) -> Any:
+        return normalise_pixels(v)
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """The channel sources of the pixel block (empty for any other kind of channel)."""
+        return pixel_sources(self.pixels) if self.pixels is not None else ()
 
     @model_validator(mode="after")
     def _exactly_one_kind(self) -> "ChannelSlot":
@@ -154,7 +213,7 @@ class ChannelMode(Model):
     def channel_count(self) -> int:
         total = 0
         for ch in self.channels:
-            total += self.pixels * len(ch.pixels) if ch.pixels else 1
+            total += self.pixels * len(ch.sources) if ch.pixels else 1
         return total
 
 

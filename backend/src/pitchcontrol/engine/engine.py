@@ -674,6 +674,7 @@ class Engine:
                     {
                         "name": fx.inst.name,
                         "type": fx.inst.type,
+                        "mode": fx.mode.id,
                         "group": fx.inst.group,
                         "transport": fx.ftype.transport,
                         "universe": fx.inst.universe,

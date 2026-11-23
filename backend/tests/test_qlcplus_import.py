@@ -462,3 +462,14 @@ def test_a_device_on_the_network_cannot_import_from_qlcplus(store):
     phone = TestClient(create_app(Engine(store, enable_hardware=False)), client=PHONE)
     for method, path, body in (("get", "/api/qlcplus/fixtures", None), ("post", "/api/qlcplus/convert", {"text": "<x/>"}), ("post", "/api/qlcplus/convert", {"folder": 0, "file": "a.qxf"})):
         assert phone.request(method, path, json=body).status_code == 403, path
+
+
+def test_a_bar_whose_heads_are_blue_green_red_keeps_that_order():
+    """Item 103: the colour order of a head is the pixel's channel order (before, a mode that didn't list R G B first was left out)."""
+    heads = [[0, 1, 2], [3, 4, 5]]
+    text = qxf(colour_channels(2), mode_xml("m", ["Blue 1", "Green 1", "Red 1", "Blue 2", "Green 2", "Red 2"], heads))
+    result = import_qxf(text.encode("utf-8"), file="gbr.qxf", today=TODAY)
+    assert result.report.skipped == []
+    mode = result.ftype["modes"][0]
+    assert mode["pixels"] == 2
+    assert mode["channels"] == [{"pixels": ["RGB.blue", "RGB.green", "RGB.red"]}]  # BGR

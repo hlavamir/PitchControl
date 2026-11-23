@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { EngineState, FixtureState } from '../api'
+import { useEffect, useState } from 'react'
+import { api, modeOf, type EngineState, type FixtureState, type FixtureType } from '../api'
+import { channelLabels, sourceColour } from '../pixelOrder'
 import { useElementWidth } from '../useElementWidth'
 import { Toggle } from './forms'
 
@@ -21,7 +22,7 @@ const pad3 = (n: number) => String(n).padStart(3, '0')
  */
 const CELL_H = 34 // px
 
-function ChannelCell({ number, value, tip }: { number: number; value: number; tip: string }) {
+function ChannelCell({ number, value, tip, stripe }: { number: number; value: number; tip: string; stripe?: string | null }) {
   const label = (
     <>
       <span className="text-[9px] leading-none">{pad3(number)}</span>
@@ -33,6 +34,7 @@ function ChannelCell({ number, value, tip }: { number: number; value: number; ti
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-[3px]">
         <div className={`flex flex-col items-center gap-[3px] ${value ? 'text-ink' : 'text-dim'}`}>{label}</div>
       </div>
+      {stripe && <div className="absolute inset-x-0 top-0 z-10 h-[3px]" style={{ background: stripe }} />}
       {value > 0 && (
         <div className="absolute inset-x-0 bottom-0 overflow-hidden bg-ink/90" style={{ height: `${(value / 255) * 100}%` }}>
           <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-center gap-[3px] text-ground" style={{ height: CELL_H }}>
@@ -44,18 +46,27 @@ function ChannelCell({ number, value, tip }: { number: number; value: number; ti
   )
 }
 
-function ChannelTable({ fx }: { fx: FixtureState }) {
+/** The monitor names each DMX channel by what the fixture's mode puts there (item 103): in a tip, and a stripe in the pixel colour's own colour. */
+function ChannelTable({ fx, labels }: { fx: FixtureState; labels: string[] | null }) {
   const serial = fx.transport === 'pitchpls_v2'
   return (
     <div className="mt-1.5 grid grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] gap-px border border-edge bg-edge">
-      {fx.output.map((v, i) => (
-        <ChannelCell
-          key={i}
-          number={serial ? i + 1 : fx.address + i}
-          value={v}
-          tip={serial ? `Serial byte ${i + 1}: ${v}` : `Universe ${fx.universe}, DMX channel ${fx.address + i} (fixture channel ${i + 1}): value ${v}`}
-        />
-      ))}
+      {fx.output.map((v, i) => {
+        const what = !serial && labels && labels.length === fx.output.length ? labels[i] : null
+        return (
+          <ChannelCell
+            key={i}
+            number={serial ? i + 1 : fx.address + i}
+            value={v}
+            stripe={what ? sourceColour(what) : null}
+            tip={
+              serial
+                ? `Serial byte ${i + 1}: ${v} (red, green, blue of each strip pixel)`
+                : `Universe ${fx.universe}, DMX channel ${fx.address + i} (fixture channel ${i + 1}${what ? `: ${what}` : ''}): value ${v}`
+            }
+          />
+        )
+      })}
     </div>
   )
 }
@@ -66,6 +77,16 @@ export function OutputMonitor({ state, only }: { state: EngineState | null; only
   const [ref, width] = useElementWidth<HTMLDivElement>()
   const row = width >= 648 // one line per fixture
   const fixtures = (state?.fixtures ?? []).filter((f) => !only || (Array.isArray(only) ? only.includes(f.name) : f.name === only))
+  // the types, read when the channel values are switched on (and again when a fixture runs a type not read yet), to name the channels
+  const [types, setTypes] = useState<Record<string, FixtureType>>({})
+  const unknownType = fixtures.some((f) => !types[f.type])
+  useEffect(() => {
+    if (showBytes && unknownType) api.get<Record<string, FixtureType>>('/api/fixture-types').then(setTypes, () => {})
+  }, [showBytes, unknownType])
+  const labelsOf = (fx: FixtureState): string[] | null => {
+    const t = types[fx.type]
+    return t && t.modes.length ? channelLabels(modeOf(t, fx.mode)) : null
+  }
   return (
     <div ref={ref} className="flex flex-col gap-2" data-tip="What every fixture sends right now, after the gamma: pixel colours; switch on 'show channel values' for the DMX numbers">
       <label className="flex cursor-pointer items-center gap-2 self-end text-[11px] text-dim" data-tip="Also show the raw channel values (DMX channel number over its value) of every fixture">
@@ -90,7 +111,7 @@ export function OutputMonitor({ state, only }: { state: EngineState | null; only
               ))}
             </div>
           </div>
-          {showBytes && <ChannelTable fx={fx} />}
+          {showBytes && <ChannelTable fx={fx} labels={labelsOf(fx)} />}
         </div>
       ))}
       {fixtures.length === 0 && <div className="text-[13px] text-dim">No enabled fixtures.</div>}

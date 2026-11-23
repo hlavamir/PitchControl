@@ -6,6 +6,7 @@ import { Button, NumberInput, Row, Section } from '../components/forms'
 import { useSaveAction } from '../leaveGuard'
 import type { Origin } from '../components/RigPanel'
 import { copyOfLastMode, edited, slotOfKind, type Kind } from '../fixtureEdit'
+import { PIXEL_CHANNEL_COUNTS, PIXEL_SOURCES, PRESET_NAMES, defaultPixels, pixelLabel, pixelSources, presetOf, withSource } from '../pixelOrder'
 import { fixturesInMode, hasSameName } from '../modes'
 import { linkGroups } from '../links'
 import { onImportRequest, takeImportRequest, type ImportKind } from '../fixtureImport'
@@ -13,7 +14,6 @@ import { useFieldNav } from '../useFieldNav'
 import { OPEN_TYPE_KEY } from './Rig'
 
 const KIND_LABEL: Record<Kind, string> = { value: 'constant', macro: 'macro', shutter: 'shutter', pixels: 'pixels' }
-const FORMATS: PixelFormat[] = ['I', 'RGB', 'RGBW']
 
 interface Status {
   unsaved: string[]
@@ -28,10 +28,10 @@ function channelMap(mode: ChannelMode): { from: number; to: number; text: string
   const rows: { from: number; to: number; text: string }[] = []
   let ch = 1
   for (const s of mode.channels) {
-    const n = s.pixels ? mode.pixels * s.pixels.length : 1
+    const n = s.pixels ? mode.pixels * pixelSources(s.pixels).length : 1
     const label = s.name ? `${s.name} ` : ''
     let text: string
-    if (s.pixels) text = `${label}pixels ${s.pixels} × ${mode.pixels}`
+    if (s.pixels) text = `${label}pixels ${pixelLabel(s.pixels)} × ${mode.pixels}`
     else if (s.value != null) text = `${label}= ${s.value}`
     else if (s.macro) text = `${label}← ${s.macro}`
     else text = `${label}shutter (open ${s.shutter?.open}, strobe ${s.shutter?.strobo})`
@@ -596,13 +596,52 @@ export function Fixtures({ defs }: { defs: Record<string, MacroDef> }) {
                         </>
                       )}
                       {kind === 'pixels' && (
-                        <select value={slot.pixels ?? 'RGB'} data-tip="Colour format of the pixel channels: I (one brightness channel per pixel, for a single-colour light), RGB or RGBW (white is extracted from RGB)" onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = e.target.value as PixelFormat))}>
-                          {FORMATS.map((f) => (
-                            <option key={f} value={f}>
-                              {f === 'I' ? 'I (one brightness channel)' : f}
-                            </option>
+                        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                          <select
+                            aria-label="Pixel preset"
+                            value={presetOf(slot.pixels ?? 'RGB') ?? 'custom'}
+                            data-tip="Preset for the channels of one pixel: I (one brightness channel, for a single-colour light), RGB, GRB (WS2812-type strips) or RGBW (the white is taken out of the colours). Changing a channel below makes it a custom order"
+                            onChange={(e) => e.target.value !== 'custom' && edit((x) => (x.modes[mi].channels[i].pixels = e.target.value as PixelFormat))}
+                          >
+                            {PRESET_NAMES.map((f) => (
+                              <option key={f} value={f}>
+                                {f === 'I' ? 'I (one brightness channel)' : f}
+                              </option>
+                            ))}
+                            {presetOf(slot.pixels ?? 'RGB') === null && <option value="custom">custom order</option>}
+                          </select>
+                          <select
+                            aria-label="Channels per pixel"
+                            value={pixelSources(slot.pixels ?? 'RGB').length}
+                            data-tip="How many DMX channels one pixel takes: 1, 3 or 4. Changing it sets the channels to the defaults of that count (1 brightness, 3 RGB, 4 RGBW)"
+                            onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = defaultPixels(Number(e.target.value))))}
+                          >
+                            {PIXEL_CHANNEL_COUNTS.map((n) => (
+                              <option key={n} value={n}>
+                                {n} {n === 1 ? 'channel' : 'channels'}
+                              </option>
+                            ))}
+                          </select>
+                          {pixelSources(slot.pixels ?? 'RGB').map((source, ci) => (
+                            <select
+                              key={ci}
+                              aria-label={`Pixel channel ${ci + 1}`}
+                              value={source}
+                              data-tip={`What goes into channel ${ci + 1} of each pixel. RGB: the colour as it is. RGBW: the colour with the white taken out, and the white. HSB: hue, saturation, brightness of the colour. The gamma applies to light (RGB, RGBW, HSB brightness), not to hue and saturation`}
+                              onChange={(e) => edit((x) => (x.modes[mi].channels[i].pixels = withSource(x.modes[mi].channels[i].pixels ?? 'RGB', ci, e.target.value)))}
+                            >
+                              {['RGB', 'RGBW', 'HSB'].map((group) => (
+                                <optgroup key={group} label={group}>
+                                  {PIXEL_SOURCES.filter((s) => s.startsWith(`${group}.`)).map((s) => (
+                                    <option key={s} value={s}>
+                                      {s}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
                           ))}
-                        </select>
+                        </span>
                       )}
                       <span className="ml-auto flex gap-1">
                         <button className="px-1 text-dim hover:text-ink disabled:opacity-30" disabled={i === 0} data-tip="Move this channel up: earlier in the DMX order" onClick={() => moveSlot(mi, i, -1)}>

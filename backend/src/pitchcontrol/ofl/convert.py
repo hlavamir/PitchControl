@@ -33,8 +33,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..config.models import normalise_pixels
+
 WHITES = {"White", "Warm White", "Cold White"}  # a white channel next to RGB is the W of an RGBW block
-FORMATS = {("Red", "Green", "Blue", "White"): "RGBW", ("Red", "Green", "Blue"): "RGB"}
+COLOUR_SETS = (frozenset({"Red", "Green", "Blue"}), frozenset({"Red", "Green", "Blue", "White"}))  # any order (item 103)
 PIXEL_KEY = "$pixelKey"
 
 
@@ -272,9 +274,21 @@ def flatten(fx: Fixture, mode: dict) -> list[Item | Block]:
     return out
 
 
-def _format_of(colours: list[str]) -> str | None:
-    names = tuple("White" if c in WHITES else c for c in colours)
-    return FORMATS.get(names)
+def _format_of(colours: list[str]) -> str | list[str] | None:
+    """The pixel block of a run of colour channels in the order OFL lists them: red, green and blue in any order,
+    with a white among them for RGBW (a preset name like ``GRB`` where there is one, else a list of sources)."""
+    names = ["White" if c in WHITES else c for c in colours]
+    if len(set(names)) != len(names) or frozenset(names) not in COLOUR_SETS:
+        return None
+    prefix = "RGBW." if len(names) == 4 else "RGB."
+    return normalise_pixels([prefix + n.lower() for n in names])
+
+
+def _pixel_label(pixels: str | list[str]) -> str:
+    """A pixel block in words for a mode's description: the preset's name, or the colour order (``BGR``)."""
+    if isinstance(pixels, str):
+        return pixels
+    return "".join(source.split(".")[1][0].upper() for source in pixels)
 
 
 def convert_mode(fx: Fixture, mode: dict, assumptions: list[str]) -> dict:
@@ -323,7 +337,7 @@ def convert_mode(fx: Fixture, mode: dict, assumptions: list[str]) -> dict:
                     colour_block, has_colour_block = expanded[run_start], True
                     break
             else:
-                raise ConversionError("colour channels that don't start with R G B")
+                raise ConversionError("colour channels that aren't a run of red, green and blue (with a white)")
 
     for entry in expanded:
         if isinstance(entry, Block):
@@ -378,7 +392,8 @@ def describe(mode: dict) -> str:
     parts = []
     for slot in mode["channels"]:
         if "pixels" in slot and slot["pixels"] != "I":
-            parts.append(f"{mode['pixels']} × {slot['pixels']}" if mode["pixels"] > 1 else slot["pixels"])
+            label = _pixel_label(slot["pixels"])
+            parts.append(f"{mode['pixels']} × {label}" if mode["pixels"] > 1 else label)
         elif "pixels" in slot:
             parts.append(f"{slot['name']} (follows the brightness)")
         elif "shutter" in slot:
@@ -391,8 +406,8 @@ def describe(mode: dict) -> str:
                 parts.append(f"{slot['name']} (held at full)" if value == 255 else f"{slot['name']} (held at {value})" if value else f"{slot['name']} (off)")
     text = ", ".join(parts)
     text = text[:1].upper() + text[1:] + "."
-    kinds = {slot.get("pixels") for slot in mode["channels"]}
-    if not kinds & {"RGB", "RGBW"}:
+    kinds = [slot["pixels"] for slot in mode["channels"] if "pixels" in slot]
+    if not any(kind != "I" for kind in kinds):
         text += " No colour mixing in this mode: only the brightness follows PitchControl." if "I" in kinds else (
             " PitchControl can't change the light in this mode (no colour or dimmer channel); it is listed for addressing."
         )

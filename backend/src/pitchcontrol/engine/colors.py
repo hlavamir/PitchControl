@@ -24,6 +24,18 @@ def hsv_to_rgb(h: np.ndarray, s: np.ndarray, v: np.ndarray) -> np.ndarray:
     return np.stack([r, g, b], axis=-1)
 
 
+def rgb_to_hue_saturation(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Hue and saturation (0..1) of (n, 3) colours, the HSB of ``hsv_to_rgb``; a grey or black has hue 0."""
+    hi = rgb.max(axis=1)
+    delta = hi - rgb.min(axis=1)
+    safe = np.where(delta > 0.0, delta, 1.0)
+    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    sector = np.where(hi == r, ((g - b) / safe) % 6.0, np.where(hi == g, (b - r) / safe + 2.0, (r - g) / safe + 4.0))
+    hue = np.where(delta > 0.0, sector / 6.0, 0.0)
+    saturation = np.where(hi > 0.0, delta / np.where(hi > 0.0, hi, 1.0), 0.0)
+    return hue, saturation
+
+
 @dataclass
 class AutoColors:
     """Port of ``GetAutoColors``: new random colours for A and B every 1–8 peaks.
