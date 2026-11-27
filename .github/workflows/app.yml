@@ -25,7 +25,7 @@ jobs:
             script: packaging\build_windows.bat
             zip: PitchControl-windows-x64.zip
             platform: windows-x64
-          - os: macos-14 # Apple Silicon
+          - os: macos-15 # Apple Silicon (macos-14 is retired: the 1.8.7 build could not start)
             script: packaging/build_macos.command
             zip: PitchControl-macos-arm64.zip
             platform: macos-arm64

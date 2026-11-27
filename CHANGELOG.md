@@ -6,7 +6,7 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 
 ## Unreleased
 
-## 1.8.7 — 2026-11-27
+## 1.8.8 — 2026-11-27
 
 ### Added
 - **Ping a fixture on the Rig page** (item 104): with one fixture selected, the **Ping** button (or the key <kbd>P</kbd>) makes it flash white at full three times in one second, to see which light is which while you set up the rig. The flash is on top of everything: the app's own output, the routes and the manual overrides; afterwards the light shows what it showed before. A fixture with several pixels flashes only its first tenth, at least one pixel, so its orientation shows too. Pressing Ping again during a ping starts it again. The Output monitor and the scene preview show the flash.
@@ -15,6 +15,10 @@ features, **patch** = fixes only. Releases are tagged `vX.Y.Z`.
 ### Fixed
 - **PitchControl now reads what the PitchPls v2 Arduino sends back** (item 101): the Arduino prints a status message every 2 seconds, which PitchControl never read. It now reads the messages, throws them away and writes the Arduino's latest status line to the log about once a minute ("pitchpls_v2: the Arduino says: fps … / LED … / Current …"), which shows that the Arduino is alive. This alone did not stop the strips dropping back to blue (see the next entry).
 - **The PitchPls v2 strips' serial port is now opened like the old vvvv patch did, with DTR and RTS off** (item 102), aimed at the strips dropping back to blue; it has not yet been confirmed on a long run. The strips dropped back to the Arduino's idle mode every couple of hours on a Windows laptop (the app said connected, no error in the log, only replugging the cable helped), which the vvvv patch never did on the same hardware. PitchControl used to open the port with those two lines on, which is the serial library's default; vvvv leaves them off. Only the PitchPls v2 output changed; the Enttec Pro and Open DMX outputs open their ports as before. With this, the Arduino's status line may no longer appear in the log: if none has come 30 seconds after the port opened, the log says once that the Arduino sends nothing back, which is expected.
+
+## 1.8.7 — 2026-11-27
+
+(not released) Tagged as `v1.8.7`, but GitHub no longer offers the macOS runner the build asked for (`macos-14`), so the macOS build never started; everything listed under 1.8.8 is its content.
 
 ## 1.8.6 — 2026-10-27
 
